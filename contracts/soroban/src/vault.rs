@@ -171,14 +171,19 @@ impl VaultContract {
             .ok_or(VaultError::NotInitialized)
     }
 
-    /// Trigger rebalance (called by rule engine)
+    /// Trigger rebalance (called by rule engine or manually)
     pub fn trigger_rebalance(env: Env) -> Result<(), VaultError> {
         // Check vault is initialized
         if !env.storage().instance().has(&CONFIG) {
             return Err(VaultError::NotInitialized);
         }
 
-        let config: VaultConfig = env.storage().instance().get(&CONFIG)
+        // Check if rebalancing should occur based on rules
+        if !crate::engine::should_rebalance(&env) {
+            return Ok(()); // No rebalancing needed
+        }
+
+        let _config: VaultConfig = env.storage().instance().get(&CONFIG)
             .ok_or(VaultError::NotInitialized)?;
         
         let mut state: VaultState = env.storage().instance().get(&STATE)

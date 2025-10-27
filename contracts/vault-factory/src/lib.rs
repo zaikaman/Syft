@@ -1,10 +1,29 @@
-// Vault factory contract for generating vault instances
-use soroban_sdk::{contract, contractimpl, Address, Env, BytesN, Symbol, symbol_short, Vec};
-use crate::types::VaultConfig;
+#![no_std]
+
+use soroban_sdk::{contract, contractimpl, contracttype, contracterror, Address, Env, BytesN, Symbol, symbol_short, String, Vec};
 
 const WASM_HASH: Symbol = symbol_short!("WASM");
 const VAULT_COUNT: Symbol = symbol_short!("COUNT");
 const VAULT_LIST: Symbol = symbol_short!("VAULTS");
+
+// Error types
+#[contracterror]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
+#[repr(u32)]
+pub enum VaultFactoryError {
+    AlreadyInitialized = 1,
+    NotInitialized = 2,
+    InvalidConfiguration = 3,
+}
+
+// Vault configuration type (minimal version for factory)
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct VaultConfig {
+    pub owner: Address,
+    pub name: String,
+    pub assets: Vec<Address>,
+}
 
 #[contract]
 pub struct VaultFactory;
@@ -12,9 +31,9 @@ pub struct VaultFactory;
 #[contractimpl]
 impl VaultFactory {
     /// Initialize the factory with vault contract WASM hash
-    pub fn initialize(env: Env, wasm_hash: BytesN<32>) -> Result<(), crate::errors::VaultError> {
+    pub fn initialize(env: Env, wasm_hash: BytesN<32>) -> Result<(), VaultFactoryError> {
         if env.storage().instance().has(&WASM_HASH) {
-            return Err(crate::errors::VaultError::AlreadyInitialized);
+            return Err(VaultFactoryError::AlreadyInitialized);
         }
         
         env.storage().instance().set(&WASM_HASH, &wasm_hash);
@@ -27,11 +46,11 @@ impl VaultFactory {
     }
 
     /// Deploy a new vault instance
-    pub fn create_vault(env: Env, _config: VaultConfig) -> Result<Address, crate::errors::VaultError> {
+    pub fn create_vault(env: Env, _config: VaultConfig) -> Result<Address, VaultFactoryError> {
         // Get WASM hash
         let wasm_hash: BytesN<32> = env.storage().instance()
             .get(&WASM_HASH)
-            .ok_or(crate::errors::VaultError::NotInitialized)?;
+            .ok_or(VaultFactoryError::NotInitialized)?;
         
         // Generate unique salt for this vault
         let mut vault_count: u32 = env.storage().instance()
@@ -39,9 +58,9 @@ impl VaultFactory {
             .unwrap_or(0);
         
         vault_count = vault_count.checked_add(1)
-            .ok_or(crate::errors::VaultError::InvalidConfiguration)?;
+            .ok_or(VaultFactoryError::InvalidConfiguration)?;
         
-        // Create salt from count and owner address
+        // Create salt from count
         let salt = BytesN::from_array(&env, &create_salt(vault_count));
         
         // Deploy new vault contract instance
@@ -62,10 +81,10 @@ impl VaultFactory {
     }
 
     /// Get vault contract WASM hash
-    pub fn get_vault_wasm_hash(env: Env) -> Result<BytesN<32>, crate::errors::VaultError> {
+    pub fn get_vault_wasm_hash(env: Env) -> Result<BytesN<32>, VaultFactoryError> {
         env.storage().instance()
             .get(&WASM_HASH)
-            .ok_or(crate::errors::VaultError::NotInitialized)
+            .ok_or(VaultFactoryError::NotInitialized)
     }
 
     /// Get total number of vaults created
@@ -83,13 +102,13 @@ impl VaultFactory {
     }
 
     /// Get vault at specific index
-    pub fn get_vault_at(env: Env, index: u32) -> Result<Address, crate::errors::VaultError> {
+    pub fn get_vault_at(env: Env, index: u32) -> Result<Address, VaultFactoryError> {
         let vaults: Vec<Address> = env.storage().instance()
             .get(&VAULT_LIST)
             .unwrap_or(Vec::new(&env));
         
         vaults.get(index)
-            .ok_or(crate::errors::VaultError::InvalidConfiguration)
+            .ok_or(VaultFactoryError::InvalidConfiguration)
     }
 }
 

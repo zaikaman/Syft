@@ -6,11 +6,14 @@ mod vault;
 mod engine;
 mod rebalance;
 mod events;
-mod factory;
+// mod factory;  // Factory should be a separate contract
 mod errors;
-mod vault_nft;
-mod nft_types;
+// mod vault_nft;  // VaultNFT should be a separate contract
+// mod nft_types;
 
+// Export the main vault contract
 pub use vault::*;
-pub use factory::*;
-pub use vault_nft::*;
+
+// Export types and errors for external use
+pub use types::*;
+pub use errors::*;

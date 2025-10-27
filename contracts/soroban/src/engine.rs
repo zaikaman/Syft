@@ -1,5 +1,5 @@
 // Rule evaluation engine
-use soroban_sdk::{Env, String, symbol_short, Symbol, Vec};
+use soroban_sdk::{Env, symbol_short, Symbol, Vec};
 use crate::types::RebalanceRule;
 
 const STATE: Symbol = symbol_short!("STATE");
@@ -18,25 +18,25 @@ pub fn evaluate_rules(env: &Env, rules: &Vec<RebalanceRule>) -> bool {
 
 /// Evaluate a single rule based on its condition type
 fn evaluate_single_rule(env: &Env, rule: &RebalanceRule) -> bool {
-    let condition_type = rule.condition_type.clone();
+    use soroban_sdk::String;
     
     // Time-based condition: Check if enough time has passed since last rebalance
-    if condition_type.to_string().contains("time") {
+    if rule.condition_type == String::from_str(env, "time") {
         return evaluate_time_condition(env, rule);
     }
     
     // APY threshold condition: Check if APY meets threshold
-    if condition_type.to_string().contains("apy") {
+    if rule.condition_type == String::from_str(env, "apy") {
         return evaluate_apy_condition(env, rule);
     }
     
     // Allocation percentage condition: Check if allocation drifted
-    if condition_type.to_string().contains("allocation") {
+    if rule.condition_type == String::from_str(env, "allocation") {
         return evaluate_allocation_condition(env, rule);
     }
     
     // Price-based condition: Check price movements
-    if condition_type.to_string().contains("price") {
+    if rule.condition_type == String::from_str(env, "price") {
         return evaluate_price_condition(env, rule);
     }
     
@@ -61,7 +61,7 @@ fn evaluate_time_condition(env: &Env, rule: &RebalanceRule) -> bool {
 }
 
 /// Evaluate APY threshold condition
-fn evaluate_apy_condition(env: &Env, rule: &RebalanceRule) -> bool {
+fn evaluate_apy_condition(_env: &Env, rule: &RebalanceRule) -> bool {
     // In MVP, we'll use a simplified APY calculation
     // In production, this would fetch real-time APY data from liquidity pools
     
@@ -71,7 +71,7 @@ fn evaluate_apy_condition(env: &Env, rule: &RebalanceRule) -> bool {
 }
 
 /// Evaluate allocation drift condition
-fn evaluate_allocation_condition(env: &Env, rule: &RebalanceRule) -> bool {
+fn evaluate_allocation_condition(env: &Env, _rule: &RebalanceRule) -> bool {
     // Check if current allocation drifted from target
     // In MVP, simplified logic - will be enhanced with real asset balance tracking
     
@@ -89,7 +89,7 @@ fn evaluate_allocation_condition(env: &Env, rule: &RebalanceRule) -> bool {
 }
 
 /// Evaluate price-based condition
-fn evaluate_price_condition(env: &Env, rule: &RebalanceRule) -> bool {
+fn evaluate_price_condition(_env: &Env, rule: &RebalanceRule) -> bool {
     // Price movement detection
     // In MVP, simplified - will be enhanced with Stellar price oracle integration
     

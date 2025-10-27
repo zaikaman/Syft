@@ -1,5 +1,5 @@
 // Event emissions for vault actions
-use soroban_sdk::{contracttype, symbol_short, Address, Env, Symbol};
+use soroban_sdk::{symbol_short, Address, Env, Symbol};
 
 const DEPOSIT: Symbol = symbol_short!("deposit");
 const WITHDRAW: Symbol = symbol_short!("withdraw");
