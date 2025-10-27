@@ -82,16 +82,16 @@ This project uses a monorepo structure:
 
 ### Implementation for User Story 6
 
-- [ ] T037 [US6] Create WalletConnect component with Stellar Wallet Kit integration in frontend/src/components/wallet/WalletConnect.tsx
-- [ ] T038 [US6] Implement wallet selection modal showing supported wallets in frontend/src/components/wallet/WalletSelector.tsx
-- [ ] T039 [US6] Create wallet context provider for managing connection state in frontend/src/contexts/WalletContext.tsx
-- [ ] T040 [US6] Implement asset balance fetching service using Horizon SDK in backend/src/services/assetService.ts
-- [ ] T041 [US6] Create API endpoint GET /api/wallet/:address/assets in backend/src/routes/wallet.ts
-- [ ] T042 [US6] Implement session persistence using localStorage in frontend/src/lib/sessionManager.ts
-- [ ] T043 [US6] Create AssetDisplay component showing user balances in frontend/src/components/wallet/AssetDisplay.tsx
-- [ ] T044 [US6] Add wallet disconnect functionality and cleanup in frontend/src/components/wallet/WalletConnect.tsx
-- [ ] T045 [US6] Implement transaction approval flow with clear details display in frontend/src/components/wallet/TransactionApproval.tsx
-- [ ] T046 [US6] Add error handling for wallet connection failures with user-friendly messages in frontend/src/components/wallet/WalletConnect.tsx
+- [x] T037 [US6] Create WalletConnect component with Stellar Wallet Kit integration in frontend/src/components/wallet/WalletConnect.tsx
+- [x] T038 [US6] Implement wallet selection modal showing supported wallets in frontend/src/components/wallet/WalletSelector.tsx
+- [ ] T039 [US6] Create wallet context provider for managing connection state in frontend/src/contexts/WalletContext.tsx (Note: Already exists in WalletProvider.tsx)
+- [x] T040 [US6] Implement asset balance fetching service using Horizon SDK in backend/src/services/assetService.ts
+- [x] T041 [US6] Create API endpoint GET /api/wallet/:address/assets in backend/src/routes/wallet.ts
+- [x] T042 [US6] Implement session persistence using localStorage in frontend/src/lib/sessionManager.ts
+- [x] T043 [US6] Create AssetDisplay component showing user balances in frontend/src/components/wallet/AssetDisplay.tsx
+- [x] T044 [US6] Add wallet disconnect functionality and cleanup in frontend/src/components/wallet/WalletConnect.tsx
+- [x] T045 [US6] Implement transaction approval flow with clear details display in frontend/src/components/wallet/TransactionApproval.tsx
+- [x] T046 [US6] Add error handling for wallet connection failures with user-friendly messages in frontend/src/components/wallet/WalletConnect.tsx
 
 **Checkpoint**: Users can connect wallets and see their assets - enables all other features ✅
 

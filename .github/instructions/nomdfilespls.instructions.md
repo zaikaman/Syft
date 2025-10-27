@@ -1,0 +1,4 @@
+---
+applyTo: '**'
+---
+My request is very simple, DO NOT CREATE .md FILES OR DOCUMENTATION OR .txt FILES OR ANY KIND OF TEXT FILES WHEN I DONT ASK YOU TO DO IT.
