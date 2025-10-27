@@ -5,6 +5,7 @@ import { Router } from 'express';
 import walletRoutes from './wallet.js';
 import vaultRoutes from './vaults.js';
 import backtestRoutes from './backtests.js';
+import suggestionsRoutes from './suggestions.js';
 
 const router = Router();
 
@@ -40,13 +41,12 @@ router.get('/', (_req, res) => {
 router.use('/wallet', walletRoutes);
 router.use('/vaults', vaultRoutes);
 router.use('/backtests', backtestRoutes);
+router.use('/suggestions', suggestionsRoutes);
 
 // TODO: Import and mount additional routes as they are implemented
 // Example for future routes:
-// import suggestionRoutes from './suggestions';
 // import nftRoutes from './nfts';
 // import marketplaceRoutes from './marketplace';
-// router.use('/suggestions', suggestionRoutes);
 // router.use('/nfts', nftRoutes);
 // router.use('/marketplace', marketplaceRoutes);
 

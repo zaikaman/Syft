@@ -1,0 +1,241 @@
+.toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1rem 1.5rem;
+  background: var(--card-bg, white);
+  border-bottom: 2px solid var(--border-color, #e0e0e0);
+  gap: 1.5rem;
+}
+
+.leftSection {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.title {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--text-primary, #1a1a1a);
+  margin: 0;
+}
+
+.badge {
+  display: inline-block;
+  padding: 0.25rem 0.75rem;
+  background: #fff3e0;
+  color: #e65100;
+  border-radius: 1rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.rightSection {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+/* Button Base Styles */
+.aiButton,
+.validateButton,
+.clearButton,
+.saveButton {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.625rem 1.25rem;
+  border: none;
+  border-radius: 0.5rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.icon,
+.aiIcon {
+  font-size: 1rem;
+  display: flex;
+  align-items: center;
+}
+
+/* AI Suggestions Button - Featured styling */
+.aiButton {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
+}
+
+.aiButton:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+}
+
+.aiButton:active {
+  transform: translateY(0);
+}
+
+.aiIcon {
+  font-size: 1.1rem;
+  animation: sparkle 2s ease-in-out infinite;
+}
+
+@keyframes sparkle {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.2);
+    opacity: 0.8;
+  }
+}
+
+/* Validate Button */
+.validateButton {
+  background: white;
+  color: var(--success-color, #4caf50);
+  border: 2px solid var(--success-color, #4caf50);
+}
+
+.validateButton:hover {
+  background: var(--success-color, #4caf50);
+  color: white;
+}
+
+/* Clear Button */
+.clearButton {
+  background: white;
+  color: var(--text-secondary, #666);
+  border: 2px solid var(--border-color, #e0e0e0);
+}
+
+.clearButton:hover:not(:disabled) {
+  background: var(--bg-secondary, #f5f5f5);
+  border-color: var(--text-secondary, #666);
+}
+
+.clearButton:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Save Button */
+.saveButton {
+  background: var(--primary-color, #667eea);
+  color: white;
+}
+
+.saveButton:hover:not(:disabled) {
+  background: var(--primary-dark, #5568d3);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(102, 126, 234, 0.3);
+}
+
+.saveButton:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  background: var(--border-color, #e0e0e0);
+}
+
+/* Responsive Design */
+@media (max-width: 1024px) {
+  .toolbar {
+    padding: 0.875rem 1rem;
+    gap: 1rem;
+  }
+
+  .title {
+    font-size: 1.125rem;
+  }
+
+  .aiButton,
+  .validateButton,
+  .clearButton,
+  .saveButton {
+    padding: 0.5rem 1rem;
+    font-size: 0.8125rem;
+  }
+}
+
+@media (max-width: 768px) {
+  .toolbar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.75rem;
+    padding: 0.75rem 1rem;
+  }
+
+  .leftSection,
+  .rightSection {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .rightSection {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.5rem;
+  }
+
+  .aiButton {
+    grid-column: 1 / -1;
+  }
+
+  .aiButton,
+  .validateButton,
+  .clearButton,
+  .saveButton {
+    justify-content: center;
+  }
+}
+
+@media (max-width: 480px) {
+  .toolbar {
+    padding: 0.625rem 0.75rem;
+  }
+
+  .title {
+    font-size: 1rem;
+  }
+
+  .badge {
+    font-size: 0.65rem;
+    padding: 0.2rem 0.6rem;
+  }
+
+  .rightSection {
+    grid-template-columns: 1fr;
+  }
+
+  .aiButton {
+    grid-column: 1;
+  }
+
+  /* Hide text labels on very small screens, show only icons */
+  .aiButton span:last-child,
+  .validateButton span:last-child,
+  .clearButton span:last-child,
+  .saveButton span:last-child {
+    display: none;
+  }
+
+  .aiButton,
+  .validateButton,
+  .clearButton,
+  .saveButton {
+    padding: 0.75rem;
+    justify-content: center;
+  }
+
+  .icon,
+  .aiIcon {
+    font-size: 1.25rem;
+  }
+}

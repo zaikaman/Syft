@@ -218,21 +218,21 @@ Note: Automated integration tests for backtests are deferred for MVP; perform ma
 
 ### Backend Implementation for User Story 2
 
-- [ ] T110 [P] [US2] Create X/Twitter sentiment fetching service in backend/src/services/twitterService.ts
-- [ ] T111 [P] [US2] Create Reddit sentiment fetching service in backend/src/services/redditService.ts
-- [ ] T112 [US2] Implement OpenAI-based sentiment classification with prompt templates in backend/src/services/sentimentAnalysisService.ts
-- [ ] T113 [US2] Create strategy analyzer that identifies improvement opportunities in backend/src/services/strategyAnalyzer.ts
-- [ ] T114 [US2] Implement suggestion generator combining historical data, sentiment, and Prophet forecasts in backend/src/services/suggestionGenerator.ts
-- [ ] T115 [US2] Create API endpoint POST /api/vaults/:vaultId/suggestions in backend/src/routes/suggestions.ts
-- [ ] T116 [US2] Implement suggestion caching to reduce API costs in backend/src/services/suggestionCacheService.ts
+- [x] T110 [P] [US2] Create X/Twitter sentiment fetching service using TwitterXAPI (twexapi.io) in backend/src/services/twitterService.ts
+- [x] T111 [P] [US2] Create Reddit sentiment fetching service in backend/src/services/redditService.ts
+- [x] T112 [US2] Implement OpenAI-based sentiment classification with prompt templates in backend/src/services/sentimentAnalysisService.ts
+- [x] T113 [US2] Create strategy analyzer that identifies improvement opportunities in backend/src/services/strategyAnalyzer.ts
+- [x] T114 [US2] Implement suggestion generator combining historical data, sentiment, and Prophet forecasts in backend/src/services/suggestionGenerator.ts
+- [x] T115 [US2] Create API endpoint POST /api/vaults/:vaultId/suggestions in backend/src/routes/suggestions.ts
+- [x] T116 [US2] Implement suggestion caching to reduce API costs in backend/src/services/suggestionCacheService.ts
 
 ### Frontend Implementation for User Story 2
 
-- [ ] T117 [US2] Create AISuggestions component displaying recommendations in frontend/src/components/ai/AISuggestions.tsx
-- [ ] T118 [US2] Implement suggestion detail view with supporting data visualization in frontend/src/components/ai/SuggestionDetail.tsx
-- [ ] T119 [US2] Create suggestion application flow that updates vault config in frontend/src/components/ai/ApplySuggestion.tsx
-- [ ] T120 [US2] Display sentiment indicators for assets in builder in frontend/src/components/builder/SentimentIndicator.tsx
-- [ ] T121 [US2] Add "Get AI Suggestions" button in vault builder toolbar in frontend/src/components/builder/BuilderToolbar.tsx
+- [x] T117 [US2] Create AISuggestions component displaying recommendations in frontend/src/components/ai/AISuggestions.tsx
+- [x] T118 [US2] Implement suggestion detail view with supporting data visualization in frontend/src/components/ai/SuggestionDetail.tsx
+- [x] T119 [US2] Create suggestion application flow that updates vault config in frontend/src/components/ai/ApplySuggestion.tsx
+- [x] T120 [US2] Display sentiment indicators for assets in builder in frontend/src/components/builder/SentimentIndicator.tsx
+- [x] T121 [US2] Add "Get AI Suggestions" button in vault builder toolbar in frontend/src/components/builder/BuilderToolbar.tsx
 
 ### Integration Notes for User Story 2
 
@@ -432,7 +432,7 @@ Based on plan.md Risk Register:
 | Soroban documentation gaps | T002, T066-T074 | Early prototype; use Stellar Discord; allow +1 day buffer |
 | React Flow complexity | T052-T060 | Use community templates; prototype validation early (T053) |
 | Prophet accuracy | T097 | Validate against real data; document uncertainty (T106) |
-| Sentiment API rate limits | T110-T112, T116 | Implement caching (T116); queue requests |
+| TwitterXAPI rate limits | T110, T112, T116 | Implement caching (T116); queue requests; review twexapi.io rate limits |
 | Timeline pressure | Entire plan | Strict MVP scope (US1+US5+US6); defer P2/P3 if needed |
 
 ---
