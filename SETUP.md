@@ -116,45 +116,83 @@ cd C:\Users\ADMIN\Desktop\Syft
 
 ### 2.2 Configure Environment Variables
 
-#### Root Environment (.env)
+#### Root Environment (.env) - Optional (Stellar CLI only)
 
 ```powershell
 # Copy the example file
 cp .env.example .env
 ```
 
-Open `.env` and update these values:
-
+This file is only needed for Stellar CLI operations. Keep defaults:
 ```bash
-# Keep these as-is for Futurenet
-PUBLIC_STELLAR_NETWORK="FUTURENET"
-PUBLIC_STELLAR_NETWORK_PASSPHRASE="Test SDF Future Network ; October 2022"
-PUBLIC_STELLAR_RPC_URL="https://rpc-futurenet.stellar.org"
-PUBLIC_STELLAR_HORIZON_URL="https://horizon-futurenet.stellar.org"
-
-# Update these with your Supabase values
-SUPABASE_URL=https://your-project.supabase.co
-SUPABASE_ANON_KEY=your_anon_key_here
-SUPABASE_SERVICE_ROLE_KEY=your_service_role_key_here
-
-# Update if you want AI features
-OPENAI_API_KEY=sk-your_openai_key_here
-OPENAI_MODEL=gpt-4-turbo-preview
-
-# Optional: Social media APIs
-TWEXAPI_API_KEY=your_twexapi_key_here
-REDDIT_CLIENT_ID=your_reddit_client_id_here
-REDDIT_CLIENT_SECRET=your_reddit_client_secret_here
+STELLAR_SCAFFOLD_ENV=development
+XDG_CONFIG_HOME=.config
 ```
 
-#### Backend Environment (backend/.env)
+#### Backend Environment (backend/.env) - **REQUIRED**
 
 ```powershell
 # Copy the backend example
 cp backend\.env.example backend\.env
 ```
 
-Open `backend/.env` and update with the same values as above (Supabase, OpenAI, etc.)
+Open `backend/.env` and update with your credentials:
+
+```bash
+# Server Configuration
+PORT=3001
+NODE_ENV=development
+
+# Update these with your Supabase values
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_ANON_KEY=your_anon_key_here
+SUPABASE_SERVICE_ROLE_KEY=your_service_role_key_here
+
+# Update if you want AI features (optional)
+OPENAI_API_KEY=sk-your_openai_key_here
+OPENAI_MODEL=gpt-4-turbo-preview
+
+# Optional: Social media APIs
+TWITTER_BEARER_TOKEN=your_twitter_bearer_token_here
+REDDIT_CLIENT_ID=your_reddit_client_id_here
+REDDIT_CLIENT_SECRET=your_reddit_client_secret_here
+
+# Security
+JWT_SECRET=your_jwt_secret_here_change_in_production
+CORS_ORIGINS=http://localhost:5173,http://localhost:3000
+```
+
+#### Frontend Environment (frontend/.env.local) - **REQUIRED**
+
+```powershell
+# Copy the frontend example
+cp frontend\.env.example frontend\.env.local
+```
+
+Open `frontend/.env.local` and update with your credentials (frontend only uses `PUBLIC_` prefixed variables):
+
+```bash
+# Stellar Network Configuration
+PUBLIC_STELLAR_NETWORK=FUTURENET
+PUBLIC_STELLAR_NETWORK_PASSPHRASE=Test SDF Future Network ; October 2022
+PUBLIC_STELLAR_RPC_URL=https://rpc-futurenet.stellar.org
+PUBLIC_STELLAR_HORIZON_URL=https://horizon-futurenet.stellar.org
+
+# Supabase Configuration
+PUBLIC_SUPABASE_URL=https://your-project.supabase.co
+PUBLIC_SUPABASE_ANON_KEY=your_anon_key_here
+
+# Backend API URL
+PUBLIC_BACKEND_URL=http://localhost:3001
+
+# Contract Addresses (optional - add after deployment)
+PUBLIC_VAULT_FACTORY_CONTRACT_ID=your_contract_id_here
+```
+
+**⚠️ Important**: 
+- `frontend/.env.local` is automatically excluded from version control (Vite's default)
+- Only use `PUBLIC_` prefixed variables in frontend - they will be exposed to the browser
+- Keep secrets (API keys, private keys) in `backend/.env` only
 
 ---
 
@@ -554,6 +592,24 @@ stellar contract build
 
 # Terminal 4: Deploy contracts (when ready)
 stellar contract deploy --wasm target/wasm32-unknown-unknown/release/syft_vault.wasm --source deployer --network futurenet
+```
+
+### Environment Files Quick Reference
+
+```
+.env                    ← Stellar CLI only (optional)
+├─ backend/.env        ← Backend secrets (required, .gitignore)
+│  ├─ SUPABASE_URL
+│  ├─ SUPABASE_ANON_KEY
+│  ├─ SUPABASE_SERVICE_ROLE_KEY
+│  ├─ OPENAI_API_KEY
+│  └─ JWT_SECRET
+│
+└─ frontend/.env.local ← Frontend config (required, .gitignore)
+   ├─ PUBLIC_STELLAR_NETWORK
+   ├─ PUBLIC_SUPABASE_URL
+   ├─ PUBLIC_SUPABASE_ANON_KEY
+   └─ PUBLIC_BACKEND_URL=http://localhost:3001
 ```
 
 ---
