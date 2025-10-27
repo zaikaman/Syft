@@ -28,34 +28,46 @@ export const useWalletBalance = () => {
   });
 
   const updateBalance = useCallback(async () => {
-    if (!address) return;
+    if (!address) {
+      console.log("[useWalletBalance] No address, skipping balance fetch");
+      return;
+    }
+    
+    console.log("[useWalletBalance] Fetching balance for address:", address);
     try {
       setState((prev) => ({ ...prev, isLoading: true }));
       const balances = await fetchBalance(address);
+      console.log("[useWalletBalance] Fetched balances:", balances);
+      
       const isFunded = checkFunding(balances);
       const native = balances.find(({ asset_type }) => asset_type === "native");
+      console.log("[useWalletBalance] Native balance found:", native);
+      
+      const formattedXlm = native?.balance ? formatter.format(Number(native.balance)) : "-";
+      console.log("[useWalletBalance] Formatted XLM:", formattedXlm);
+      
       setState({
         isLoading: false,
         balances,
-        xlm: native?.balance ? formatter.format(Number(native.balance)) : "-",
+        xlm: formattedXlm,
         isFunded,
         error: null,
       });
     } catch (err) {
+      console.error("[useWalletBalance] Error fetching balance:", err);
       if (err instanceof Error && err.message.match(/not found/i)) {
         setState({
           isLoading: false,
           balances: [],
-          xlm: "-",
+          xlm: "0",
           isFunded: false,
           error: new Error("Error fetching balance. Is your wallet funded?"),
         });
       } else {
-        console.error(err);
         setState({
           isLoading: false,
           balances: [],
-          xlm: "-",
+          xlm: "0",
           isFunded: false,
           error: new Error("Unknown error fetching balance."),
         });

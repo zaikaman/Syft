@@ -6,7 +6,7 @@ import {
   sep43Modules,
 } from "@creit.tech/stellar-wallets-kit";
 import { Horizon } from "@stellar/stellar-sdk";
-import { networkPassphrase, stellarNetwork } from "../contracts/util";
+import { networkPassphrase, stellarNetwork, horizonUrl } from "../contracts/util";
 
 const kit: StellarWalletsKit = new StellarWalletsKit({
   network: networkPassphrase as WalletNetwork,
@@ -53,28 +53,23 @@ export const disconnectWallet = async () => {
   storage.removeItem("walletId");
 };
 
-function getHorizonHost(mode: string) {
-  switch (mode) {
-    case "LOCAL":
-      return "http://localhost:8000";
-    case "FUTURENET":
-      return "https://horizon-futurenet.stellar.org";
-    case "TESTNET":
-      return "https://horizon-testnet.stellar.org";
-    case "PUBLIC":
-      return "https://horizon.stellar.org";
-    default:
-      throw new Error(`Unknown Stellar network: ${mode}`);
-  }
-}
-
 export const fetchBalance = async (address: string) => {
-  const horizon = new Horizon.Server(getHorizonHost(stellarNetwork), {
-    allowHttp: stellarNetwork === "LOCAL",
+  console.log("[fetchBalance] Fetching balance for:", address);
+  console.log("[fetchBalance] Using Horizon URL:", horizonUrl);
+  console.log("[fetchBalance] Network:", stellarNetwork);
+  
+  const horizon = new Horizon.Server(horizonUrl, {
+    allowHttp: stellarNetwork === "LOCAL" || horizonUrl.startsWith("http://"),
   });
 
-  const { balances } = await horizon.accounts().accountId(address).call();
-  return balances;
+  try {
+    const account = await horizon.accounts().accountId(address).call();
+    console.log("[fetchBalance] Account data:", account);
+    return account.balances;
+  } catch (error) {
+    console.error("[fetchBalance] Error fetching account:", error);
+    throw error;
+  }
 };
 
 export type Balance = Awaited<ReturnType<typeof fetchBalance>>[number];
