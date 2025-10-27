@@ -12,14 +12,24 @@ interface VaultDetailProps {
 }
 
 interface VaultData {
-  vault_id: string;
-  name: string;
-  description: string;
-  contract_address: string;
-  total_value: number;
-  performance: number;
-  created_at: string;
+  vaultId: string;
+  name?: string;
+  description?: string;
+  contractAddress: string;
+  owner: string;
+  config: any;
   status: string;
+  state?: any;
+  performance?: {
+    currentValue: number;
+    totalDeposits: number;
+    totalWithdrawals: number;
+    netReturn: number;
+    returnPercentage: number;
+    lastUpdated: string;
+  };
+  createdAt: string;
+  updatedAt: string;
 }
 
 interface NFTHolder {
@@ -46,8 +56,10 @@ export function VaultDetail({ vaultId, listingId }: VaultDetailProps) {
     setError('');
 
     try {
+      const backendUrl = import.meta.env.PUBLIC_BACKEND_URL || 'http://localhost:3001';
+      
       // Load vault data
-      const vaultResponse = await fetch(`/api/vaults/${vaultId}`);
+      const vaultResponse = await fetch(`${backendUrl}/api/vaults/${vaultId}`);
       const vaultData = await vaultResponse.json();
 
       if (!vaultData.success) {
@@ -57,7 +69,7 @@ export function VaultDetail({ vaultId, listingId }: VaultDetailProps) {
       setVault(vaultData.data);
 
       // Load NFT holders
-      const nftResponse = await fetch(`/api/vaults/${vaultId}/nfts`);
+      const nftResponse = await fetch(`${backendUrl}/api/vaults/${vaultId}/nfts`);
       const nftData = await nftResponse.json();
 
       if (nftData.success) {
@@ -109,8 +121,8 @@ export function VaultDetail({ vaultId, listingId }: VaultDetailProps) {
       <Card className="p-6">
         <div className="flex justify-between items-start">
           <div>
-            <h1 className="text-3xl font-bold mb-2">{vault.name}</h1>
-            <p className="text-gray-600">{vault.description}</p>
+            <h1 className="text-3xl font-bold mb-2">{vault.name || vault.config?.name || 'Unnamed Vault'}</h1>
+            <p className="text-gray-600">{vault.description || vault.config?.description || 'No description'}</p>
           </div>
           <div className="text-right">
             <span
@@ -130,18 +142,23 @@ export function VaultDetail({ vaultId, listingId }: VaultDetailProps) {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <Card className="p-6">
           <h3 className="text-sm font-medium text-gray-600 mb-2">Total Value</h3>
-          <p className="text-3xl font-bold">${vault.total_value.toLocaleString()}</p>
+          <p className="text-3xl font-bold">
+            ${(vault.performance?.currentValue || 0).toLocaleString(undefined, { 
+              minimumFractionDigits: 2, 
+              maximumFractionDigits: 2 
+            })}
+          </p>
         </Card>
 
         <Card className="p-6">
           <h3 className="text-sm font-medium text-gray-600 mb-2">Performance</h3>
           <p
             className={`text-3xl font-bold ${
-              vault.performance >= 0 ? 'text-green-600' : 'text-red-600'
+              (vault.performance?.returnPercentage || 0) >= 0 ? 'text-green-600' : 'text-red-600'
             }`}
           >
-            {vault.performance >= 0 ? '+' : ''}
-            {vault.performance.toFixed(2)}%
+            {(vault.performance?.returnPercentage || 0) >= 0 ? '+' : ''}
+            {(vault.performance?.returnPercentage || 0).toFixed(2)}%
           </p>
         </Card>
 
@@ -214,16 +231,16 @@ export function VaultDetail({ vaultId, listingId }: VaultDetailProps) {
           <div className="flex justify-between">
             <span className="text-gray-600">Contract Address:</span>
             <code className="font-mono text-sm bg-gray-100 px-2 py-1 rounded">
-              {truncateAddress(vault.contract_address)}
+              {truncateAddress(vault.contractAddress)}
             </code>
           </div>
           <div className="flex justify-between">
             <span className="text-gray-600">Created:</span>
-            <span className="font-medium">{formatDate(vault.created_at)}</span>
+            <span className="font-medium">{formatDate(vault.createdAt)}</span>
           </div>
           <div className="flex justify-between">
             <span className="text-gray-600">Vault ID:</span>
-            <code className="font-mono text-sm">{vault.vault_id}</code>
+            <code className="font-mono text-sm">{vault.vaultId}</code>
           </div>
         </div>
       </Card>

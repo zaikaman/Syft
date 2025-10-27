@@ -1,8 +1,8 @@
 import { motion, AnimatePresence } from 'framer-motion';
 import { useState, useCallback, useEffect } from 'react';
 import type { Node, Edge } from '@xyflow/react';
-import { Save, Play, Undo2, Redo2, Download, Upload, Sparkles, FileText, AlertCircle, FolderOpen, X, Clock } from 'lucide-react';
-import { Button, GradientText } from '../components/ui';
+import { Save, Play, Undo2, Redo2, FileText, AlertCircle, FolderOpen, X, Clock } from 'lucide-react';
+import { Button, useModal } from '../components/ui';
 import BlockPalette from '../components/builder/BlockPalette';
 import VaultCanvas from '../components/builder/VaultCanvas';
 import ValidationFeedback from '../components/builder/ValidationFeedback';
@@ -43,6 +43,7 @@ const VaultBuilder = () => {
 
   const { address } = useWallet();
   const navigate = useNavigate();
+  const modal = useModal();
   const { canUndo, canRedo, undo, redo, pushState } = useBuilderHistory(nodes, edges);
 
   // Load user's saved vaults when component mounts
@@ -84,11 +85,15 @@ const VaultBuilder = () => {
       setEdges(importedEdges);
       pushState(importedNodes, importedEdges);
       setShowLoadModal(false);
-      alert(`Loaded: ${vault.name}`);
+      modal.message(`Loaded: ${vault.name}`, 'Vault Loaded', 'success');
     } catch (error) {
-      alert(`Failed to load vault: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      modal.message(
+        `Failed to load vault: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        'Load Failed',
+        'error'
+      );
     }
-  }, [pushState]);
+  }, [pushState, modal]);
 
   // Validate on changes
   useEffect(() => {
@@ -132,7 +137,7 @@ const VaultBuilder = () => {
     console.log('Saving vault configuration:', config);
     
     if (!address) {
-      alert('Please connect your wallet first');
+      modal.message('Please connect your wallet first', 'Wallet Required', 'warning');
       return;
     }
 
@@ -158,17 +163,21 @@ const VaultBuilder = () => {
       const data = await response.json();
 
       if (data.success) {
-        alert('Vault draft saved successfully!');
+        modal.message('Vault draft saved successfully!', 'Saved', 'success');
       } else {
         throw new Error(data.error || 'Failed to save draft');
       }
     } catch (error) {
       console.error('Error saving vault:', error);
-      alert(`Failed to save vault: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      modal.message(
+        `Failed to save vault: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        'Save Failed',
+        'error'
+      );
     } finally {
       setSaving(false);
     }
-  }, [nodes, edges, address]);
+  }, [nodes, edges, address, modal]);
 
   // Deploy vault
   const handleDeploy = useCallback(async () => {
@@ -176,12 +185,12 @@ const VaultBuilder = () => {
     
     if (!validationResult.valid) {
       setActiveTab('validation');
-      alert('Please fix validation errors before deploying');
+      modal.message('Please fix validation errors before deploying', 'Validation Failed', 'error');
       return;
     }
 
     if (!address) {
-      alert('Please connect your wallet first');
+      modal.message('Please connect your wallet first', 'Wallet Required', 'warning');
       return;
     }
 
@@ -191,20 +200,22 @@ const VaultBuilder = () => {
     try {
       setDeploying(true);
       
-      // Note: This is a simplified version. In production, you would:
-      // 1. Get user to sign transaction via their wallet
-      // 2. Submit signed transaction to backend
-      // 3. Backend would deploy to Stellar network
-      
-      const privateKey = prompt(
-        'Enter your wallet private key (for testing only - in production this would use your wallet extension):\n\nWARNING: Never share your private key on mainnet!'
-      );
-      
-      if (!privateKey) {
-        setDeploying(false);
-        return;
-      }
+      // Transform config to match backend expectations
+      const backendConfig = {
+        owner: address,
+        name: `Vault ${new Date().toLocaleDateString()}`,
+        assets: config.assets.map(asset => asset.code),
+        rules: config.rules.map(rule => ({
+          condition_type: rule.condition.type,
+          threshold: rule.condition.parameters.threshold || 0,
+          action: rule.action.type,
+          target_allocation: rule.action.parameters.targetAllocation 
+            ? [rule.action.parameters.targetAllocation as number]
+            : [0],
+        })),
+      };
 
+      // Deploy vault using connected wallet (no private key needed)
       const backendUrl = import.meta.env.PUBLIC_BACKEND_URL || 'http://localhost:3001';
       const response = await fetch(`${backendUrl}/api/vaults`, {
         method: 'POST',
@@ -212,18 +223,18 @@ const VaultBuilder = () => {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          config: {
-            owner: address,
-            ...config,
-          },
-          privateKey,
+          config: backendConfig,
         }),
       });
 
       const data = await response.json();
 
       if (data.success) {
-        alert(`Vault deployed successfully!\n\nVault ID: ${data.data.vaultId}\nContract: ${data.data.contractAddress}`);
+        modal.message(
+          `Vault ID: ${data.data.vaultId}\n\nContract: ${data.data.contractAddress}`,
+          'Vault Deployed Successfully',
+          'success'
+        );
         // Navigate to dashboard
         navigate('/dashboard');
       } else {
@@ -231,57 +242,15 @@ const VaultBuilder = () => {
       }
     } catch (error) {
       console.error('Error deploying vault:', error);
-      alert(`Failed to deploy vault: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      modal.message(
+        `Failed to deploy vault: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        'Deploy Failed',
+        'error'
+      );
     } finally {
       setDeploying(false);
     }
-  }, [nodes, edges, address, navigate]);
-
-  // Export configuration
-  const handleExport = useCallback(() => {
-    const config = ConfigSerializer.serialize(nodes, edges);
-    const json = ConfigSerializer.exportJSON(config);
-    
-    const blob = new Blob([json], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `vault-config-${Date.now()}.json`;
-    link.click();
-    URL.revokeObjectURL(url);
-  }, [nodes, edges]);
-
-  // Import configuration
-  const handleImport = useCallback(() => {
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = 'application/json';
-    
-    input.onchange = (e) => {
-      const file = (e.target as HTMLInputElement).files?.[0];
-      if (!file) return;
-
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        try {
-          const json = event.target?.result as string;
-          const config = ConfigSerializer.importJSON(json);
-          const { nodes: importedNodes, edges: importedEdges } = ConfigSerializer.deserialize(config);
-          
-          setNodes(importedNodes);
-          setEdges(importedEdges);
-          pushState(importedNodes, importedEdges);
-          
-          alert('Configuration imported successfully!');
-        } catch (error) {
-          alert(`Failed to import: ${error instanceof Error ? error.message : 'Unknown error'}`);
-        }
-      };
-      reader.readAsText(file);
-    };
-    
-    input.click();
-  }, [pushState]);
+  }, [nodes, edges, address, navigate, modal]);
 
   // Load template
   const handleLoadTemplate = useCallback((templateId: string) => {
@@ -294,136 +263,95 @@ const VaultBuilder = () => {
   }, [pushState]);
 
   return (
-    <div className="fixed inset-0 bg-[var(--color-bg)]">
+    <div className="fixed inset-0 bg-app">
       <div className="h-full flex flex-col">
-        {/* Compact Header with Syft Logo */}
-        <div className="flex-shrink-0 border-b border-white/10 bg-[var(--color-bg-card)]/50 backdrop-blur-md">
-          <div className="container mx-auto px-4 py-3">
+        {/* Clean Minimal Header */}
+        <div className="flex-shrink-0 border-b border-default bg-secondary">
+          <div className="px-4 py-2.5">
             <div className="flex items-center justify-between">
-              {/* Logo and Title Section */}
-              <div className="flex items-center gap-6">
-                {/* Syft Logo - Clickable to go home */}
+              {/* Left: Logo + Title */}
+              <div className="flex items-center gap-3">
                 <button
                   onClick={() => navigate('/')}
-                  className="flex items-center gap-2 hover:opacity-80 transition-opacity group"
+                  className="flex items-center gap-2 hover:opacity-80 transition-opacity"
                   title="Back to Home"
                 >
-                  <div className="relative">
-                    <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-purple-600 to-pink-600 flex items-center justify-center group-hover:scale-105 transition-transform">
-                      <span className="text-white font-bold text-xl">S</span>
-                    </div>
-                    <div className="absolute inset-0 rounded-lg bg-gradient-to-br from-purple-600 to-pink-600 blur-md opacity-50 group-hover:opacity-70 transition-opacity -z-10"></div>
-                  </div>
-                  <span className="text-xl font-bold bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">
-                    Syft
-                  </span>
+                  <img
+                    src="/logo.png"
+                    alt="Syft Logo"
+                    className="w-7 h-7 object-contain"
+                  />
+                  <span className="text-base font-semibold text-neutral-50">Syft</span>
                 </button>
-
-                {/* Divider */}
-                <div className="w-px h-8 bg-white/10"></div>
-
-                <div>
-                  <h1 className="text-2xl font-bold">
-                    <GradientText>Visual Vault Builder</GradientText>
-                  </h1>
-                </div>
-                
-                {/* Quick Templates - Inline */}
-                <div className="hidden xl:flex items-center gap-2 pl-4 border-l border-white/10">
-                  <Sparkles className="w-4 h-4 text-purple-400" />
-                  <span className="text-xs font-semibold text-gray-400">Templates:</span>
-                  {vaultTemplates.map((template) => (
-                    <button
-                      key={template.id}
-                      onClick={() => handleLoadTemplate(template.id)}
-                      className="px-2 py-1 text-xs rounded bg-purple-600/20 hover:bg-purple-600/30 border border-purple-500/30 transition-colors"
-                    >
-                      {template.name}
-                    </button>
-                  ))}
-                </div>
+                <div className="w-px h-5 bg-default"></div>
+                <h1 className="text-sm font-medium text-neutral-400">Visual Vault Builder</h1>
               </div>
 
-              {/* Action Buttons - Compact */}
-              <div className="flex gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  leftIcon={<Undo2 className="w-4 h-4" />}
-                  onClick={undo}
-                  disabled={!canUndo}
-                  className="hidden md:flex"
-                />
-                <Button
-                  variant="outline"
-                  size="sm"
-                  leftIcon={<Redo2 className="w-4 h-4" />}
-                  onClick={redo}
-                  disabled={!canRedo}
-                  className="hidden md:flex"
-                />
-                <Button 
-                  variant="outline" 
-                  size="sm" 
-                  leftIcon={<FolderOpen className="w-4 h-4" />} 
-                  onClick={() => setShowLoadModal(true)}
-                  className="hidden lg:flex"
-                >
-                  Load
-                </Button>
-                <Button 
-                  variant="outline" 
-                  size="sm" 
-                  leftIcon={<Download className="w-4 h-4" />} 
-                  onClick={handleExport}
-                  className="hidden lg:flex"
-                >
-                  Export
-                </Button>
-                <Button 
-                  variant="outline" 
-                  size="sm" 
-                  leftIcon={<Upload className="w-4 h-4" />} 
-                  onClick={handleImport}
-                  className="hidden lg:flex"
-                >
-                  Import
-                </Button>
-                <Button 
-                  variant="outline" 
-                  size="sm" 
-                  leftIcon={<Save className="w-4 h-4" />} 
-                  onClick={handleSave} 
-                  disabled={saving}
-                >
-                  {saving ? 'Saving...' : 'Save'}
-                </Button>
-                <Button 
-                  variant="gradient" 
-                  size="sm" 
-                  leftIcon={<Play className="w-4 h-4" />} 
-                  onClick={handleDeploy} 
-                  disabled={deploying}
-                >
-                  {deploying ? 'Deploying...' : 'Deploy'}
-                </Button>
-              </div>
-            </div>
-
-            {/* Templates for smaller screens */}
-            <div className="xl:hidden mt-2 pt-2 border-t border-white/10">
-              <div className="flex items-center gap-2 flex-wrap">
-                <Sparkles className="w-4 h-4 text-purple-400" />
-                <span className="text-xs font-semibold text-gray-400">Quick Start:</span>
+              {/* Center: Templates */}
+              <div className="hidden lg:flex items-center gap-1.5">
+                <span className="text-xs text-neutral-500 mr-1">Templates:</span>
                 {vaultTemplates.map((template) => (
                   <button
                     key={template.id}
                     onClick={() => handleLoadTemplate(template.id)}
-                    className="px-2 py-1 text-xs rounded bg-purple-600/20 hover:bg-purple-600/30 border border-purple-500/30 transition-colors"
+                    className="px-2.5 py-1 text-xs rounded-md bg-neutral-900 hover:bg-neutral-800 border border-default transition-colors text-neutral-300 font-medium"
                   >
                     {template.name}
                   </button>
                 ))}
+              </div>
+
+              {/* Right: Actions */}
+              <div className="flex items-center gap-2">
+                {/* History */}
+                <div className="hidden md:flex items-center gap-1 mr-1">
+                  <button
+                    onClick={undo}
+                    disabled={!canUndo}
+                    className="p-1.5 rounded-md hover:bg-neutral-900 disabled:opacity-30 disabled:cursor-not-allowed transition-colors text-neutral-400 hover:text-neutral-50"
+                    title="Undo"
+                  >
+                    <Undo2 className="w-4 h-4" />
+                  </button>
+                  <button
+                    onClick={redo}
+                    disabled={!canRedo}
+                    className="p-1.5 rounded-md hover:bg-neutral-900 disabled:opacity-30 disabled:cursor-not-allowed transition-colors text-neutral-400 hover:text-neutral-50"
+                    title="Redo"
+                  >
+                    <Redo2 className="w-4 h-4" />
+                  </button>
+                  <div className="w-px h-4 bg-default mx-1"></div>
+                </div>
+
+                {/* File Operations */}
+                <button
+                  onClick={() => setShowLoadModal(true)}
+                  className="hidden lg:flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded-md hover:bg-neutral-900 border border-default transition-colors text-neutral-300"
+                  title="Load"
+                >
+                  <FolderOpen className="w-3.5 h-3.5" />
+                  <span>Load</span>
+                </button>
+                <button
+                  onClick={handleSave}
+                  disabled={saving}
+                  className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded-md hover:bg-neutral-900 border border-default transition-colors text-neutral-300 disabled:opacity-50"
+                  title="Save"
+                >
+                  <Save className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">{saving ? 'Saving...' : 'Save'}</span>
+                </button>
+
+                {/* Deploy Button */}
+                <button
+                  onClick={handleDeploy}
+                  disabled={deploying}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-md bg-primary-500 hover:bg-primary-600 text-dark-950 font-semibold transition-colors disabled:opacity-50"
+                >
+                  <Play className="w-3.5 h-3.5" />
+                  <span>{deploying ? 'Deploying...' : 'Deploy'}</span>
+                </button>
               </div>
             </div>
           </div>
@@ -433,7 +361,7 @@ const VaultBuilder = () => {
         <div className="flex-1 overflow-hidden">
           <div className="h-full flex">
             {/* Left Sidebar - Block Palette */}
-            <div className="w-64 flex-shrink-0 border-r border-white/10 bg-[var(--color-bg-card)]/30 backdrop-blur-sm overflow-hidden">
+            <div className="w-64 flex-shrink-0 border-r border-default bg-card overflow-hidden">
               <div className="h-full overflow-y-auto">
                 <BlockPalette onBlockSelect={handleBlockSelect} />
               </div>
@@ -452,16 +380,16 @@ const VaultBuilder = () => {
               </div>
 
               {/* Bottom Panel - Tabbed Preview/Validation */}
-              <div className="h-64 flex-shrink-0 border-t border-white/10 bg-[var(--color-bg-card)]/50 backdrop-blur-md">
+              <div className="h-64 flex-shrink-0 border-t border-default bg-secondary">
                 {/* Tab Headers */}
-                <div className="flex items-center border-b border-white/10">
+                <div className="flex items-center border-b border-default">
                   <button
                     onClick={() => setActiveTab('preview')}
                     className={`
                       flex items-center gap-2 px-4 py-2 text-sm font-medium transition-colors relative
                       ${activeTab === 'preview' 
-                        ? 'text-purple-400' 
-                        : 'text-gray-400 hover:text-gray-300'
+                        ? 'text-primary-500' 
+                        : 'text-neutral-400 hover:text-neutral-300'
                       }
                     `}
                   >
@@ -470,7 +398,7 @@ const VaultBuilder = () => {
                     {activeTab === 'preview' && (
                       <motion.div
                         layoutId="activeTab"
-                        className="absolute bottom-0 left-0 right-0 h-0.5 bg-purple-500"
+                        className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary-500"
                       />
                     )}
                   </button>
@@ -479,20 +407,20 @@ const VaultBuilder = () => {
                     className={`
                       flex items-center gap-2 px-4 py-2 text-sm font-medium transition-colors relative
                       ${activeTab === 'validation' 
-                        ? 'text-purple-400' 
-                        : 'text-gray-400 hover:text-gray-300'
+                        ? 'text-primary-500' 
+                        : 'text-neutral-400 hover:text-neutral-300'
                       }
                     `}
                   >
                     <AlertCircle className="w-4 h-4" />
                     Validation
                     {(!validation.valid || validation.warnings.length > 0) && (
-                      <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+                      <span className="w-2 h-2 rounded-full bg-error-500" />
                     )}
                     {activeTab === 'validation' && (
                       <motion.div
                         layoutId="activeTab"
-                        className="absolute bottom-0 left-0 right-0 h-0.5 bg-purple-500"
+                        className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary-500"
                       />
                     )}
                   </button>
@@ -543,20 +471,20 @@ const VaultBuilder = () => {
             onClick={() => setShowLoadModal(false)}
           >
             <motion.div
-              initial={{ scale: 0.9, opacity: 0 }}
+              initial={{ scale: 0.95, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.9, opacity: 0 }}
+              exit={{ scale: 0.95, opacity: 0 }}
               onClick={(e) => e.stopPropagation()}
-              className="bg-[var(--color-bg-card)] border border-white/10 rounded-xl p-6 max-w-2xl w-full max-h-[80vh] overflow-hidden flex flex-col"
+              className="bg-card border border-default rounded-lg p-6 max-w-2xl w-full max-h-[80vh] overflow-hidden flex flex-col"
             >
               {/* Modal Header */}
               <div className="flex items-center justify-between mb-4">
-                <h2 className="text-2xl font-bold">
-                  <GradientText>Load Saved Vault</GradientText>
+                <h2 className="text-xl font-bold text-neutral-50">
+                  Load Saved Vault
                 </h2>
                 <button
                   onClick={() => setShowLoadModal(false)}
-                  className="p-2 hover:bg-white/10 rounded-lg transition-colors"
+                  className="p-2 hover:bg-neutral-900 rounded-md transition-colors"
                 >
                   <X className="w-5 h-5" />
                 </button>
@@ -566,13 +494,13 @@ const VaultBuilder = () => {
               <div className="flex-1 overflow-y-auto">
                 {loadingVaults ? (
                   <div className="flex items-center justify-center py-12">
-                    <div className="text-gray-400">Loading your vaults...</div>
+                    <div className="text-neutral-400">Loading your vaults...</div>
                   </div>
                 ) : savedVaults.length === 0 ? (
                   <div className="text-center py-12">
-                    <FolderOpen className="w-16 h-16 mx-auto mb-4 text-gray-600" />
-                    <p className="text-gray-400 mb-2">No saved vaults found</p>
-                    <p className="text-sm text-gray-500">
+                    <FolderOpen className="w-16 h-16 mx-auto mb-4 text-neutral-600" />
+                    <p className="text-neutral-400 mb-2">No saved vaults found</p>
+                    <p className="text-sm text-neutral-500">
                       Create and save a vault to see it here
                     </p>
                   </div>
@@ -581,25 +509,25 @@ const VaultBuilder = () => {
                     {savedVaults.map((vault) => (
                       <div
                         key={vault.vault_id}
-                        className="bg-[var(--color-bg-secondary)] border border-white/10 rounded-lg p-4 hover:border-purple-500/50 transition-all cursor-pointer group"
+                        className="bg-neutral-900 border border-default rounded-lg p-4 hover:border-hover transition-all cursor-pointer group"
                         onClick={() => handleLoadVault(vault)}
                       >
                         <div className="flex items-start justify-between">
                           <div className="flex-1">
-                            <h3 className="font-semibold text-white group-hover:text-purple-400 transition-colors">
+                            <h3 className="font-semibold text-neutral-50 group-hover:text-primary-500 transition-colors">
                               {vault.name}
                             </h3>
                             {vault.description && (
-                              <p className="text-sm text-gray-400 mt-1">
+                              <p className="text-sm text-neutral-400 mt-1">
                                 {vault.description}
                               </p>
                             )}
-                            <div className="flex items-center gap-4 mt-2 text-xs text-gray-500">
+                            <div className="flex items-center gap-4 mt-2 text-xs text-neutral-500">
                               <span className="flex items-center gap-1">
                                 <Clock className="w-3 h-3" />
                                 {new Date(vault.updated_at).toLocaleDateString()}
                               </span>
-                              <span className="px-2 py-0.5 bg-yellow-500/20 text-yellow-400 rounded">
+                              <span className="px-2 py-0.5 bg-warning-500/20 text-warning-400 rounded">
                                 {vault.status}
                               </span>
                             </div>
@@ -623,7 +551,7 @@ const VaultBuilder = () => {
               </div>
 
               {/* Modal Footer */}
-              <div className="mt-4 pt-4 border-t border-white/10 flex justify-between">
+              <div className="mt-4 pt-4 border-t border-default flex justify-between">
                 <Button
                   variant="outline"
                   size="sm"

@@ -7,43 +7,50 @@
 @tailwind utilities;
 
 :root {
-  /* Color System - Dark Crypto Theme */
-  --color-bg-primary: #0a0a0f;
-  --color-bg-secondary: #111118;
-  --color-bg-tertiary: #1a1a24;
-  --color-bg-card: rgba(20, 20, 30, 0.6);
-  --color-bg-hover: rgba(30, 30, 45, 0.8);
+  /* Color System - Marginfi-inspired Dark Theme */
+  --color-bg-primary: #090a0a;
+  --color-bg-secondary: #161a1d;
+  --color-bg-tertiary: #1a1e21;
+  --color-bg-card: #16181a;
+  --color-bg-hover: #1e2225;
+  --color-bg-input: #292e32;
   
-  /* Accent Colors */
-  --color-primary: #8b5cf6;
-  --color-primary-hover: #9d6fff;
-  --color-secondary: #3b82f6;
-  --color-accent: #ec4899;
-  --color-success: #10b981;
-  --color-warning: #f59e0b;
-  --color-error: #ef4444;
+  /* Accent Colors - Yellow/Lime focus */
+  --color-primary: #dce85d;
+  --color-primary-hover: #e8f06d;
+  --color-primary-muted: #6b7229;
+  --color-secondary: #60a5fa;
+  --color-accent: #74b97f;
+  --color-success: #74b97f;
+  --color-warning: #dca204;
+  --color-error: #e06c6e;
   
   /* Text Colors */
-  --color-text-primary: #ffffff;
+  --color-text-primary: #fafafa;
   --color-text-secondary: #a1a1aa;
-  --color-text-tertiary: #71717a;
+  --color-text-tertiary: #868e95;
   --color-text-muted: #52525b;
   
-  /* Gradient */
-  --gradient-primary: linear-gradient(135deg, #8b5cf6 0%, #3b82f6 100%);
-  --gradient-secondary: linear-gradient(135deg, #ec4899 0%, #8b5cf6 100%);
-  --gradient-glow: linear-gradient(135deg, rgba(139, 92, 246, 0.3) 0%, rgba(59, 130, 246, 0.3) 100%);
+  /* Neutral Grays */
+  --color-neutral-50: #fcfcfc;
+  --color-neutral-100: #f4f4f5;
+  --color-neutral-200: #e4e4e7;
+  --color-neutral-300: #a1a1aa;
+  --color-neutral-400: #868e95;
+  --color-neutral-500: #71717a;
+  --color-neutral-600: #52525b;
+  --color-neutral-700: #3f3f46;
+  --color-neutral-800: #27272a;
+  --color-neutral-900: #18181b;
   
   /* Borders */
-  --border-color: rgba(255, 255, 255, 0.1);
-  --border-color-hover: rgba(139, 92, 246, 0.5);
+  --border-color: rgba(255, 255, 255, 0.06);
+  --border-color-hover: rgba(220, 232, 93, 0.3);
   
-  /* Shadows */
-  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.3);
-  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.4);
-  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.5);
-  --shadow-glow: 0 0 30px rgba(139, 92, 246, 0.4);
-  --shadow-glow-intense: 0 0 50px rgba(139, 92, 246, 0.6);
+  /* Shadows - Subtle */
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
   
   /* Spacing */
   --spacing-xs: 0.25rem;
@@ -98,18 +105,18 @@ body {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: var(--color-primary);
+  background: var(--color-neutral-700);
   border-radius: 5px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--color-primary-hover);
+  background: var(--color-neutral-600);
 }
 
 /* Selection */
 ::selection {
   background: var(--color-primary);
-  color: white;
+  color: var(--color-bg-primary);
 }
 
 /* Focus Styles */
@@ -122,7 +129,7 @@ body {
 @keyframes fadeIn {
   from {
     opacity: 0;
-    transform: translateY(20px);
+    transform: translateY(10px);
   }
   to {
     opacity: 1;
@@ -133,7 +140,7 @@ body {
 @keyframes slideIn {
   from {
     opacity: 0;
-    transform: translateX(-20px);
+    transform: translateX(-10px);
   }
   to {
     opacity: 1;
@@ -141,41 +148,20 @@ body {
   }
 }
 
-@keyframes glow {
-  0%, 100% {
-    box-shadow: 0 0 30px rgba(139, 92, 246, 0.4);
-  }
-  50% {
-    box-shadow: 0 0 50px rgba(139, 92, 246, 0.6);
-  }
-}
-
-@keyframes float {
-  0%, 100% {
-    transform: translateY(0px);
-  }
-  50% {
-    transform: translateY(-20px);
-  }
-}
-
 /* Utility Classes */
 .gradient-text {
-  background: var(--gradient-primary);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
+  color: var(--color-primary);
 }
 
 .glass {
   background: var(--color-bg-card);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
   border: 1px solid var(--border-color);
 }
 
-.glow {
-  animation: glow 3s ease-in-out infinite;
+.card-hover:hover {
+  background: var(--color-bg-hover);
+  border-color: var(--border-color-hover);
+  transition: all 0.2s ease;
 }
 
 /* Container */

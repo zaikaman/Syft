@@ -23,29 +23,29 @@ export const Button = ({
   disabled,
   ...props
 }: ButtonProps) => {
-  const baseStyles = 'font-semibold rounded-lg transition-all duration-200 inline-flex items-center justify-center gap-2 border disabled:opacity-50 disabled:cursor-not-allowed';
+  const baseStyles = 'font-medium rounded-md transition-all duration-200 inline-flex items-center justify-center gap-2 border disabled:opacity-50 disabled:cursor-not-allowed';
   
   const variants = {
-    primary: 'bg-purple-600 hover:bg-purple-700 text-white border-transparent shadow-lg hover:shadow-purple-500/50',
-    secondary: 'bg-blue-600 hover:bg-blue-700 text-white border-transparent shadow-lg hover:shadow-blue-500/50',
-    outline: 'bg-transparent hover:bg-white/5 text-white border-white/20 hover:border-purple-500/50',
-    ghost: 'bg-transparent hover:bg-white/5 text-white border-transparent',
-    gradient: 'bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white border-transparent shadow-lg hover:shadow-purple-500/50',
+    primary: 'bg-primary-500 hover:bg-primary-600 text-dark-950 border-transparent font-semibold',
+    secondary: 'bg-neutral-800 hover:bg-neutral-700 text-neutral-50 border-neutral-700',
+    outline: 'bg-transparent hover:bg-neutral-900 text-neutral-50 border-default hover:border-hover',
+    ghost: 'bg-transparent hover:bg-neutral-900 text-neutral-300 hover:text-neutral-50 border-transparent',
+    gradient: 'bg-primary-500 hover:bg-primary-600 text-dark-950 border-transparent font-semibold',
   };
   
   const sizes = {
     sm: 'px-3 py-1.5 text-sm',
-    md: 'px-4 py-2.5 text-base',
-    lg: 'px-6 py-3 text-lg',
-    xl: 'px-8 py-4 text-xl',
+    md: 'px-4 py-2 text-base',
+    lg: 'px-5 py-2.5 text-base',
+    xl: 'px-6 py-3 text-lg',
   };
   
   const MotionButton = motion.button as any;
   
   return (
     <MotionButton
-      whileHover={{ scale: disabled || isLoading ? 1 : 1.02 }}
-      whileTap={{ scale: disabled || isLoading ? 1 : 0.98 }}
+      whileHover={{ scale: disabled || isLoading ? 1 : 1.01 }}
+      whileTap={{ scale: disabled || isLoading ? 1 : 0.99 }}
       className={clsx(
         baseStyles,
         variants[variant],

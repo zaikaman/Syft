@@ -65,11 +65,22 @@ export async function getVaultPerformance(
   vaultId: string
 ): Promise<VaultPerformanceMetrics> {
   try {
-    // Query performance data from database
+    // First get the vault UUID from vault_id
+    const { data: vault, error: vaultError } = await supabase
+      .from('vaults')
+      .select('id')
+      .eq('vault_id', vaultId)
+      .single();
+
+    if (vaultError || !vault) {
+      throw new Error(`Vault not found: ${vaultId}`);
+    }
+
+    // Query performance data from database using UUID
     const { data: performanceData, error } = await supabase
       .from('vault_performance')
       .select('*')
-      .eq('vault_id', vaultId)
+      .eq('vault_id', vault.id)
       .order('timestamp', { ascending: false })
       .limit(100);
 
@@ -120,11 +131,23 @@ export async function recordPerformanceSnapshot(
   returns: number
 ): Promise<void> {
   try {
+    // First get the vault UUID from vault_id
+    const { data: vault, error: vaultError } = await supabase
+      .from('vaults')
+      .select('id')
+      .eq('vault_id', vaultId)
+      .single();
+
+    if (vaultError || !vault) {
+      throw new Error(`Vault not found: ${vaultId}`);
+    }
+
     const { error } = await supabase.from('vault_performance').insert({
-      vault_id: vaultId,
+      vault_id: vault.id,
       timestamp: new Date().toISOString(),
-      value,
-      returns,
+      total_value: value,
+      share_price: 1.0, // Will be calculated properly in production
+      returns_all_time: returns,
     });
 
     if (error) {
@@ -145,10 +168,21 @@ export async function getPerformanceHistory(
   endDate: Date
 ): Promise<Array<{ timestamp: string; value: number; returns: number }>> {
   try {
+    // First get the vault UUID from vault_id
+    const { data: vault, error: vaultError } = await supabase
+      .from('vaults')
+      .select('id')
+      .eq('vault_id', vaultId)
+      .single();
+
+    if (vaultError || !vault) {
+      throw new Error(`Vault not found: ${vaultId}`);
+    }
+
     const { data, error } = await supabase
       .from('vault_performance')
-      .select('timestamp, value, returns')
-      .eq('vault_id', vaultId)
+      .select('timestamp, total_value, returns_all_time')
+      .eq('vault_id', vault.id)
       .gte('timestamp', startDate.toISOString())
       .lte('timestamp', endDate.toISOString())
       .order('timestamp', { ascending: true });
@@ -157,7 +191,12 @@ export async function getPerformanceHistory(
       throw error;
     }
 
-    return data || [];
+    // Map the database columns to the expected format
+    return (data || []).map(row => ({
+      timestamp: row.timestamp,
+      value: row.total_value,
+      returns: row.returns_all_time || 0,
+    }));
   } catch (error) {
     console.error('Error getting performance history:', error);
     throw error;

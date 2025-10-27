@@ -6,7 +6,6 @@ interface CardProps {
   children: ReactNode;
   className?: string;
   hover?: boolean;
-  glow?: boolean;
   gradient?: boolean;
   onClick?: () => void;
 }
@@ -15,26 +14,24 @@ export const Card = ({
   children,
   className,
   hover = false,
-  glow = false,
   gradient = false,
   onClick,
 }: CardProps) => {
-  const baseStyles = 'rounded-xl backdrop-blur-md border transition-all duration-300';
+  const baseStyles = 'rounded-lg border transition-all duration-200';
   
   const styles = clsx(
     baseStyles,
     gradient
-      ? 'bg-gradient-to-br from-purple-900/30 to-blue-900/30 border-purple-500/30'
-      : 'bg-[var(--color-bg-card)] border-[var(--border-color)]',
-    hover && 'hover:bg-[var(--color-bg-hover)] hover:border-[var(--border-color-hover)] cursor-pointer hover:scale-[1.02]',
-    glow && 'shadow-[0_0_30px_rgba(139,92,246,0.3)]',
+      ? 'bg-neutral-900 border-default'
+      : 'bg-card border-default',
+    hover && 'hover:bg-hover hover:border-hover cursor-pointer',
     className
   );
   
   if (onClick) {
     return (
       <motion.div
-        whileHover={{ y: -4 }}
+        whileHover={{ y: hover ? -2 : 0 }}
         className={styles}
         onClick={onClick}
       >
@@ -52,7 +49,7 @@ interface CardHeaderProps {
 }
 
 export const CardHeader = ({ children, className }: CardHeaderProps) => (
-  <div className={clsx('p-6 border-b border-white/10', className)}>
+  <div className={clsx('p-4 border-b border-default', className)}>
     {children}
   </div>
 );
@@ -63,7 +60,7 @@ interface CardBodyProps {
 }
 
 export const CardBody = ({ children, className }: CardBodyProps) => (
-  <div className={clsx('p-6', className)}>
+  <div className={clsx('p-4', className)}>
     {children}
   </div>
 );
@@ -74,7 +71,7 @@ interface CardFooterProps {
 }
 
 export const CardFooter = ({ children, className }: CardFooterProps) => (
-  <div className={clsx('p-6 border-t border-white/10', className)}>
+  <div className={clsx('p-4 border-t border-default', className)}>
     {children}
   </div>
 );

@@ -45,11 +45,25 @@ router.post('/:vaultId/suggestions', async (req: Request, res: Response) => {
       });
     }
 
+    // First get the vault UUID from vault_id
+    const { data: vaultData, error: vaultUuidError } = await supabase
+      .from('vaults')
+      .select('id')
+      .eq('vault_id', vaultId)
+      .single();
+
+    if (vaultUuidError || !vaultData) {
+      return res.status(404).json({
+        success: false,
+        error: 'Vault UUID not found',
+      });
+    }
+
     // Fetch performance data (optional)
     const { data: performance } = await supabase
       .from('vault_performance')
       .select('*')
-      .eq('vault_id', vaultId)
+      .eq('vault_id', vaultData.id)
       .order('timestamp', { ascending: false })
       .limit(100);
 
@@ -76,14 +90,14 @@ router.post('/:vaultId/suggestions', async (req: Request, res: Response) => {
 
     await supabase.from('ai_suggestions').insert(suggestionRecords);
 
-    res.json({
+    return res.json({
       success: true,
       cached: false,
       suggestions,
     });
   } catch (error) {
     console.error('Error generating suggestions:', error);
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       error: error instanceof Error ? error.message : 'Failed to generate suggestions',
     });
@@ -123,14 +137,14 @@ router.get('/:vaultId/suggestions', async (req: Request, res: Response) => {
 
     const suggestionData = suggestions?.map(s => s.suggestion_data) || [];
 
-    res.json({
+    return res.json({
       success: true,
       cached: false,
       suggestions: suggestionData,
     });
   } catch (error) {
     console.error('Error fetching suggestions:', error);
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       error: error instanceof Error ? error.message : 'Failed to fetch suggestions',
     });

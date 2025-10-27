@@ -46,10 +46,9 @@ export const WalletButton = () => {
   if (!address) {
     return (
       <Button 
-        variant="gradient" 
+        variant="primary" 
         size="md" 
         onClick={() => void connectWallet()}
-        leftIcon={<Wallet size={18} />}
         isLoading={isPending}
       >
         {buttonLabel}
@@ -58,24 +57,24 @@ export const WalletButton = () => {
   }
 
   return (
-    <div className="flex items-center gap-3">
-      <div className="hidden md:flex items-center gap-2 px-4 py-2 rounded-lg bg-white/5 border border-white/10">
-        <Text as="div" size="sm" className="text-gray-300">
+    <div className="flex items-center gap-2">
+      <div className="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-md bg-neutral-900 border border-default text-sm">
+        <Text as="div" size="sm" className="text-neutral-300">
           {isLoadingBalance ? (
-            <span className="text-gray-400">Loading...</span>
+            <span className="text-neutral-400">Loading...</span>
           ) : balanceError ? (
-            <span className="text-red-400" title={balanceError.message}>Error loading balance</span>
+            <span className="text-error-400" title={balanceError.message}>Error</span>
           ) : (
-            <span className="text-purple-400 font-semibold">{xlm} XLM</span>
+            <span className="text-neutral-50 font-medium">{xlm} XLM</span>
           )}
         </Text>
         <button
           onClick={() => void updateBalance()}
           disabled={isLoadingBalance}
-          className="p-1 hover:bg-white/10 rounded transition-colors disabled:opacity-50"
+          className="p-0.5 hover:bg-neutral-800 rounded transition-colors disabled:opacity-50"
           title="Refresh balance"
         >
-          <RefreshCw size={14} className={isLoadingBalance ? "animate-spin" : ""} />
+          <RefreshCw size={12} className={isLoadingBalance ? "animate-spin" : ""} />
         </button>
       </div>
 
@@ -85,47 +84,47 @@ export const WalletButton = () => {
           onClose={() => setShowDisconnectModal(false)}
           parentId="modalContainer"
         >
-          <div className="w-full max-w-sm p-6 rounded-2xl bg-gradient-to-b from-gray-900/95 to-black/95 backdrop-blur-sm border border-white/10 shadow-2xl">
+          <div className="w-full max-w-sm p-6 rounded-lg bg-card border border-default shadow-lg">
             {/* Header */}
             <div className="text-center mb-6">
-              <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-purple-500/20 border border-purple-500/30 mb-4">
-                <Wallet className="w-6 h-6 text-purple-400" />
+              <div className="inline-flex items-center justify-center w-12 h-12 rounded-lg bg-primary-500/10 border border-primary-500/20 mb-4">
+                <Wallet className="w-6 h-6 text-primary-500" />
               </div>
-              <h2 className="text-xl font-bold text-white mb-2">Connected Wallet</h2>
-              <p className="text-sm text-gray-400">You are connected to your Stellar wallet</p>
+              <h2 className="text-xl font-bold text-neutral-50 mb-2">Connected Wallet</h2>
+              <p className="text-sm text-neutral-400">You are connected to your Stellar wallet</p>
             </div>
 
             {/* Address Card */}
-            <div className="mb-6 p-4 rounded-lg bg-gradient-to-br from-purple-500/10 to-blue-500/10 border border-purple-500/20 backdrop-blur-sm">
+            <div className="mb-4 p-4 rounded-lg bg-neutral-900 border border-default">
               <div className="flex items-center justify-between mb-2">
-                <span className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Wallet Address</span>
+                <span className="text-xs font-medium text-neutral-400 uppercase tracking-wide">Wallet Address</span>
               </div>
               <div className="flex items-center gap-3">
-                <code className="flex-1 text-sm font-mono text-white break-all">
+                <code className="flex-1 text-xs font-mono text-neutral-50 break-all">
                   {address}
                 </code>
                 <button
                   onClick={handleCopyAddress}
-                  className="p-2 rounded-lg hover:bg-white/10 transition-colors flex-shrink-0"
+                  className="p-1.5 rounded-md hover:bg-neutral-800 transition-colors flex-shrink-0"
                   title="Copy address"
                 >
                   {copied ? (
-                    <Check className="w-4 h-4 text-green-400" />
+                    <Check className="w-4 h-4 text-success-400" />
                   ) : (
-                    <Copy className="w-4 h-4 text-gray-400 hover:text-white" />
+                    <Copy className="w-4 h-4 text-neutral-400 hover:text-neutral-50" />
                   )}
                 </button>
               </div>
             </div>
 
             {/* Balance Section */}
-            <div className="mb-6 p-4 rounded-lg bg-white/5 border border-white/10 backdrop-blur-sm">
+            <div className="mb-4 p-4 rounded-lg bg-neutral-900 border border-default">
               <div className="flex items-center justify-between">
-                <span className="text-sm font-semibold text-gray-400">XLM Balance</span>
+                <span className="text-sm font-medium text-neutral-400">XLM Balance</span>
                 <button
                   onClick={() => void updateBalance()}
                   disabled={isLoadingBalance}
-                  className="p-1 hover:bg-white/10 rounded transition-colors disabled:opacity-50"
+                  className="p-1 hover:bg-neutral-800 rounded transition-colors disabled:opacity-50"
                   title="Refresh balance"
                 >
                   <RefreshCw size={14} className={isLoadingBalance ? "animate-spin" : ""} />
@@ -133,23 +132,23 @@ export const WalletButton = () => {
               </div>
               <div className="mt-2">
                 {isLoadingBalance ? (
-                  <div className="text-sm text-gray-400">Loading...</div>
+                  <div className="text-sm text-neutral-400">Loading...</div>
                 ) : balanceError ? (
-                  <div className="text-sm text-red-400">Error loading balance</div>
+                  <div className="text-sm text-error-400">Error loading balance</div>
                 ) : (
-                  <div className="text-2xl font-bold text-purple-400">{xlm} XLM</div>
+                  <div className="text-2xl font-bold text-primary-500">{xlm} XLM</div>
                 )}
               </div>
             </div>
 
             {/* Status Indicator */}
-            <div className="mb-6 p-3 rounded-lg bg-green-500/10 border border-green-500/20 backdrop-blur-sm flex items-center gap-3">
-              <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
-              <span className="text-sm text-green-400 font-medium">Connected & Active</span>
+            <div className="mb-6 p-3 rounded-lg bg-success-500/10 border border-success-500/20 flex items-center gap-3">
+              <div className="w-2 h-2 rounded-full bg-success-400" />
+              <span className="text-sm text-success-400 font-medium">Connected & Active</span>
             </div>
 
             {/* Action Buttons */}
-            <div className="space-y-3">
+            <div className="space-y-2">
               <Button
                 size="md"
                 variant="primary"
@@ -180,10 +179,10 @@ export const WalletButton = () => {
 
       <button
         onClick={() => setShowDisconnectModal(true)}
-        className="px-4 py-2 rounded-lg bg-purple-600/20 border border-purple-500/30 hover:bg-purple-600/30 transition-all flex items-center gap-2 group"
+        className="px-3 py-1.5 rounded-md bg-card border border-default hover:bg-hover hover:border-hover transition-all flex items-center gap-2"
       >
-        <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
-        <span className="text-sm font-medium text-white">
+        <div className="w-1.5 h-1.5 rounded-full bg-success-400" />
+        <span className="text-sm font-medium text-neutral-50">
           {address.slice(0, 4)}...{address.slice(-4)}
         </span>
       </button>

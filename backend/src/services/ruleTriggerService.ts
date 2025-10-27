@@ -78,16 +78,27 @@ async function evaluateRule(
 
   // APY threshold condition
   if (conditionType.includes('apy')) {
+    // First get the vault UUID from vault_id
+    const { data: vaultData, error: vaultError } = await supabase
+      .from('vaults')
+      .select('id')
+      .eq('vault_id', vault.vault_id)
+      .single();
+
+    if (vaultError || !vaultData) {
+      return false;
+    }
+
     // Get recent performance
     const { data: performance } = await supabase
       .from('vault_performance')
-      .select('returns')
-      .eq('vault_id', vault.vault_id)
+      .select('returns_all_time')
+      .eq('vault_id', vaultData.id)
       .order('timestamp', { ascending: false })
       .limit(1);
 
     if (performance && performance.length > 0) {
-      const currentAPY = performance[0].returns;
+      const currentAPY = performance[0].returns_all_time;
       return currentAPY >= threshold;
     }
   }

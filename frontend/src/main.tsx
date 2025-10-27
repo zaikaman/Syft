@@ -5,6 +5,7 @@ import App from "./App.tsx";
 import "@stellar/design-system/build/styles.min.css";
 import { WalletProvider } from "./providers/WalletProvider.tsx";
 import { NotificationProvider } from "./providers/NotificationProvider.tsx";
+import { ModalProvider } from "./components/ui/Modal.tsx";
 import { BrowserRouter } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
@@ -19,14 +20,16 @@ const queryClient = new QueryClient({
 
 createRoot(document.getElementById("root") as HTMLElement).render(
   <StrictMode>
-    <NotificationProvider>
-      <QueryClientProvider client={queryClient}>
-        <WalletProvider>
-          <BrowserRouter>
-            <App />
-          </BrowserRouter>
-        </WalletProvider>
-      </QueryClientProvider>
-    </NotificationProvider>
+    <ModalProvider>
+      <NotificationProvider>
+        <QueryClientProvider client={queryClient}>
+          <WalletProvider>
+            <BrowserRouter>
+              <App />
+            </BrowserRouter>
+          </WalletProvider>
+        </QueryClientProvider>
+      </NotificationProvider>
+    </ModalProvider>
   </StrictMode>,
 );

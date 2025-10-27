@@ -27,15 +27,14 @@ const router = Router();
  */
 router.post('/', async (req: Request, res: Response) => {
   try {
-    const { config, privateKey } = req.body as {
+    const { config } = req.body as {
       config: VaultDeploymentConfig;
-      privateKey: string;
     };
 
-    if (!config || !privateKey) {
+    if (!config) {
       return res.status(400).json({
         success: false,
-        error: 'Missing required fields: config and privateKey',
+        error: 'Missing required field: config',
       });
     }
 
@@ -47,8 +46,16 @@ router.post('/', async (req: Request, res: Response) => {
       });
     }
 
-    // Create keypair from private key
-    const keypair = StellarSdk.Keypair.fromSecret(privateKey);
+    // Use service deployer account from environment
+    const deployerSecret = process.env.DEPLOYER_SECRET_KEY;
+    if (!deployerSecret) {
+      return res.status(500).json({
+        success: false,
+        error: 'Server configuration error: Deployer account not configured',
+      });
+    }
+
+    const keypair = StellarSdk.Keypair.fromSecret(deployerSecret);
 
     // Deploy vault
     const result = await deployVault(config, keypair);
@@ -135,16 +142,25 @@ router.get('/:vaultId', async (req: Request, res: Response) => {
 router.post('/:vaultId/deposit', async (req: Request, res: Response) => {
   try {
     const { vaultId } = req.params;
-    const { userAddress, amount, privateKey } = req.body;
+    const { userAddress, amount } = req.body;
 
-    if (!userAddress || !amount || !privateKey) {
+    if (!userAddress || !amount) {
       return res.status(400).json({
         success: false,
-        error: 'Missing required fields: userAddress, amount, privateKey',
+        error: 'Missing required fields: userAddress, amount',
       });
     }
 
-    const keypair = StellarSdk.Keypair.fromSecret(privateKey);
+    // Use service account for transaction submission
+    const deployerSecret = process.env.DEPLOYER_SECRET_KEY;
+    if (!deployerSecret) {
+      return res.status(500).json({
+        success: false,
+        error: 'Server configuration error: Deployer account not configured',
+      });
+    }
+
+    const keypair = StellarSdk.Keypair.fromSecret(deployerSecret);
     const result = await executeDeposit(vaultId, userAddress, amount, keypair);
 
     if (!result.success) {
@@ -180,16 +196,25 @@ router.post('/:vaultId/deposit', async (req: Request, res: Response) => {
 router.post('/:vaultId/withdraw', async (req: Request, res: Response) => {
   try {
     const { vaultId } = req.params;
-    const { userAddress, shares, privateKey } = req.body;
+    const { userAddress, shares } = req.body;
 
-    if (!userAddress || !shares || !privateKey) {
+    if (!userAddress || !shares) {
       return res.status(400).json({
         success: false,
-        error: 'Missing required fields: userAddress, shares, privateKey',
+        error: 'Missing required fields: userAddress, shares',
       });
     }
 
-    const keypair = StellarSdk.Keypair.fromSecret(privateKey);
+    // Use service account for transaction submission
+    const deployerSecret = process.env.DEPLOYER_SECRET_KEY;
+    if (!deployerSecret) {
+      return res.status(500).json({
+        success: false,
+        error: 'Server configuration error: Deployer account not configured',
+      });
+    }
+
+    const keypair = StellarSdk.Keypair.fromSecret(deployerSecret);
     const result = await executeWithdrawal(vaultId, userAddress, shares, keypair);
 
     if (!result.success) {
@@ -211,6 +236,67 @@ router.post('/:vaultId/withdraw', async (req: Request, res: Response) => {
     });
   } catch (error) {
     console.error('Error in POST /api/vaults/:vaultId/withdraw:', error);
+    return res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Internal server error',
+    });
+  }
+});
+
+/**
+ * GET /api/vaults/:vaultId/nfts
+ * Get all NFTs for a vault
+ */
+router.get('/:vaultId/nfts', async (req: Request, res: Response) => {
+  try {
+    const { vaultId } = req.params;
+
+    // Get vault to verify it exists
+    const { data: vault, error: vaultError } = await supabase
+      .from('vaults')
+      .select('id')
+      .eq('vault_id', vaultId)
+      .single();
+
+    if (vaultError || !vault) {
+      return res.status(404).json({
+        success: false,
+        error: 'Vault not found',
+      });
+    }
+
+    // Get all NFTs for this vault using the UUID
+    const { data: nfts, error } = await supabase
+      .from('vault_nfts')
+      .select('*')
+      .eq('vault_id', vault.id)
+      .order('minted_at', { ascending: false });
+
+    if (error) {
+      console.error('Error fetching NFTs:', error);
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to fetch NFTs',
+      });
+    }
+
+    // Transform the data to match frontend expectations
+    const transformedNfts = (nfts || []).map(nft => ({
+      nft_id: nft.nft_id,
+      holder_address: nft.current_holder,
+      ownership_pct: nft.ownership_percentage,
+      metadata: nft.metadata,
+      token_id: nft.token_id,
+      contract_address: nft.contract_address,
+      minted_at: nft.minted_at,
+    }));
+
+    return res.json({
+      success: true,
+      data: transformedNfts,
+    });
+  } catch (error) {
+    console.error('Error in GET /api/vaults/:vaultId/nfts:', error);
     return res.status(500).json({
       success: false,
       error: error instanceof Error ? error.message : 'Internal server error',

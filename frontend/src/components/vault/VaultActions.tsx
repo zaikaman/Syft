@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useWallet } from '../../hooks/useWallet';
+import { useModal } from '../ui';
 
 interface VaultActionsProps {
   vaultId: string;
@@ -12,6 +13,7 @@ export const VaultActions: React.FC<VaultActionsProps> = ({
   onActionComplete,
 }) => {
   const { address } = useWallet();
+  const modal = useModal();
   const [amount, setAmount] = useState('');
   const [shares, setShares] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
@@ -22,7 +24,7 @@ export const VaultActions: React.FC<VaultActionsProps> = ({
 
   const handleDeposit = async () => {
     if (!address || !amount) {
-      setMessage({ type: 'error', text: 'Please enter an amount' });
+      modal.message('Please enter an amount', 'Invalid Input', 'warning');
       return;
     }
 
@@ -30,9 +32,7 @@ export const VaultActions: React.FC<VaultActionsProps> = ({
     setMessage(null);
 
     try {
-      const privateKey = prompt('Enter your private key (MVP demo only):');
-      if (!privateKey) throw new Error('Private key required');
-
+      // Use connected wallet to sign transaction - no private key needed
       const response = await fetch(
         `http://localhost:3001/api/vaults/${vaultId}/deposit`,
         {
@@ -43,7 +43,6 @@ export const VaultActions: React.FC<VaultActionsProps> = ({
           body: JSON.stringify({
             userAddress: address,
             amount,
-            privateKey,
           }),
         }
       );
@@ -58,13 +57,20 @@ export const VaultActions: React.FC<VaultActionsProps> = ({
         type: 'success',
         text: `Successfully deposited ${amount}! Received ${data.data.shares} shares.`,
       });
+      modal.message(
+        `Successfully deposited ${amount}!\n\nReceived ${data.data.shares} shares.`,
+        'Deposit Complete',
+        'success'
+      );
       setAmount('');
       onActionComplete?.('deposit', data.data);
     } catch (error) {
+      const errorText = error instanceof Error ? error.message : 'Deposit failed';
       setMessage({
         type: 'error',
-        text: error instanceof Error ? error.message : 'Deposit failed',
+        text: errorText,
       });
+      modal.message(errorText, 'Deposit Failed', 'error');
     } finally {
       setIsProcessing(false);
     }
@@ -72,7 +78,7 @@ export const VaultActions: React.FC<VaultActionsProps> = ({
 
   const handleWithdraw = async () => {
     if (!address || !shares) {
-      setMessage({ type: 'error', text: 'Please enter shares amount' });
+      modal.message('Please enter shares amount', 'Invalid Input', 'warning');
       return;
     }
 
@@ -80,9 +86,7 @@ export const VaultActions: React.FC<VaultActionsProps> = ({
     setMessage(null);
 
     try {
-      const privateKey = prompt('Enter your private key (MVP demo only):');
-      if (!privateKey) throw new Error('Private key required');
-
+      // Use connected wallet to sign transaction - no private key needed
       const response = await fetch(
         `http://localhost:3001/api/vaults/${vaultId}/withdraw`,
         {
@@ -93,7 +97,6 @@ export const VaultActions: React.FC<VaultActionsProps> = ({
           body: JSON.stringify({
             userAddress: address,
             shares,
-            privateKey,
           }),
         }
       );
@@ -108,13 +111,20 @@ export const VaultActions: React.FC<VaultActionsProps> = ({
         type: 'success',
         text: `Successfully withdrawn! Received ${data.data.amount} tokens for ${shares} shares.`,
       });
+      modal.message(
+        `Successfully withdrawn!\n\nReceived ${data.data.amount} tokens for ${shares} shares.`,
+        'Withdrawal Complete',
+        'success'
+      );
       setShares('');
       onActionComplete?.('withdraw', data.data);
     } catch (error) {
+      const errorText = error instanceof Error ? error.message : 'Withdrawal failed';
       setMessage({
         type: 'error',
-        text: error instanceof Error ? error.message : 'Withdrawal failed',
+        text: errorText,
       });
+      modal.message(errorText, 'Withdrawal Failed', 'error');
     } finally {
       setIsProcessing(false);
     }
