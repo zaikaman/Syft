@@ -72,13 +72,13 @@ router.post('/', async (req: Request, res: Response) => {
       // Continue even if save fails - return the result
     }
 
-    res.status(200).json({
+    return res.status(200).json({
       backtestId: savedBacktest?.backtest_id || null,
       result,
     });
-  } catch (error: any) {
+    } catch (error: any) {
     console.error('Backtest error:', error);
-    res.status(500).json({
+    return res.status(500).json({
       error: 'Failed to run backtest',
       message: error.message,
     });
@@ -104,7 +104,7 @@ router.get('/:backtestId', async (req: Request, res: Response) => {
       return res.status(404).json({ error: 'Backtest not found' });
     }
 
-    res.status(200).json({
+    return res.status(200).json({
       backtestId: backtest.backtest_id,
       vaultId: backtest.vault_id,
       vaultConfig: backtest.vault_config,
@@ -115,7 +115,7 @@ router.get('/:backtestId', async (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('Error fetching backtest:', error);
-    res.status(500).json({
+    return res.status(500).json({
       error: 'Failed to fetch backtest',
       message: error.message,
     });
@@ -142,14 +142,14 @@ router.get('/vault/:vaultId', async (req: Request, res: Response) => {
       throw error;
     }
 
-    res.status(200).json({
+    return res.status(200).json({
       vaultId,
       backtests: backtests || [],
       count: backtests?.length || 0,
     });
   } catch (error: any) {
     console.error('Error fetching vault backtests:', error);
-    res.status(500).json({
+    return res.status(500).json({
       error: 'Failed to fetch vault backtests',
       message: error.message,
     });
@@ -173,10 +173,10 @@ router.delete('/:backtestId', async (req: Request, res: Response) => {
       throw error;
     }
 
-    res.status(200).json({ message: 'Backtest deleted successfully' });
+  return res.status(200).json({ message: 'Backtest deleted successfully' });
   } catch (error: any) {
     console.error('Error deleting backtest:', error);
-    res.status(500).json({
+    return res.status(500).json({
       error: 'Failed to delete backtest',
       message: error.message,
     });

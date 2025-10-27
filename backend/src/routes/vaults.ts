@@ -60,7 +60,7 @@ router.post('/', async (req: Request, res: Response) => {
       });
     }
 
-    res.json({
+    return res.json({
       success: true,
       data: {
         vaultId: result.vaultId,
@@ -70,7 +70,7 @@ router.post('/', async (req: Request, res: Response) => {
     });
   } catch (error) {
     console.error('Error in POST /api/vaults:', error);
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       error: error instanceof Error ? error.message : 'Internal server error',
     });
@@ -105,7 +105,7 @@ router.get('/:vaultId', async (req: Request, res: Response) => {
     // Get performance metrics
     const performance = await getVaultPerformance(vaultId);
 
-    res.json({
+    return res.json({
       success: true,
       data: {
         vaultId: vault.vault_id,
@@ -121,7 +121,7 @@ router.get('/:vaultId', async (req: Request, res: Response) => {
     });
   } catch (error) {
     console.error('Error in GET /api/vaults/:vaultId:', error);
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       error: error instanceof Error ? error.message : 'Internal server error',
     });
@@ -157,7 +157,7 @@ router.post('/:vaultId/deposit', async (req: Request, res: Response) => {
     // Sync vault state after deposit
     await syncVaultState(vaultId);
 
-    res.json({
+    return res.json({
       success: true,
       data: {
         shares: result.shares,
@@ -166,7 +166,7 @@ router.post('/:vaultId/deposit', async (req: Request, res: Response) => {
     });
   } catch (error) {
     console.error('Error in POST /api/vaults/:vaultId/deposit:', error);
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       error: error instanceof Error ? error.message : 'Internal server error',
     });
@@ -202,7 +202,7 @@ router.post('/:vaultId/withdraw', async (req: Request, res: Response) => {
     // Sync vault state after withdrawal
     await syncVaultState(vaultId);
 
-    res.json({
+    return res.json({
       success: true,
       data: {
         amount: result.amount,
@@ -211,7 +211,7 @@ router.post('/:vaultId/withdraw', async (req: Request, res: Response) => {
     });
   } catch (error) {
     console.error('Error in POST /api/vaults/:vaultId/withdraw:', error);
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       error: error instanceof Error ? error.message : 'Internal server error',
     });
@@ -247,7 +247,7 @@ router.get('/:vaultId/history', async (req: Request, res: Response) => {
       limit
     );
 
-    res.json({
+    return res.json({
       success: true,
       data: {
         vaultId,
@@ -256,7 +256,7 @@ router.get('/:vaultId/history', async (req: Request, res: Response) => {
     });
   } catch (error) {
     console.error('Error in GET /api/vaults/:vaultId/history:', error);
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       error: error instanceof Error ? error.message : 'Internal server error',
     });
@@ -279,7 +279,7 @@ router.get('/:vaultId/performance', async (req: Request, res: Response) => {
 
     const history = await getPerformanceHistory(vaultId, startDate, endDate);
 
-    res.json({
+    return res.json({
       success: true,
       data: {
         vaultId,
@@ -288,7 +288,7 @@ router.get('/:vaultId/performance', async (req: Request, res: Response) => {
     });
   } catch (error) {
     console.error('Error in GET /api/vaults/:vaultId/performance:', error);
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       error: error instanceof Error ? error.message : 'Internal server error',
     });
@@ -305,13 +305,13 @@ router.get('/:vaultId/status', async (req: Request, res: Response) => {
 
     const status = await getVaultDeploymentStatus(vaultId);
 
-    res.json({
+    return res.json({
       success: true,
       data: status,
     });
   } catch (error) {
     console.error('Error in GET /api/vaults/:vaultId/status:', error);
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       error: error instanceof Error ? error.message : 'Internal server error',
     });
@@ -361,7 +361,7 @@ router.get('/', async (req: Request, res: Response) => {
       throw error;
     }
 
-    res.json({
+    return res.json({
       success: true,
       data: {
         vaults: vaults || [],
@@ -370,7 +370,7 @@ router.get('/', async (req: Request, res: Response) => {
     });
   } catch (error) {
     console.error('Error in GET /api/vaults:', error);
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       error: error instanceof Error ? error.message : 'Internal server error',
     });
