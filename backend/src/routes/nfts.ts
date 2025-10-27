@@ -3,7 +3,6 @@
 
 import { Router, Request, Response } from 'express';
 import { supabase } from '../lib/supabase.js';
-import { Contract, SorobanRpc, TransactionBuilder, Networks, BASE_FEE } from '@stellar/stellar-sdk';
 
 const router = Router();
 
@@ -100,7 +99,7 @@ router.post('/:vaultId/nft', async (req: Request, res: Response) => {
       });
     }
 
-    res.json({
+    return res.json({
       success: true,
       data: {
         nftId: nft.nft_id,
@@ -113,7 +112,7 @@ router.post('/:vaultId/nft', async (req: Request, res: Response) => {
     });
   } catch (error) {
     console.error('Error minting NFT:', error);
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       error: 'Internal server error',
     });
@@ -143,13 +142,13 @@ router.get('/:vaultId/nfts', async (req: Request, res: Response) => {
       });
     }
 
-    res.json({
+    return res.json({
       success: true,
       data: nfts,
     });
   } catch (error) {
     console.error('Error fetching NFTs:', error);
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       error: 'Internal server error',
     });
@@ -188,13 +187,13 @@ router.get('/:nftId', async (req: Request, res: Response) => {
       });
     }
 
-    res.json({
+    return res.json({
       success: true,
       data: nft,
     });
   } catch (error) {
     console.error('Error fetching NFT:', error);
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       error: 'Internal server error',
     });
@@ -258,13 +257,13 @@ router.post('/:nftId/transfer', async (req: Request, res: Response) => {
       });
     }
 
-    res.json({
+    return res.json({
       success: true,
       data: updatedNFT,
     });
   } catch (error) {
     console.error('Error transferring NFT:', error);
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       error: 'Internal server error',
     });

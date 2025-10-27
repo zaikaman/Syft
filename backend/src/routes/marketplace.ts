@@ -98,13 +98,13 @@ router.post('/listings', async (req: Request, res: Response) => {
       });
     }
 
-    res.json({
+    return res.json({
       success: true,
       data: listing,
     });
   } catch (error) {
     console.error('Error creating listing:', error);
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       error: 'Internal server error',
     });
@@ -173,13 +173,13 @@ router.get('/listings', async (req: Request, res: Response) => {
       });
     }
 
-    res.json({
+    return res.json({
       success: true,
       data: listings,
     });
   } catch (error) {
     console.error('Error browsing marketplace:', error);
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       error: 'Internal server error',
     });
@@ -225,13 +225,13 @@ router.get('/listings/:listingId', async (req: Request, res: Response) => {
       });
     }
 
-    res.json({
+    return res.json({
       success: true,
       data: listing,
     });
   } catch (error) {
     console.error('Error fetching listing:', error);
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       error: 'Internal server error',
     });
@@ -333,7 +333,7 @@ router.post('/purchase', async (req: Request, res: Response) => {
       });
     }
 
-    res.json({
+    return res.json({
       success: true,
       data: {
         listing: updatedListing,
@@ -342,7 +342,7 @@ router.post('/purchase', async (req: Request, res: Response) => {
     });
   } catch (error) {
     console.error('Error purchasing NFT:', error);
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       error: 'Internal server error',
     });
@@ -417,13 +417,13 @@ router.delete('/listings/:listingId', async (req: Request, res: Response) => {
       });
     }
 
-    res.json({
+    return res.json({
       success: true,
       data: updatedListing,
     });
   } catch (error) {
     console.error('Error cancelling listing:', error);
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       error: 'Internal server error',
     });

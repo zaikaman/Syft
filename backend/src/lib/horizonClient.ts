@@ -4,9 +4,13 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 const horizonUrl = process.env.STELLAR_HORIZON_URL || 'https://horizon-futurenet.stellar.org';
+const sorobanRpcUrl = process.env.STELLAR_RPC_URL || process.env.SOROBAN_RPC_URL || 'https://soroban-testnet.stellar.org';
 
 // Create Horizon server instance
 export const horizonServer = new StellarSdk.Horizon.Server(horizonUrl);
+
+// Create Soroban RPC server instance for contract interactions
+export const sorobanServer = new StellarSdk.SorobanRpc.Server(sorobanRpcUrl);
 
 // Helper to get account details
 export async function getAccount(accountId: string) {
