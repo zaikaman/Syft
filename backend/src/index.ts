@@ -1,8 +1,12 @@
 import express, { Express, Request, Response } from 'express';
 import dotenv from 'dotenv';
-import corsMiddleware from './middleware/cors';
-import { errorHandler } from './middleware/errorHandler';
-import { logger, requestId } from './middleware/logger';
+import corsMiddleware from './middleware/cors.js';
+import { errorHandler } from './middleware/errorHandler.js';
+import { logger, requestId } from './middleware/logger.js';
+import apiRoutes from './routes/index.js';
+import { startRuleMonitoring } from './services/ruleTriggerService.js';
+import { startVaultSync } from './services/vaultSyncService.js';
+import { executeRebalance } from './services/vaultActionService.js';
 
 // Load environment variables
 dotenv.config();
@@ -29,34 +33,8 @@ app.get('/health', (_req: Request, res: Response) => {
   });
 });
 
-// API info endpoint
-app.get('/api', (_req: Request, res: Response) => {
-  res.json({
-    success: true,
-    data: {
-      name: 'Syft Backend API',
-      version: '0.1.0',
-      description: 'DeFi Yield Vault Platform API',
-      endpoints: {
-        health: 'GET /health',
-        vaults: 'POST /api/vaults, GET /api/vaults/:id',
-        wallet: 'GET /api/wallet/:address/assets',
-        backtests: 'POST /api/backtests, GET /api/backtests/:id',
-        suggestions: 'POST /api/vaults/:id/suggestions',
-        nfts: 'POST /api/vaults/:id/nft',
-        marketplace: 'GET /api/marketplace/listings',
-      },
-    },
-  });
-});
-
-// API routes will be mounted here in Phase 2
-// app.use('/api/vaults', vaultsRouter);
-// app.use('/api/wallet', walletRouter);
-// app.use('/api/backtests', backtestsRouter);
-// app.use('/api/suggestions', suggestionsRouter);
-// app.use('/api/nfts', nftsRouter);
-// app.use('/api/marketplace', marketplaceRouter);
+// Mount API routes
+app.use('/api', apiRoutes);
 
 // 404 handler
 app.use((_req: Request, res: Response) => {
@@ -84,5 +62,36 @@ app.listen(port, () => {
 ╚═══════════════════════════════════════╝
   `);
   console.log('📡 Server is ready to accept connections');
-  console.log('🏥 Health check: http://localhost:' + port + '/health\n');
+  console.log('🏥 Health check: http://localhost:' + port + '/health');
+  
+  // Start background services
+  console.log('\n🔄 Starting background services...');
+  
+  // Start vault sync service (syncs vault state every 5 minutes)
+  const syncInterval = startVaultSync();
+  console.log('✅ Vault sync service started');
+  
+  // Start rule monitoring service (checks rules every 60 seconds)
+  const ruleInterval = startRuleMonitoring((trigger) => {
+    console.log(`🎯 Rule triggered for vault ${trigger.vaultId}, executing rebalance...`);
+    executeRebalance(trigger.vaultId, trigger.ruleIndex).then((result) => {
+      if (result.success) {
+        console.log(`✅ Rebalance executed successfully for vault ${trigger.vaultId}`);
+      } else {
+        console.error(`❌ Rebalance failed for vault ${trigger.vaultId}:`, result.error);
+      }
+    });
+  });
+  console.log('✅ Rule monitoring service started');
+  
+  console.log('\n🎉 All services operational!\n');
+  
+  // Graceful shutdown
+  process.on('SIGINT', () => {
+    console.log('\n🛑 Shutting down gracefully...');
+    clearInterval(syncInterval);
+    clearInterval(ruleInterval);
+    process.exit(0);
+  });
 });
+

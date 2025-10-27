@@ -136,38 +136,38 @@ Note: To speed up implementation for MVP, formal automated contract/integration 
 
 ### Smart Contract Implementation for User Story 1
 
-- [ ] T066 [US1] Create vault data structures (VaultConfig, VaultState, RebalanceRule) in contracts/soroban/src/types.rs
-- [ ] T067 [P] [US1] Implement vault initialization function in contracts/soroban/src/vault.rs
-- [ ] T068 [P] [US1] Implement deposit function with share calculation in contracts/soroban/src/vault.rs
-- [ ] T069 [P] [US1] Implement withdrawal function with share burning in contracts/soroban/src/vault.rs
-- [ ] T070 [US1] Implement rule evaluation engine for rebalancing conditions in contracts/soroban/src/engine.rs
-- [ ] T071 [US1] Implement rebalancing execution with Stellar AMM integration in contracts/soroban/src/rebalance.rs
-- [ ] T072 [US1] Implement event emission for vault actions (deposit, withdraw, rebalance) in contracts/soroban/src/events.rs
-- [ ] T073 [US1] Create vault factory contract for generating vault instances in contracts/soroban/src/factory.rs
-- [ ] T074 [US1] Add error handling with descriptive error types in contracts/soroban/src/errors.rs
+- [x] T066 [US1] Create vault data structures (VaultConfig, VaultState, RebalanceRule) in contracts/soroban/src/types.rs
+- [x] T067 [P] [US1] Implement vault initialization function in contracts/soroban/src/vault.rs
+- [x] T068 [P] [US1] Implement deposit function with share calculation in contracts/soroban/src/vault.rs
+- [x] T069 [P] [US1] Implement withdrawal function with share burning in contracts/soroban/src/vault.rs
+- [x] T070 [US1] Implement rule evaluation engine for rebalancing conditions in contracts/soroban/src/engine.rs
+- [x] T071 [US1] Implement rebalancing execution with Stellar AMM integration in contracts/soroban/src/rebalance.rs
+- [x] T072 [US1] Implement event emission for vault actions (deposit, withdraw, rebalance) in contracts/soroban/src/events.rs
+- [x] T073 [US1] Create vault factory contract for generating vault instances in contracts/soroban/src/factory.rs
+- [x] T074 [US1] Add error handling with descriptive error types in contracts/soroban/src/errors.rs
 
 ### Backend Services for User Story 1
 
-- [ ] T075 [P] [US1] Create vault deployment service using Scaffold Stellar CLI in backend/src/services/vaultDeploymentService.ts
-- [ ] T076 [P] [US1] Create vault state monitoring service with Horizon SDK in backend/src/services/vaultMonitorService.ts
-- [ ] T077 [US1] Implement rule trigger detection logic (polling every 60s) in backend/src/services/ruleTriggerService.ts
-- [ ] T078 [US1] Create vault action execution service for triggering rebalances in backend/src/services/vaultActionService.ts
-- [ ] T079 [P] [US1] Create API endpoint POST /api/vaults to deploy new vault in backend/src/routes/vaults.ts
-- [ ] T080 [P] [US1] Create API endpoint GET /api/vaults/:vaultId to fetch vault state in backend/src/routes/vaults.ts
-- [ ] T081 [P] [US1] Create API endpoint POST /api/vaults/:vaultId/deposit in backend/src/routes/vaults.ts
-- [ ] T082 [P] [US1] Create API endpoint POST /api/vaults/:vaultId/withdraw in backend/src/routes/vaults.ts
-- [ ] T083 [P] [US1] Create API endpoint GET /api/vaults/:vaultId/history for transaction history in backend/src/routes/vaults.ts
-- [ ] T084 [US1] Implement Supabase sync for vault state updates in backend/src/services/vaultSyncService.ts
+- [x] T075 [P] [US1] Create vault deployment service using Scaffold Stellar CLI in backend/src/services/vaultDeploymentService.ts
+- [x] T076 [P] [US1] Create vault state monitoring service with Horizon SDK in backend/src/services/vaultMonitorService.ts
+- [x] T077 [US1] Implement rule trigger detection logic (polling every 60s) in backend/src/services/ruleTriggerService.ts
+- [x] T078 [US1] Create vault action execution service for triggering rebalances in backend/src/services/vaultActionService.ts
+- [x] T079 [P] [US1] Create API endpoint POST /api/vaults to deploy new vault in backend/src/routes/vaults.ts
+- [x] T080 [P] [US1] Create API endpoint GET /api/vaults/:vaultId to fetch vault state in backend/src/routes/vaults.ts
+- [x] T081 [P] [US1] Create API endpoint POST /api/vaults/:vaultId/deposit in backend/src/routes/vaults.ts
+- [x] T082 [P] [US1] Create API endpoint POST /api/vaults/:vaultId/withdraw in backend/src/routes/vaults.ts
+- [x] T083 [P] [US1] Create API endpoint GET /api/vaults/:vaultId/history for transaction history in backend/src/routes/vaults.ts
+- [x] T084 [US1] Implement Supabase sync for vault state updates in backend/src/services/vaultSyncService.ts
 
 ### Frontend Integration for User Story 1
 
-- [ ] T085 [US1] Create VaultDeployment component integrating builder output in frontend/src/components/vault/VaultDeployment.tsx
-- [ ] T086 [US1] Implement gas fee estimation display before deployment in frontend/src/components/vault/FeeEstimator.tsx
-- [ ] T087 [US1] Create deposit/withdraw interface in frontend/src/components/vault/VaultActions.tsx
-- [ ] T088 [US1] Implement vault dashboard showing current state and performance in frontend/src/components/vault/VaultDashboard.tsx
-- [ ] T089 [US1] Create transaction history view in frontend/src/components/vault/TransactionHistory.tsx
-- [ ] T090 [US1] Add loading states for deployment and transactions in frontend/src/components/vault/VaultDeployment.tsx
-- [ ] T091 [US1] Implement error handling for failed deployments with actionable messages in frontend/src/components/vault/VaultDeployment.tsx
+- [x] T085 [US1] Create VaultDeployment component integrating builder output in frontend/src/components/vault/VaultDeployment.tsx
+- [x] T086 [US1] Implement gas fee estimation display before deployment in frontend/src/components/vault/FeeEstimator.tsx
+- [x] T087 [US1] Create deposit/withdraw interface in frontend/src/components/vault/VaultActions.tsx
+- [x] T088 [US1] Implement vault dashboard showing current state and performance in frontend/src/components/vault/VaultDashboard.tsx
+- [x] T089 [US1] Create transaction history view in frontend/src/components/vault/TransactionHistory.tsx
+- [x] T090 [US1] Add loading states for deployment and transactions in frontend/src/components/vault/VaultDeployment.tsx
+- [x] T091 [US1] Implement error handling for failed deployments with actionable messages in frontend/src/components/vault/VaultDeployment.tsx
 
 ### Integration Notes for User Story 1
 

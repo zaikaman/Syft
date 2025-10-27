@@ -2,7 +2,8 @@
 // Purpose: Central routing configuration for all API endpoints
 
 import { Router } from 'express';
-import walletRoutes from './wallet';
+import walletRoutes from './wallet.js';
+import vaultRoutes from './vaults.js';
 
 const router = Router();
 
@@ -34,12 +35,13 @@ router.get('/', (_req, res) => {
   });
 });
 
-// TODO: Import and mount route modules as they are implemented
-// T041: Wallet routes integrated
+// Mount route modules
 router.use('/wallet', walletRoutes);
+router.use('/vaults', vaultRoutes);
 
+// TODO: Import and mount additional routes as they are implemented
 // Example for future routes:
-// import vaultRoutes from './vaults';
-// router.use('/vaults', vaultRoutes);
+// import backtestRoutes from './backtests';
+// router.use('/backtests', backtestRoutes);
 
 export default router;
