@@ -105,22 +105,22 @@ This project uses a monorepo structure:
 
 ### Implementation for User Story 5
 
-- [ ] T047 [P] [US5] Define block type interfaces (AssetBlock, ConditionBlock, ActionBlock) in frontend/src/types/blocks.ts
-- [ ] T048 [P] [US5] Create AssetBlock component for XLM, USDC, and supported tokens in frontend/src/components/builder/blocks/AssetBlock.tsx
-- [ ] T049 [P] [US5] Create ConditionBlock components for allocation %, APY threshold, and time-based conditions in frontend/src/components/builder/blocks/ConditionBlock.tsx
-- [ ] T050 [P] [US5] Create ActionBlock components for rebalance, stake, and provide liquidity in frontend/src/components/builder/blocks/ActionBlock.tsx
-- [ ] T051 [US5] Implement BlockPalette component showing categorized blocks in frontend/src/components/builder/BlockPalette.tsx
-- [ ] T052 [US5] Setup React Flow canvas with drag-and-drop handling in frontend/src/components/builder/VaultCanvas.tsx
-- [ ] T053 [US5] Implement block connection validation rules (type compatibility) in frontend/src/lib/blockValidator.ts
-- [ ] T054 [US5] Create real-time validation feedback UI for invalid connections in frontend/src/components/builder/ValidationFeedback.tsx
-- [ ] T055 [US5] Implement plain-language rule generator from block graph in frontend/src/lib/ruleTranslator.ts
-- [ ] T056 [US5] Create StrategyPreview component showing human-readable summary in frontend/src/components/builder/StrategyPreview.tsx
-- [ ] T057 [US5] Implement vault configuration serialization from visual graph in frontend/src/lib/configSerializer.ts
-- [ ] T058 [US5] Add block deletion and modification functionality in frontend/src/components/builder/VaultCanvas.tsx
-- [ ] T059 [US5] Create example vault templates for quick start in frontend/src/data/vaultTemplates.ts
-- [ ] T060 [US5] Implement undo/redo functionality for builder actions in frontend/src/hooks/useBuilderHistory.ts
+- [x] T047 [P] [US5] Define block type interfaces (AssetBlock, ConditionBlock, ActionBlock) in frontend/src/types/blocks.ts
+- [x] T048 [P] [US5] Create AssetBlock component for XLM, USDC, and supported tokens in frontend/src/components/builder/blocks/AssetBlock.tsx
+- [x] T049 [P] [US5] Create ConditionBlock components for allocation %, APY threshold, and time-based conditions in frontend/src/components/builder/blocks/ConditionBlock.tsx
+- [x] T050 [P] [US5] Create ActionBlock components for rebalance, stake, and provide liquidity in frontend/src/components/builder/blocks/ActionBlock.tsx
+- [x] T051 [US5] Implement BlockPalette component showing categorized blocks in frontend/src/components/builder/BlockPalette.tsx
+- [x] T052 [US5] Setup React Flow canvas with drag-and-drop handling in frontend/src/components/builder/VaultCanvas.tsx
+- [x] T053 [US5] Implement block connection validation rules (type compatibility) in frontend/src/lib/blockValidator.ts
+- [x] T054 [US5] Create real-time validation feedback UI for invalid connections in frontend/src/components/builder/ValidationFeedback.tsx
+- [x] T055 [US5] Implement plain-language rule generator from block graph in frontend/src/lib/ruleTranslator.ts
+- [x] T056 [US5] Create StrategyPreview component showing human-readable summary in frontend/src/components/builder/StrategyPreview.tsx
+- [x] T057 [US5] Implement vault configuration serialization from visual graph in frontend/src/lib/configSerializer.ts
+- [ ] T058 [US5] Add block deletion and modification functionality in frontend/src/components/builder/VaultCanvas.tsx (Note: Basic deletion via Delete key is already implemented)
+- [x] T059 [US5] Create example vault templates for quick start in frontend/src/data/vaultTemplates.ts
+- [x] T060 [US5] Implement undo/redo functionality for builder actions in frontend/src/hooks/useBuilderHistory.ts
 
-**Checkpoint**: Users can design vault strategies visually without writing code
+**Checkpoint**: Users can design vault strategies visually without writing code ✅
 
 ---
 
