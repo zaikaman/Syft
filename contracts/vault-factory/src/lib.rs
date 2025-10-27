@@ -5,6 +5,7 @@ use soroban_sdk::{contract, contractimpl, contracttype, contracterror, Address, 
 const WASM_HASH: Symbol = symbol_short!("WASM");
 const VAULT_COUNT: Symbol = symbol_short!("COUNT");
 const VAULT_LIST: Symbol = symbol_short!("VAULTS");
+const ADMIN: Symbol = symbol_short!("ADMIN");
 
 // Error types
 #[contracterror]
@@ -14,6 +15,7 @@ pub enum VaultFactoryError {
     AlreadyInitialized = 1,
     NotInitialized = 2,
     InvalidConfiguration = 3,
+    Unauthorized = 4,
 }
 
 // Vault configuration type (minimal version for factory)
@@ -31,16 +33,37 @@ pub struct VaultFactory;
 #[contractimpl]
 impl VaultFactory {
     /// Initialize the factory with vault contract WASM hash
-    pub fn initialize(env: Env, wasm_hash: BytesN<32>) -> Result<(), VaultFactoryError> {
+    pub fn initialize(env: Env, admin: Address, wasm_hash: BytesN<32>) -> Result<(), VaultFactoryError> {
         if env.storage().instance().has(&WASM_HASH) {
             return Err(VaultFactoryError::AlreadyInitialized);
         }
         
+        env.storage().instance().set(&ADMIN, &admin);
         env.storage().instance().set(&WASM_HASH, &wasm_hash);
         env.storage().instance().set(&VAULT_COUNT, &0u32);
         
         let empty_list: Vec<Address> = Vec::new(&env);
         env.storage().instance().set(&VAULT_LIST, &empty_list);
+        
+        Ok(())
+    }
+
+    /// Update the vault WASM hash (admin only)
+    pub fn update_wasm(env: Env, admin: Address, new_wasm_hash: BytesN<32>) -> Result<(), VaultFactoryError> {
+        // Verify admin authorization
+        admin.require_auth();
+        
+        // Check current admin matches
+        let stored_admin: Address = env.storage().instance()
+            .get(&ADMIN)
+            .ok_or(VaultFactoryError::NotInitialized)?;
+        
+        if admin != stored_admin {
+            return Err(VaultFactoryError::Unauthorized);
+        }
+        
+        // Update WASM hash
+        env.storage().instance().set(&WASM_HASH, &new_wasm_hash);
         
         Ok(())
     }

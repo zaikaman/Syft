@@ -418,6 +418,15 @@ export async function invokeVaultMethod(
     } else if (method === 'initialize') {
       // initialize expects a VaultConfig struct (already converted)
       scParams = params as StellarSdk.xdr.ScVal[];
+    } else if (method === 'deposit' || method === 'withdraw') {
+      // deposit expects (user: Address, amount: i128)
+      // withdraw expects (user: Address, shares: i128)
+      const userAddress = params[0] as string;
+      const amount = params[1] as string;
+      scParams = [
+        StellarSdk.Address.fromString(userAddress).toScVal(),
+        StellarSdk.nativeToScVal(BigInt(amount), { type: 'i128' })
+      ];
     } else {
       // For other methods, attempt generic conversion
       scParams = params.map(param => {

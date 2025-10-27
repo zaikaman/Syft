@@ -5,6 +5,7 @@ import { useState, useEffect } from 'react';
 import { Card } from '../ui/Card';
 import { Button } from '../ui/Button';
 import { LoadingSpinner } from '../ui/LoadingSpinner';
+import { VaultActions } from '../vault/VaultActions';
 
 interface VaultDetailProps {
   vaultId: string;
@@ -244,6 +245,16 @@ export function VaultDetail({ vaultId, listingId }: VaultDetailProps) {
           </div>
         </div>
       </Card>
+
+      {/* Vault Actions - Deposit/Withdraw */}
+      <VaultActions 
+        vaultId={vaultId}
+        contractAddress={vault.contractAddress}
+        onActionComplete={(action) => {
+          console.log(`${action} completed, reloading vault...`);
+          loadVaultDetails();
+        }}
+      />
 
       {/* Action Button */}
       {listingId && (

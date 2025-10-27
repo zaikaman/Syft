@@ -32,6 +32,9 @@ export const VaultActions: React.FC<VaultActionsProps> = ({
     setMessage(null);
 
     try {
+      // Convert XLM to stroops (1 XLM = 10,000,000 stroops)
+      const amountInStroops = Math.floor(parseFloat(amount) * 10_000_000).toString();
+      
       // Use connected wallet to sign transaction - no private key needed
       const response = await fetch(
         `http://localhost:3001/api/vaults/${vaultId}/deposit`,
@@ -42,7 +45,7 @@ export const VaultActions: React.FC<VaultActionsProps> = ({
           },
           body: JSON.stringify({
             userAddress: address,
-            amount,
+            amount: amountInStroops,
           }),
         }
       );
@@ -55,10 +58,10 @@ export const VaultActions: React.FC<VaultActionsProps> = ({
 
       setMessage({
         type: 'success',
-        text: `Successfully deposited ${amount}! Received ${data.data.shares} shares.`,
+        text: `Successfully deposited ${amount} XLM! Received ${data.data.shares} shares.`,
       });
       modal.message(
-        `Successfully deposited ${amount}!\n\nReceived ${data.data.shares} shares.`,
+        `Successfully deposited ${amount} XLM!\n\nReceived ${data.data.shares} shares.`,
         'Deposit Complete',
         'success'
       );
@@ -132,8 +135,8 @@ export const VaultActions: React.FC<VaultActionsProps> = ({
 
   if (!address) {
     return (
-      <div className="bg-white rounded-lg shadow-md p-6">
-        <p className="text-gray-600 text-center">
+      <div className="glass rounded-lg p-6 border border-[rgba(255,255,255,0.06)]">
+        <p className="text-[var(--color-text-secondary)] text-center">
           Please connect your wallet to interact with the vault
         </p>
       </div>
@@ -141,16 +144,16 @@ export const VaultActions: React.FC<VaultActionsProps> = ({
   }
 
   return (
-    <div className="bg-white rounded-lg shadow-md p-6">
-      <h2 className="text-2xl font-bold mb-6">Vault Actions</h2>
+    <div className="glass rounded-lg p-6 border border-[rgba(255,255,255,0.06)]">
+      <h2 className="text-2xl font-bold mb-6 text-[var(--color-text-primary)]">Vault Actions</h2>
 
       {/* Message Display */}
       {message && (
         <div
-          className={`mb-4 p-4 rounded ${
+          className={`mb-4 p-4 rounded-lg border ${
             message.type === 'success'
-              ? 'bg-green-50 border border-green-200 text-green-800'
-              : 'bg-red-50 border border-red-200 text-red-800'
+              ? 'bg-[rgba(116,185,127,0.1)] border-[var(--color-success)] text-[var(--color-success)]'
+              : 'bg-[rgba(224,108,110,0.1)] border-[var(--color-error)] text-[var(--color-error)]'
           }`}
         >
           {message.text}
@@ -160,70 +163,70 @@ export const VaultActions: React.FC<VaultActionsProps> = ({
       <div className="space-y-6">
         {/* Deposit Section */}
         <div>
-          <h3 className="text-lg font-semibold mb-3">Deposit Assets</h3>
-          <div className="flex gap-2">
+          <h3 className="text-lg font-semibold mb-3 text-[var(--color-text-primary)]">Deposit Assets</h3>
+          <div className="flex gap-3">
             <input
               type="number"
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
               placeholder="Enter amount"
-              className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="flex-1 px-4 py-3 bg-[var(--color-bg-input)] border border-[rgba(255,255,255,0.06)] rounded-lg text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)] focus:outline-none focus:border-[var(--color-primary)] transition-colors"
               disabled={isProcessing}
             />
             <button
               onClick={handleDeposit}
               disabled={isProcessing || !amount}
-              className={`px-6 py-2 rounded-lg font-semibold text-white transition-colors ${
+              className={`px-6 py-3 rounded-lg font-semibold transition-all ${
                 isProcessing || !amount
-                  ? 'bg-gray-400 cursor-not-allowed'
-                  : 'bg-blue-600 hover:bg-blue-700'
+                  ? 'bg-[var(--color-neutral-700)] text-[var(--color-text-muted)] cursor-not-allowed'
+                  : 'bg-[var(--color-primary)] text-[var(--color-bg-primary)] hover:bg-[var(--color-primary-hover)] hover:shadow-lg'
               }`}
             >
               Deposit
             </button>
           </div>
-          <p className="text-sm text-gray-600 mt-2">
+          <p className="text-sm text-[var(--color-text-tertiary)] mt-2">
             Deposit assets to receive vault shares
           </p>
         </div>
 
         {/* Divider */}
-        <div className="border-t border-gray-200"></div>
+        <div className="border-t border-[rgba(255,255,255,0.06)]"></div>
 
         {/* Withdraw Section */}
         <div>
-          <h3 className="text-lg font-semibold mb-3">Withdraw Assets</h3>
-          <div className="flex gap-2">
+          <h3 className="text-lg font-semibold mb-3 text-[var(--color-text-primary)]">Withdraw Assets</h3>
+          <div className="flex gap-3">
             <input
               type="number"
               value={shares}
               onChange={(e) => setShares(e.target.value)}
               placeholder="Enter shares"
-              className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="flex-1 px-4 py-3 bg-[var(--color-bg-input)] border border-[rgba(255,255,255,0.06)] rounded-lg text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)] focus:outline-none focus:border-[var(--color-primary)] transition-colors"
               disabled={isProcessing}
             />
             <button
               onClick={handleWithdraw}
               disabled={isProcessing || !shares}
-              className={`px-6 py-2 rounded-lg font-semibold text-white transition-colors ${
+              className={`px-6 py-3 rounded-lg font-semibold transition-all ${
                 isProcessing || !shares
-                  ? 'bg-gray-400 cursor-not-allowed'
-                  : 'bg-red-600 hover:bg-red-700'
+                  ? 'bg-[var(--color-neutral-700)] text-[var(--color-text-muted)] cursor-not-allowed'
+                  : 'bg-[var(--color-error)] text-white hover:opacity-90 hover:shadow-lg'
               }`}
             >
               Withdraw
             </button>
           </div>
-          <p className="text-sm text-gray-600 mt-2">
+          <p className="text-sm text-[var(--color-text-tertiary)] mt-2">
             Burn vault shares to withdraw your assets
           </p>
         </div>
       </div>
 
       {isProcessing && (
-        <div className="mt-4 text-center">
-          <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-          <p className="text-gray-600 mt-2">Processing transaction...</p>
+        <div className="mt-6 text-center">
+          <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-[var(--color-primary)]"></div>
+          <p className="text-[var(--color-text-secondary)] mt-2">Processing transaction...</p>
         </div>
       )}
     </div>

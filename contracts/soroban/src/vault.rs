@@ -1,5 +1,5 @@
 // Vault core contract functionality
-use soroban_sdk::{contract, contractimpl, Address, Env, Symbol, symbol_short};
+use soroban_sdk::{contract, contractimpl, Address, Env, Symbol, symbol_short, token};
 
 use crate::types::{VaultConfig, VaultState, UserPosition};
 use crate::errors::VaultError;
@@ -42,22 +42,33 @@ impl VaultContract {
 
     /// Deposit assets into the vault
     pub fn deposit(env: Env, user: Address, amount: i128) -> Result<i128, VaultError> {
-        // Verify user authorization
+        // Debug: Entry point
+        env.events().publish((symbol_short!("debug"),), symbol_short!("start"));
+        
+        // Require authorization from the user first
         user.require_auth();
-
+        env.events().publish((symbol_short!("debug"),), symbol_short!("auth_ok"));
+        
         // Check vault is initialized
         if !env.storage().instance().has(&CONFIG) {
             return Err(VaultError::NotInitialized);
         }
+        env.events().publish((symbol_short!("debug"),), symbol_short!("init_ok"));
 
         // Validate amount
         if amount <= 0 {
             return Err(VaultError::InvalidAmount);
         }
+        env.events().publish((symbol_short!("debug"),), symbol_short!("amt_ok"));
+
+        // Get user position first (before any transfers)
+        let mut position = Self::get_position(env.clone(), user.clone());
+        env.events().publish((symbol_short!("debug"),), symbol_short!("pos_ok"));
 
         // Get config to determine base asset (first asset in the vault)
         let config: VaultConfig = env.storage().instance().get(&CONFIG)
             .ok_or(VaultError::NotInitialized)?;
+        env.events().publish((symbol_short!("debug"),), symbol_short!("cfg_ok"));
         
         if config.assets.is_empty() {
             return Err(VaultError::InvalidConfiguration);
@@ -65,10 +76,18 @@ impl VaultContract {
         
         let base_token = config.assets.get(0)
             .ok_or(VaultError::InvalidConfiguration)?;
+        env.events().publish((symbol_short!("debug"),), symbol_short!("tok_ok"));
 
-        // Transfer tokens from user to vault
-        crate::token_client::transfer_to_vault(&env, &base_token, &user, amount)
-            .map_err(|_| VaultError::TransferFailed)?;
+        // Get vault address
+        let vault_address = env.current_contract_address();
+        env.events().publish((symbol_short!("debug"),), symbol_short!("addr_ok"));
+        
+        // Transfer tokens from user to vault using token contract
+        // The transfer must happen BEFORE any state changes
+        env.events().publish((symbol_short!("debug"),), symbol_short!("b4_xfer"));
+        let token_client = token::TokenClient::new(&env, &base_token);
+        token_client.transfer(&user, &vault_address, &amount);
+        env.events().publish((symbol_short!("debug"),), symbol_short!("xfer_ok"));
 
         // Get current state
         let mut state: VaultState = env.storage().instance().get(&STATE)
@@ -90,8 +109,7 @@ impl VaultContract {
         state.total_value = state.total_value.checked_add(amount)
             .ok_or(VaultError::InvalidAmount)?;
 
-        // Update user position
-        let mut position = Self::get_position(env.clone(), user.clone());
+        // Update user position (position was already fetched at the start)
         position.shares = position.shares.checked_add(shares)
             .ok_or(VaultError::InvalidAmount)?;
         position.last_deposit = env.ledger().timestamp();
@@ -108,9 +126,9 @@ impl VaultContract {
 
     /// Withdraw assets from the vault
     pub fn withdraw(env: Env, user: Address, shares: i128) -> Result<i128, VaultError> {
-        // Verify user authorization
+        // Require authorization from the user first
         user.require_auth();
-
+        
         // Check vault is initialized
         if !env.storage().instance().has(&CONFIG) {
             return Err(VaultError::NotInitialized);
@@ -131,6 +149,11 @@ impl VaultContract {
         let mut state: VaultState = env.storage().instance().get(&STATE)
             .ok_or(VaultError::NotInitialized)?;
 
+        // Guard against division by zero
+        if state.total_shares == 0 {
+            return Err(VaultError::InvalidAmount);
+        }
+
         // Calculate amount to return
         // amount = (shares * total_value) / total_shares
         let amount = shares.checked_mul(state.total_value)
@@ -148,9 +171,13 @@ impl VaultContract {
         let base_token = config.assets.get(0)
             .ok_or(VaultError::InvalidConfiguration)?;
 
-        // Transfer tokens from vault to user
-        crate::token_client::transfer_from_vault(&env, &base_token, &user, amount)
-            .map_err(|_| VaultError::TransferFailed)?;
+        // Get vault address
+        let vault_address = env.current_contract_address();
+        
+        // Transfer tokens from vault to user using token contract
+        // DO NOT call user.require_auth() - vault doesn't need user auth to send funds to them
+        let token_client = token::TokenClient::new(&env, &base_token);
+        token_client.transfer(&vault_address, &user, &amount);
 
         // Update state
         state.total_shares = state.total_shares.checked_sub(shares)
@@ -223,12 +250,17 @@ impl VaultContract {
         Ok(())
     }
 
-    /// Trigger rebalance (called by rule engine or manually)
+    /// Trigger a rebalance based on configured rules (owner only)
     pub fn trigger_rebalance(env: Env) -> Result<(), VaultError> {
         // Check vault is initialized
         if !env.storage().instance().has(&CONFIG) {
             return Err(VaultError::NotInitialized);
         }
+
+        // Require owner authorization to prevent spam
+        let config: VaultConfig = env.storage().instance().get(&CONFIG)
+            .ok_or(VaultError::NotInitialized)?;
+        config.owner.require_auth();
 
         // Check if rebalancing should occur based on rules
         if !crate::engine::should_rebalance(&env) {
