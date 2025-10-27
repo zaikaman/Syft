@@ -185,22 +185,22 @@ Note: Integration test automation is deferred for MVP. Implementers should perfo
 
 ### Backend Implementation for User Story 3
 
-- [ ] T095 [P] [US3] Create historical price data fetching service using Horizon SDK in backend/src/services/historicalDataService.ts
-- [ ] T096 [P] [US3] Implement backtest simulation engine that replays vault rules in backend/src/services/backtestEngine.ts
-- [ ] T097 [US3] Integrate Prophet for APY trend forecasting in backtest scenarios in backend/src/services/prophetService.ts
-- [ ] T098 [US3] Create performance metrics calculator (returns, volatility, drawdown) in backend/src/lib/performanceCalculator.ts
-- [ ] T099 [US3] Create API endpoint POST /api/backtests to initiate backtest in backend/src/routes/backtests.ts
-- [ ] T100 [US3] Create API endpoint GET /api/backtests/:backtestId for results in backend/src/routes/backtests.ts
-- [ ] T101 [US3] Implement backtest result caching in Supabase in backend/src/services/backtestService.ts
+- [x] T095 [P] [US3] Create historical price data fetching service using Horizon SDK in backend/src/services/historicalDataService.ts
+- [x] T096 [P] [US3] Implement backtest simulation engine that replays vault rules in backend/src/services/backtestEngine.ts
+- [x] T097 [US3] Integrate Prophet for APY trend forecasting in backtest scenarios in backend/src/services/prophetService.ts
+- [x] T098 [US3] Create performance metrics calculator (returns, volatility, drawdown) in backend/src/lib/performanceCalculator.ts
+- [x] T099 [US3] Create API endpoint POST /api/backtests to initiate backtest in backend/src/routes/backtests.ts
+- [x] T100 [US3] Create API endpoint GET /api/backtests/:backtestId for results in backend/src/routes/backtests.ts
+- [x] T101 [US3] Implement backtest result caching in Supabase in backend/src/services/backtestService.ts
 
 ### Frontend Implementation for User Story 3
 
-- [ ] T102 [US3] Create BacktestConfig component for time period selection in frontend/src/components/backtest/BacktestConfig.tsx
-- [ ] T103 [US3] Implement backtest results visualization with Recharts in frontend/src/components/backtest/BacktestResults.tsx
-- [ ] T104 [US3] Create timeline view showing rule triggers and actions in frontend/src/components/backtest/BacktestTimeline.tsx
-- [ ] T105 [US3] Display comparison to buy-and-hold strategy in frontend/src/components/backtest/StrategyComparison.tsx
-- [ ] T106 [US3] Add export functionality for backtest reports in frontend/src/components/backtest/BacktestResults.tsx
-- [ ] T107 [US3] Show loading progress during backtest simulation in frontend/src/components/backtest/BacktestProgress.tsx
+- [x] T102 [US3] Create BacktestConfig component for time period selection in frontend/src/components/backtest/BacktestConfig.tsx
+- [x] T103 [US3] Implement backtest results visualization with Recharts in frontend/src/components/backtest/BacktestResults.tsx
+- [x] T104 [US3] Create timeline view showing rule triggers and actions in frontend/src/components/backtest/BacktestTimeline.tsx
+- [x] T105 [US3] Display comparison to buy-and-hold strategy in frontend/src/components/backtest/StrategyComparison.tsx
+- [x] T106 [US3] Add export functionality for backtest reports in frontend/src/components/backtest/BacktestResults.tsx
+- [x] T107 [US3] Show loading progress during backtest simulation in frontend/src/components/backtest/BacktestProgress.tsx
 
 ### Integration Notes for User Story 3
 
