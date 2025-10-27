@@ -47,6 +47,28 @@ export async function executeRebalance(
       };
     }
 
+    // Validate contract address format
+    const contractAddr = vault.contract_address as string;
+    if (contractAddr.startsWith('VAULT_') || contractAddr.startsWith('PENDING_') || contractAddr.startsWith('ERROR_')) {
+      console.warn(`⚠️  Vault ${vaultId} has placeholder contract address: ${contractAddr}`);
+      console.warn(`⚠️  This vault needs to be properly deployed first`);
+      return {
+        success: false,
+        error: 'Invalid contract address - vault needs redeployment',
+        timestamp: new Date().toISOString(),
+      };
+    }
+
+    // Validate proper Stellar contract address format
+    if (!contractAddr.startsWith('C') || contractAddr.length !== 56) {
+      console.error(`❌ Invalid contract address format for vault ${vaultId}: ${contractAddr}`);
+      return {
+        success: false,
+        error: `Invalid contract address format: ${contractAddr}`,
+        timestamp: new Date().toISOString(),
+      };
+    }
+
     // Load rebalancer keypair (use provided or system deployer)
     let rebalancerKeypair = sourceKeypair;
     if (!rebalancerKeypair && process.env.DEPLOYER_SECRET_KEY) {

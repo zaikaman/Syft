@@ -143,21 +143,44 @@ export async function deployVault(
     
     console.log(`[Vault Deployment] ✓ Transaction successful: ${result.hash}`);
 
-    // Extract vault address from transaction result
-    // The create_vault function returns an Address
+    // Extract vault address from simulation result
+    // The simulation returns the address that would be returned by create_vault
     let contractAddress = '';
     
-    if (result.successful) {
-      // Try to get the contract address from the result
-      // The create_vault function returns an Address
-      // TODO: Parse XDR result_meta_xdr to extract the returned vault address
-      // For now, generate a placeholder that we'll update when we can query the factory
-      contractAddress = `VAULT_${vaultId}`;
-      
-      console.log(`[Vault Deployment] New vault address: ${contractAddress}`);
-    } else {
-      throw new Error('Transaction failed');
+    if (result.successful && simulationResponse.result) {
+      try {
+        console.log(`[Vault Deployment] 🔍 Extracting contract address from simulation result...`);
+        
+        // Check if simulation has a return value
+        if ('retval' in simulationResponse.result) {
+          const returnVal = simulationResponse.result.retval;
+          console.log(`[Vault Deployment] Found return value in simulation`);
+          
+          // Parse the Address from the ScVal
+          const addressScVal = StellarSdk.Address.fromScVal(returnVal);
+          contractAddress = addressScVal.toString();
+          console.log(`[Vault Deployment] ✅ Extracted vault contract address: ${contractAddress}`);
+        } else {
+          console.log(`[Vault Deployment] No return value in simulation result`);
+          console.log(`[Vault Deployment] Simulation result keys:`, Object.keys(simulationResponse.result));
+        }
+      } catch (extractError) {
+        console.error(`[Vault Deployment] Error extracting from simulation:`, extractError);
+      }
     }
+    
+    // If we couldn't get it from simulation, the contract address would need to be
+    // queried from the factory contract or extracted from events
+    if (!contractAddress) {
+      console.warn(`[Vault Deployment] ⚠️  Could not extract contract address from simulation`);
+      console.warn(`[Vault Deployment] The vault was deployed successfully (TX: ${result.hash})`);
+      console.warn(`[Vault Deployment] But we need to query the factory contract to get the address`);
+      
+      // For now, we'll use an error placeholder to indicate manual intervention needed
+      contractAddress = `ERROR_${vaultId}_${result.hash.substring(0, 8)}`;
+    }
+    
+    console.log(`[Vault Deployment] New vault address: ${contractAddress}`);
 
     // Ensure user exists in database (upsert)
     await supabase
@@ -173,6 +196,66 @@ export async function deployVault(
           ignoreDuplicates: true,
         }
       );
+
+    // Validate contract address before storing
+    if (!contractAddress || contractAddress.startsWith('VAULT_') || contractAddress.startsWith('PENDING_') || contractAddress.startsWith('ERROR_')) {
+      console.error(`[Vault Deployment] ❌ Invalid contract address: ${contractAddress}`);
+      throw new Error(`Failed to extract valid contract address. Got: ${contractAddress}`);
+    }
+
+    // Verify it's a valid Stellar contract address (C... format, 56 characters)
+    if (!contractAddress.startsWith('C') || contractAddress.length !== 56) {
+      console.error(`[Vault Deployment] ❌ Contract address validation failed: ${contractAddress}`);
+      console.error(`[Vault Deployment] Expected: C followed by 55 characters (total 56)`);
+      throw new Error(`Invalid contract address format: ${contractAddress}`);
+    }
+
+    console.log(`[Vault Deployment] ✅ Contract address validated: ${contractAddress}`);
+
+    // STEP 2: Initialize the vault contract
+    console.log(`[Vault Initialization] Initializing vault contract...`);
+    
+    try {
+      // Build VaultConfig struct for initialization
+      // IMPORTANT: ScMap entries MUST be sorted alphabetically by key!
+      const vaultConfigStruct = StellarSdk.xdr.ScVal.scvMap([
+        new StellarSdk.xdr.ScMapEntry({
+          key: StellarSdk.xdr.ScVal.scvSymbol(Buffer.from('assets')), // 'a' comes first
+          val: StellarSdk.xdr.ScVal.scvVec(assetAddresses),
+        }),
+        new StellarSdk.xdr.ScMapEntry({
+          key: StellarSdk.xdr.ScVal.scvSymbol(Buffer.from('name')), // 'n' comes second
+          val: StellarSdk.nativeToScVal(config.name, { type: 'string' }),
+        }),
+        new StellarSdk.xdr.ScMapEntry({
+          key: StellarSdk.xdr.ScVal.scvSymbol(Buffer.from('owner')), // 'o' comes third
+          val: StellarSdk.Address.fromString(config.owner).toScVal(),
+        }),
+        new StellarSdk.xdr.ScMapEntry({
+          key: StellarSdk.xdr.ScVal.scvSymbol(Buffer.from('router_address')), // 'r' comes fourth
+          val: StellarSdk.nativeToScVal(null, { type: 'option' }), // No router initially
+        }),
+        new StellarSdk.xdr.ScMapEntry({
+          key: StellarSdk.xdr.ScVal.scvSymbol(Buffer.from('rules')), // 'r' comes last (rules)
+          val: StellarSdk.xdr.ScVal.scvVec([]), // Empty rules for now
+        }),
+      ]);
+      
+      const initResult = await invokeVaultMethod(
+        contractAddress,
+        'initialize',
+        [vaultConfigStruct],
+        sourceKeypair
+      );
+      
+      if (initResult.success) {
+        console.log(`[Vault Initialization] ✅ Vault initialized successfully`);
+        console.log(`[Vault Initialization] TX: ${initResult.hash}`);
+      }
+    } catch (initError) {
+      console.error(`[Vault Initialization] ⚠️  Failed to initialize vault:`, initError);
+      console.warn(`[Vault Initialization] Vault deployed but not initialized - manual initialization required`);
+    }
 
     // Store vault metadata in Supabase
     const { error: dbError } = await supabase.from('vaults').insert({
@@ -314,6 +397,8 @@ export async function invokeVaultMethod(
   sourceKeypair: StellarSdk.Keypair
 ): Promise<any> {
   try {
+    console.log(`[Contract Invocation] Invoking ${method} on ${contractAddress}`);
+    
     // Load source account
     const sourceAccount = await horizonServer.loadAccount(sourceKeypair.publicKey());
     
@@ -327,6 +412,12 @@ export async function invokeVaultMethod(
       // set_router expects a single Address parameter
       const routerAddress = params[0] as string;
       scParams = [StellarSdk.Address.fromString(routerAddress).toScVal()];
+    } else if (method === 'trigger_rebalance') {
+      // trigger_rebalance takes no parameters
+      scParams = [];
+    } else if (method === 'initialize') {
+      // initialize expects a VaultConfig struct (already converted)
+      scParams = params as StellarSdk.xdr.ScVal[];
     } else {
       // For other methods, attempt generic conversion
       scParams = params.map(param => {
@@ -347,8 +438,8 @@ export async function invokeVaultMethod(
     // Build the contract invocation operation
     const operation = contract.call(method, ...scParams);
     
-    // Build transaction
-    const transaction = new StellarSdk.TransactionBuilder(sourceAccount, {
+    // Build initial transaction
+    let transaction = new StellarSdk.TransactionBuilder(sourceAccount, {
       fee: StellarSdk.BASE_FEE,
       networkPassphrase: process.env.STELLAR_NETWORK_PASSPHRASE || StellarSdk.Networks.TESTNET,
     })
@@ -356,8 +447,28 @@ export async function invokeVaultMethod(
       .setTimeout(300)
       .build();
     
+    console.log(`[Contract Invocation] Simulating transaction...`);
+    
+    // Simulate transaction to get resource footprint and auth
+    const simulationResponse = await sorobanServer.simulateTransaction(transaction);
+    
+    if (StellarSdk.SorobanRpc.Api.isSimulationError(simulationResponse)) {
+      console.error(`[Contract Invocation] Simulation failed:`, simulationResponse.error);
+      throw new Error(`Simulation failed: ${simulationResponse.error}`);
+    }
+    
+    console.log(`[Contract Invocation] Simulation successful, preparing transaction...`);
+    
+    // Assemble the transaction with simulation results (adds footprint and auth)
+    transaction = StellarSdk.SorobanRpc.assembleTransaction(
+      transaction,
+      simulationResponse
+    ).build();
+    
     // Sign transaction
     transaction.sign(sourceKeypair);
+    
+    console.log(`[Contract Invocation] Submitting transaction...`);
     
     // Submit transaction
     const response = await horizonServer.submitTransaction(transaction);
@@ -373,6 +484,25 @@ export async function invokeVaultMethod(
     };
   } catch (error) {
     console.error(`❌ Error invoking vault method ${method}:`, error);
+    
+    // Log detailed error information for Stellar transactions
+    if (error && typeof error === 'object' && 'response' in error) {
+      const stellarError = error as any;
+      if (stellarError.response?.data) {
+        console.error('📋 Stellar Transaction Error Details:');
+        console.error('   Status:', stellarError.response.status);
+        console.error('   Title:', stellarError.response.data.title);
+        console.error('   Detail:', stellarError.response.data.detail);
+        
+        if (stellarError.response.data.extras) {
+          console.error('   Result Codes:', JSON.stringify(stellarError.response.data.extras.result_codes, null, 2));
+          
+          if (stellarError.response.data.extras.result_xdr) {
+            console.error('   Result XDR:', stellarError.response.data.extras.result_xdr);
+          }
+        }
+      }
+    }
     
     // In development/MVP mode, log but don't fail
     if (process.env.NODE_ENV === 'development' || process.env.MVP_MODE === 'true') {
