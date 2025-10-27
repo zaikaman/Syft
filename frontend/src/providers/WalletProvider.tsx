@@ -1,5 +1,6 @@
 import {
   createContext,
+  useContext,
   useEffect,
   useMemo,
   useRef,
@@ -27,6 +28,15 @@ const POLL_INTERVAL = 1000;
 
 export const WalletContext = // eslint-disable-line react-refresh/only-export-components
   createContext<WalletContextType>({ isPending: true });
+
+// Export useWallet hook
+export const useWallet = () => {
+  const context = useContext(WalletContext);
+  if (!context) {
+    throw new Error('useWallet must be used within a WalletProvider');
+  }
+  return context;
+};
 
 export const WalletProvider = ({ children }: { children: React.ReactNode }) => {
   const [state, setState] =

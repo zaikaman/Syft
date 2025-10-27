@@ -181,4 +181,32 @@ router.get('/cache/stats', async (_req: Request, res: Response) => {
   }
 });
 
+/**
+ * GET /api/suggestions/sentiment/:assetCode
+ * Get sentiment analysis for a specific asset
+ */
+router.get('/sentiment/:assetCode', async (req: Request, res: Response) => {
+  try {
+    const { assetCode } = req.params;
+    const hoursBack = parseInt(req.query.hoursBack as string) || 24;
+
+    // Import sentiment services
+    const { sentimentAnalysisService } = await import('../services/sentimentAnalysisService.js');
+    
+    // Get sentiment data
+    const sentiment = await sentimentAnalysisService.analyzeAssetSentiment(assetCode, hoursBack);
+
+    res.json({
+      success: true,
+      data: sentiment,
+    });
+  } catch (error) {
+    console.error('Error fetching sentiment:', error);
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to fetch sentiment data',
+    });
+  }
+});
+
 export default router;

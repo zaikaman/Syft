@@ -1,7 +1,7 @@
 // T031: Wallet signature verification utility
 // Purpose: Verify wallet signatures for authentication and authorization
 
-import StellarSdk from '@stellar/stellar-sdk';
+import * as StellarSdk from '@stellar/stellar-sdk';
 import { Request, Response, NextFunction } from 'express';
 import { UnauthorizedError } from '../middleware/errorHandler';
 

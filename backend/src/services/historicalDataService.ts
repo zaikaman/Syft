@@ -80,8 +80,9 @@ export async function fetchHistoricalPrices(
     const end = new Date(endTime).getTime();
 
     // Fetch trade aggregations from Horizon
+    // Note: tradeAggregation requires 6 params: baseAsset, counterAsset, startTime, endTime, resolution, offset
     const aggregations = await horizonServer
-      .tradeAggregation(baseAsset, counterAsset, start, end, resolutionMs)
+      .tradeAggregation(baseAsset, counterAsset, start, end, resolutionMs, 0)
       .limit(200)
       .call();
 
@@ -175,7 +176,14 @@ function fillDataGaps(
 
 /**
  * Fetch APY history for liquidity pools
- * Note: This is a placeholder - actual implementation would query pool contracts
+ * Note: Stellar doesn't have a direct APY endpoint for liquidity pools.
+ * In production, you would need to:
+ * 1. Query the pool contract's state history
+ * 2. Calculate APY from reserves and fee data
+ * 3. Or use a third-party data provider (e.g., StellarExpert API)
+ * 
+ * For now, this returns mock data for UI development and testing.
+ * Replace with actual pool contract queries when deploying to production.
  */
 export async function fetchHistoricalAPY(
   _poolAddress: string,
@@ -183,8 +191,8 @@ export async function fetchHistoricalAPY(
   endTime: string
 ): Promise<{ timestamp: string; apy: number }[]> {
   try {
-    // TODO: Implement actual pool APY fetching from Soroban contracts
-    // For now, return mock data for testing
+    console.warn('fetchHistoricalAPY is using mock data. Implement pool contract queries for production.');
+    
     const start = new Date(startTime).getTime();
     const end = new Date(endTime).getTime();
     const oneDay = 24 * 60 * 60 * 1000;
@@ -193,11 +201,14 @@ export async function fetchHistoricalAPY(
     let currentTime = start;
 
     while (currentTime <= end) {
-      // Mock APY between 5-15%
-      const apy = 5 + Math.random() * 10;
+      // Mock APY between 5-15% with some variation
+      const baseApy = 10;
+      const variance = (Math.random() - 0.5) * 5; // +/- 2.5%
+      const apy = Math.max(5, Math.min(15, baseApy + variance));
+      
       apyData.push({
         timestamp: new Date(currentTime).toISOString(),
-        apy,
+        apy: Number(apy.toFixed(2)),
       });
       currentTime += oneDay;
     }

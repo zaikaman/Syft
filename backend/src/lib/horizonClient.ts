@@ -1,4 +1,4 @@
-import StellarSdk from '@stellar/stellar-sdk';
+import * as StellarSdk from '@stellar/stellar-sdk';
 import dotenv from 'dotenv';
 
 dotenv.config();
@@ -6,7 +6,7 @@ dotenv.config();
 const horizonUrl = process.env.STELLAR_HORIZON_URL || 'https://horizon-futurenet.stellar.org';
 
 // Create Horizon server instance
-export const horizonServer = new StellarSdk.Server(horizonUrl);
+export const horizonServer = new StellarSdk.Horizon.Server(horizonUrl);
 
 // Helper to get account details
 export async function getAccount(accountId: string) {

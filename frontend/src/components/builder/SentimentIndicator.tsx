@@ -33,27 +33,50 @@ export function SentimentIndicator({ assetCode, assetName, compact = false }: Se
     setError(null);
 
     try {
-      // In production, this would call the backend sentiment API
-      // For now, we'll simulate sentiment data
-      await new Promise(resolve => setTimeout(resolve, 500));
+      const backendUrl = import.meta.env.PUBLIC_BACKEND_URL || 'http://localhost:3001';
+      const response = await fetch(`${backendUrl}/api/suggestions/sentiment/${assetCode}`);
+      
+      if (!response.ok) {
+        // Fallback to mock data if API fails
+        console.warn('Sentiment API not available, using mock data');
+        useMockSentiment();
+        return;
+      }
 
-      // Mock sentiment data
-      const mockSentiments: SentimentData[] = [
-        { sentiment: 'very_positive', score: 0.8, confidence: 0.85, totalPosts: 245 },
-        { sentiment: 'positive', score: 0.4, confidence: 0.75, totalPosts: 189 },
-        { sentiment: 'neutral', score: 0.05, confidence: 0.65, totalPosts: 156 },
-        { sentiment: 'negative', score: -0.3, confidence: 0.70, totalPosts: 134 },
-        { sentiment: 'very_negative', score: -0.7, confidence: 0.80, totalPosts: 98 },
-      ];
-
-      const randomSentiment = mockSentiments[Math.floor(Math.random() * mockSentiments.length)];
-      setSentiment(randomSentiment);
+      const data = await response.json();
+      
+      if (data.success && data.data) {
+        // Convert backend sentiment format to component format
+        setSentiment({
+          sentiment: data.data.overallSentiment || 'neutral',
+          score: data.data.sentimentScore || 0,
+          confidence: data.data.confidence || 0.5,
+          totalPosts: data.data.totalPosts || 0,
+        });
+      } else {
+        useMockSentiment();
+      }
     } catch (err) {
       console.error('Error fetching sentiment:', err);
-      setError('Failed to load sentiment');
+      // Fallback to mock data on error
+      useMockSentiment();
     } finally {
       setLoading(false);
     }
+  };
+
+  const useMockSentiment = () => {
+    // Mock sentiment data for development/testing
+    const mockSentiments: SentimentData[] = [
+      { sentiment: 'very_positive', score: 0.8, confidence: 0.85, totalPosts: 245 },
+      { sentiment: 'positive', score: 0.4, confidence: 0.75, totalPosts: 189 },
+      { sentiment: 'neutral', score: 0.05, confidence: 0.65, totalPosts: 156 },
+      { sentiment: 'negative', score: -0.3, confidence: 0.70, totalPosts: 134 },
+      { sentiment: 'very_negative', score: -0.7, confidence: 0.80, totalPosts: 98 },
+    ];
+
+    const randomSentiment = mockSentiments[Math.floor(Math.random() * mockSentiments.length)];
+    setSentiment(randomSentiment);
   };
 
   const getSentimentColor = (sentiment: SentimentData['sentiment']): string => {

@@ -11,6 +11,8 @@ import { BlockValidator } from '../lib/blockValidator';
 import { ConfigSerializer } from '../lib/configSerializer';
 import { useBuilderHistory } from '../hooks/useBuilderHistory';
 import { vaultTemplates } from '../data/vaultTemplates';
+import { useWallet } from '../providers/WalletProvider';
+import { useNavigate } from 'react-router-dom';
 import type { PaletteItem, ValidationResult } from '../types/blocks';
 
 
@@ -23,7 +25,11 @@ const VaultBuilder = () => {
     warnings: [],
   });
   const [showValidation, setShowValidation] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [deploying, setDeploying] = useState(false);
 
+  const { address } = useWallet();
+  const navigate = useNavigate();
   const { canUndo, canRedo, undo, redo, pushState } = useBuilderHistory(nodes, edges);
 
   // Validate on changes
@@ -51,19 +57,51 @@ const VaultBuilder = () => {
   }, [nodes, pushState]);
 
   // Save vault configuration
-  const handleSave = useCallback(() => {
+  const handleSave = useCallback(async () => {
     const config = ConfigSerializer.serialize(nodes, edges);
     console.log('Saving vault configuration:', config);
     
-    // Save to localStorage for now
-    localStorage.setItem('vault_draft', JSON.stringify(config));
-    
-    // TODO: Save to backend/Supabase
-    alert('Vault draft saved!');
-  }, [nodes, edges]);
+    if (!address) {
+      alert('Please connect your wallet first');
+      return;
+    }
+
+    try {
+      setSaving(true);
+      
+      // Save to localStorage as backup
+      localStorage.setItem('vault_draft', JSON.stringify(config));
+      
+      // Save to backend
+      const backendUrl = import.meta.env.PUBLIC_BACKEND_URL || 'http://localhost:3001';
+      const response = await fetch(`${backendUrl}/api/vaults/drafts`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          owner: address,
+          config,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        alert('Vault draft saved successfully!');
+      } else {
+        throw new Error(data.error || 'Failed to save draft');
+      }
+    } catch (error) {
+      console.error('Error saving vault:', error);
+      alert(`Failed to save vault: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setSaving(false);
+    }
+  }, [nodes, edges, address]);
 
   // Deploy vault
-  const handleDeploy = useCallback(() => {
+  const handleDeploy = useCallback(async () => {
     const validationResult = BlockValidator.validateVault(nodes, edges);
     
     if (!validationResult.valid) {
@@ -72,12 +110,62 @@ const VaultBuilder = () => {
       return;
     }
 
+    if (!address) {
+      alert('Please connect your wallet first');
+      return;
+    }
+
     const config = ConfigSerializer.serialize(nodes, edges);
     console.log('Deploying vault with config:', config);
-    
-    // TODO: Deploy to Stellar blockchain
-    alert('Vault deployment initiated! (Integration pending)');
-  }, [nodes, edges]);
+
+    try {
+      setDeploying(true);
+      
+      // Note: This is a simplified version. In production, you would:
+      // 1. Get user to sign transaction via their wallet
+      // 2. Submit signed transaction to backend
+      // 3. Backend would deploy to Stellar network
+      
+      const privateKey = prompt(
+        'Enter your wallet private key (for testing only - in production this would use your wallet extension):\n\nWARNING: Never share your private key on mainnet!'
+      );
+      
+      if (!privateKey) {
+        setDeploying(false);
+        return;
+      }
+
+      const backendUrl = import.meta.env.PUBLIC_BACKEND_URL || 'http://localhost:3001';
+      const response = await fetch(`${backendUrl}/api/vaults`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          config: {
+            owner: address,
+            ...config,
+          },
+          privateKey,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        alert(`Vault deployed successfully!\n\nVault ID: ${data.data.vaultId}\nContract: ${data.data.contractAddress}`);
+        // Navigate to dashboard
+        navigate('/dashboard');
+      } else {
+        throw new Error(data.error || 'Failed to deploy vault');
+      }
+    } catch (error) {
+      console.error('Error deploying vault:', error);
+      alert(`Failed to deploy vault: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setDeploying(false);
+    }
+  }, [nodes, edges, address, navigate]);
 
   // Export configuration
   const handleExport = useCallback(() => {
@@ -178,11 +266,11 @@ const VaultBuilder = () => {
               <Button variant="outline" leftIcon={<Upload />} onClick={handleImport}>
                 Import
               </Button>
-              <Button variant="outline" leftIcon={<Save />} onClick={handleSave}>
-                Save Draft
+              <Button variant="outline" leftIcon={<Save />} onClick={handleSave} disabled={saving}>
+                {saving ? 'Saving...' : 'Save Draft'}
               </Button>
-              <Button variant="gradient" leftIcon={<Play />} onClick={handleDeploy}>
-                Deploy Vault
+              <Button variant="gradient" leftIcon={<Play />} onClick={handleDeploy} disabled={deploying}>
+                {deploying ? 'Deploying...' : 'Deploy Vault'}
               </Button>
             </div>
           </div>

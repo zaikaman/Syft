@@ -377,4 +377,57 @@ router.get('/', async (req: Request, res: Response) => {
   }
 });
 
+/**
+ * POST /api/vaults/drafts
+ * Save a vault draft (incomplete configuration)
+ */
+router.post('/drafts', async (req: Request, res: Response) => {
+  try {
+    const { owner, config } = req.body;
+
+    if (!owner || !config) {
+      return res.status(400).json({
+        success: false,
+        error: 'Missing required fields: owner and config',
+      });
+    }
+
+    // Generate draft ID
+    const draftId = `draft-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
+    // Save draft to database with status 'draft'
+    const { data, error } = await supabase
+      .from('vaults')
+      .insert({
+        vault_id: draftId,
+        owner,
+        contract_address: null, // No contract yet
+        config,
+        status: 'draft',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      })
+      .select()
+      .single();
+
+    if (error) {
+      throw error;
+    }
+
+    return res.json({
+      success: true,
+      data: {
+        draftId: data.vault_id,
+        message: 'Draft saved successfully',
+      },
+    });
+  } catch (error) {
+    console.error('Error in POST /api/vaults/drafts:', error);
+    return res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Internal server error',
+    });
+  }
+});
+
 export default router;

@@ -226,10 +226,14 @@ cd ..
 # Build all contracts
 stellar contract build
 
-# This creates .wasm files in target/wasm32-unknown-unknown/release/
+# This creates .wasm files in target/wasm32v1-none/release/
 ```
 
-**Expected output**: Should see `*.wasm` files created in `target/wasm32-unknown-unknown/release/`
+**Expected output**: Should see `*.wasm` files created in `target/wasm32v1-none/release/`, including:
+- `syft_vault.wasm` (main vault contract)
+- `vault_factory.wasm` (factory contract)
+- `vault_nft.wasm` (NFT contract)
+- Other supporting contracts
 
 ---
 
@@ -297,11 +301,30 @@ stellar keys fund deployer --network futurenet
 ```powershell
 # Deploy the factory contract
 stellar contract deploy `
-  --wasm target/wasm32-unknown-unknown/release/syft_vault.wasm `
+  --wasm target/wasm32v1-none/release/vault_factory.wasm `
   --source deployer `
   --network futurenet
+```
 
-# Save the contract ID output - you'll need this!
+**After deployment**, look at the terminal output for your contract ID. It will appear as a line like:
+```
+CA5ABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890ABCDEFGHIJKLMN
+```
+
+**Save your Contract ID to your environment files**:
+
+```bash
+# Add to backend/.env
+VAULT_FACTORY_CONTRACT_ID=CA5ABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890ABCDEFGHIJKLMN
+
+# Add to frontend/.env.local  
+PUBLIC_VAULT_FACTORY_CONTRACT_ID=CA5ABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890ABCDEFGHIJKLMN
+```
+
+**To verify deployment** (optional):
+```powershell
+# Check the contract info on Futurenet
+stellar contract info --id CA5ABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890ABCDEFGHIJKLMN --network futurenet
 ```
 
 ### 5.3 Update Contract IDs
