@@ -1,0 +1,34 @@
+{
+  "recommendations": [
+    // Rust Development
+    "rust-lang.rust-analyzer",
+    "tamasfe.even-better-toml",
+    "serayuzgur.crates",
+    
+    // TypeScript/JavaScript Development
+    "dbaeumer.vscode-eslint",
+    "esbenp.prettier-vscode",
+    
+    // React Development
+    "dsznajder.es7-react-js-snippets",
+    
+    // Stellar/Soroban Development
+    "stellar.soroban-vscode",
+    
+    // General Development
+    "editorconfig.editorconfig",
+    "gruntfuggly.todo-tree",
+    "usernamehw.errorlens",
+    "aaron-bond.better-comments",
+    
+    // Git
+    "eamodio.gitlens",
+    
+    // Markdown
+    "yzhang.markdown-all-in-one",
+    
+    // Utilities
+    "streetsidesoftware.code-spell-checker",
+    "wayou.vscode-todo-highlight"
+  ]
+}

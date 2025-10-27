@@ -1,0 +1,17 @@
+// Error types for vault operations
+use soroban_sdk::contracterror;
+
+#[contracterror]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
+#[repr(u32)]
+pub enum VaultError {
+    AlreadyInitialized = 1,
+    NotInitialized = 2,
+    Unauthorized = 3,
+    InsufficientBalance = 4,
+    InsufficientShares = 5,
+    InvalidAmount = 6,
+    InvalidConfiguration = 7,
+    RebalanceFailed = 8,
+    TransferFailed = 9,
+}

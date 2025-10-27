@@ -26,20 +26,20 @@ This project uses a monorepo structure:
 
 **Purpose**: Project initialization and basic structure
 
-- [ ] T001 Create monorepo structure with contracts/, backend/, frontend/, and tests/ directories
-- [ ] T002 Initialize Rust workspace for Soroban contracts in contracts/soroban/ with Cargo.toml
-- [ ] T003 [P] Initialize Node.js backend service in backend/ with package.json and TypeScript configuration
-- [ ] T004 [P] Initialize React + Vite frontend in frontend/ with package.json, vite.config.ts, and tsconfig.json
-- [ ] T005 [P] Install essential developer tooling for local development (editorconfig, recommended extensions)
-- [ ] T008 Setup environment configuration (.env.example) with Stellar Futurenet, Supabase, OpenAI API keys
-- [ ] T009 [P] Configure ESLint and Prettier for TypeScript code formatting
-- [ ] T010 [P] Configure Rustfmt and Clippy for Rust code formatting and linting
-- [ ] T011 Install Stellar Wallet Kit SDK in frontend/package.json
-- [ ] T012 [P] Install Horizon SDK in backend/package.json
-- [ ] T013 [P] Install Zustand for state management in frontend/package.json
-- [ ] T014 [P] Install React Flow for visual builder in frontend/package.json
-- [ ] T015 [P] Install Recharts for visualization in frontend/package.json
-- [ ] T016 [P] Setup Supabase client in backend/src/lib/supabase.ts
+- [x] T001 Create monorepo structure with contracts/, backend/, frontend/, and tests/ directories
+- [x] T002 Initialize Rust workspace for Soroban contracts in contracts/soroban/ with Cargo.toml
+- [x] T003 [P] Initialize Node.js backend service in backend/ with package.json and TypeScript configuration
+- [x] T004 [P] Initialize React + Vite frontend in frontend/ with package.json, vite.config.ts, and tsconfig.json
+- [x] T005 [P] Install essential developer tooling for local development (editorconfig, recommended extensions)
+- [x] T008 Setup environment configuration (.env.example) with Stellar Futurenet, Supabase, OpenAI API keys
+- [x] T009 [P] Configure ESLint and Prettier for TypeScript code formatting
+- [x] T010 [P] Configure Rustfmt and Clippy for Rust code formatting and linting
+- [x] T011 Install Stellar Wallet Kit SDK in frontend/package.json
+- [x] T012 [P] Install Horizon SDK in backend/package.json
+- [x] T013 [P] Install Zustand for state management in frontend/package.json
+- [x] T014 [P] Install React Flow for visual builder in frontend/package.json
+- [x] T015 [P] Install Recharts for visualization in frontend/package.json
+- [x] T016 [P] Setup Supabase client in backend/src/lib/supabase.ts
 
 ---
 

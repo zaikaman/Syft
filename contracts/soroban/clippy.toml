@@ -1,0 +1,17 @@
+# Clippy configuration for Soroban contracts
+# Enable these lints for better code quality
+
+# Warnings
+warn = [
+    "clippy::all",
+    "clippy::pedantic",
+    "clippy::nursery",
+]
+
+# Allow these specific lints
+allow = [
+    "clippy::module_name_repetitions",
+    "clippy::must_use_candidate",
+    "clippy::missing_errors_doc",
+    "clippy::missing_panics_doc",
+]
