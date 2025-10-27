@@ -14,4 +14,7 @@ pub enum VaultError {
     InvalidConfiguration = 7,
     RebalanceFailed = 8,
     TransferFailed = 9,
+    NFTNotFound = 10,
+    InvalidOwnership = 11,
+    OwnershipExceeded = 12,
 }

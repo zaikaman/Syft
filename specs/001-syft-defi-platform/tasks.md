@@ -250,27 +250,27 @@ Note: Automated AI suggestion integration tests are deferred for MVP; provide ex
 
 ### Smart Contract Implementation for User Story 4
 
-- [ ] T124 [P] [US4] Create VaultNFT data structures in contracts/soroban/src/nft_types.rs
-- [ ] T125 [P] [US4] Implement NFT minting function with ownership percentage in contracts/soroban/src/vault_nft.rs
-- [ ] T126 [P] [US4] Implement profit distribution logic proportional to shares in contracts/soroban/src/vault_nft.rs
-- [ ] T127 [US4] Add NFT transfer functionality with ownership updates in contracts/soroban/src/vault_nft.rs
+- [x] T124 [P] [US4] Create VaultNFT data structures in contracts/soroban/src/nft_types.rs
+- [x] T125 [P] [US4] Implement NFT minting function with ownership percentage in contracts/soroban/src/vault_nft.rs
+- [x] T126 [P] [US4] Implement profit distribution logic proportional to shares in contracts/soroban/src/vault_nft.rs
+- [x] T127 [US4] Add NFT transfer functionality with ownership updates in contracts/soroban/src/vault_nft.rs
 
 ### Backend Implementation for User Story 4
 
-- [ ] T128 [P] [US4] Create API endpoint POST /api/vaults/:vaultId/nft to mint NFT in backend/src/routes/nfts.ts
-- [ ] T129 [P] [US4] Create API endpoint POST /api/marketplace/listings to list NFT in backend/src/routes/marketplace.ts
-- [ ] T130 [P] [US4] Create API endpoint GET /api/marketplace/listings for browsing in backend/src/routes/marketplace.ts
-- [ ] T131 [P] [US4] Create API endpoint POST /api/marketplace/purchase to buy NFT shares in backend/src/routes/marketplace.ts
-- [ ] T132 [US4] Implement yield distribution service for multi-owner vaults in backend/src/services/yieldDistributionService.ts
+- [x] T128 [P] [US4] Create API endpoint POST /api/vaults/:vaultId/nft to mint NFT in backend/src/routes/nfts.ts
+- [x] T129 [P] [US4] Create API endpoint POST /api/marketplace/listings to list NFT in backend/src/routes/marketplace.ts
+- [x] T130 [P] [US4] Create API endpoint GET /api/marketplace/listings for browsing in backend/src/routes/marketplace.ts
+- [x] T131 [P] [US4] Create API endpoint POST /api/marketplace/purchase to buy NFT shares in backend/src/routes/marketplace.ts
+- [x] T132 [US4] Implement yield distribution service for multi-owner vaults in backend/src/services/yieldDistributionService.ts
 
 ### Frontend Implementation for User Story 4
 
-- [ ] T133 [US4] Create NFT minting interface in vault dashboard in frontend/src/components/nft/MintNFT.tsx
-- [ ] T134 [US4] Implement marketplace listing creation form in frontend/src/components/marketplace/CreateListing.tsx
-- [ ] T135 [US4] Create marketplace browse interface with filters in frontend/src/components/marketplace/MarketplaceBrowse.tsx
-- [ ] T136 [US4] Implement vault detail page showing performance and ownership in frontend/src/components/marketplace/VaultDetail.tsx
-- [ ] T137 [US4] Create NFT purchase flow with share calculation in frontend/src/components/marketplace/PurchaseNFT.tsx
-- [ ] T138 [US4] Display co-ownership dashboard showing all shared vaults in frontend/src/components/vault/CoOwnershipDashboard.tsx
+- [x] T133 [US4] Create NFT minting interface in vault dashboard in frontend/src/components/nft/MintNFT.tsx
+- [x] T134 [US4] Implement marketplace listing creation form in frontend/src/components/marketplace/CreateListing.tsx
+- [x] T135 [US4] Create marketplace browse interface with filters in frontend/src/components/marketplace/MarketplaceBrowse.tsx
+- [x] T136 [US4] Implement vault detail page showing performance and ownership in frontend/src/components/marketplace/VaultDetail.tsx
+- [x] T137 [US4] Create NFT purchase flow with share calculation in frontend/src/components/marketplace/PurchaseNFT.tsx
+- [x] T138 [US4] Display co-ownership dashboard showing all shared vaults in frontend/src/components/vault/CoOwnershipDashboard.tsx
 
 ### Integration Notes for User Story 4
 
