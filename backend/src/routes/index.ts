@@ -8,6 +8,7 @@ import backtestRoutes from './backtests.js';
 import suggestionsRoutes from './suggestions.js';
 import nftRoutes from './nfts.js';
 import marketplaceRoutes from './marketplace.js';
+import userRoutes from './users.js';
 
 const router = Router();
 
@@ -29,6 +30,7 @@ router.get('/', (_req, res) => {
     version: '1.0.0',
     endpoints: {
       health: '/api/health',
+      users: '/api/users',
       wallet: '/api/wallet',
       vaults: '/api/vaults',
       backtests: '/api/backtests',
@@ -40,6 +42,7 @@ router.get('/', (_req, res) => {
 });
 
 // Mount route modules
+router.use('/users', userRoutes);
 router.use('/wallet', walletRoutes);
 router.use('/vaults', vaultRoutes);
 router.use('/backtests', backtestRoutes);

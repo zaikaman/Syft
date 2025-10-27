@@ -55,19 +55,36 @@ export async function deployVault(
     // Submit transaction
     // const result = await horizonServer.submitTransaction(transaction);
 
+    // Ensure user exists in database (upsert)
+    await supabase
+      .from('users')
+      .upsert(
+        {
+          wallet_address: config.owner,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        },
+        {
+          onConflict: 'wallet_address',
+          ignoreDuplicates: true,
+        }
+      );
+
     // Store vault metadata in Supabase
     const { error: dbError } = await supabase.from('vaults').insert({
       vault_id: vaultId,
-      owner: config.owner,
+      owner_wallet_address: config.owner,
       contract_address: contractAddress,
+      name: config.name,
+      description: 'Deployed vault from visual builder',
       config: {
-        name: config.name,
         assets: config.assets,
         rules: config.rules,
       },
       status: 'active',
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
+      deployed_at: new Date().toISOString(),
     });
 
     if (dbError) {

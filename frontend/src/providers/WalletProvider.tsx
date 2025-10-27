@@ -112,6 +112,26 @@ export const WalletProvider = ({ children }: { children: React.ReactNode }) => {
         ) {
           storage.setItem("walletAddress", a.address);
           updateState({ ...a, ...n });
+          
+          // Register user in backend when wallet connects
+          if (a.address) {
+            try {
+              const backendUrl = import.meta.env.PUBLIC_BACKEND_URL || 'http://localhost:3001';
+              await fetch(`${backendUrl}/api/users/register`, {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                  walletAddress: a.address,
+                  network: n.network,
+                }),
+              });
+            } catch (error) {
+              // Silent fail - user can still use the app even if registration fails
+              console.warn('Failed to register user in backend:', error);
+            }
+          }
         }
       } catch (e) {
         // If `getNetwork` or `getAddress` throw errors... sign the user out???

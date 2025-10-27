@@ -1,63 +1,52 @@
-import { AlertCircle, AlertTriangle, CheckCircle2, X } from 'lucide-react';
+import { AlertCircle, AlertTriangle, CheckCircle2 } from 'lucide-react';
 import type { ValidationResult } from '../../types/blocks';
 
 interface ValidationFeedbackProps {
   validation: ValidationResult;
-  onClose?: () => void;
 }
 
-const ValidationFeedback = ({ validation, onClose }: ValidationFeedbackProps) => {
+const ValidationFeedback = ({ validation }: ValidationFeedbackProps) => {
   const { valid, errors, warnings } = validation;
 
   if (valid && warnings.length === 0) {
     return (
-      <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg p-4">
-        <div className="flex items-start gap-3">
-          <CheckCircle2 className="w-5 h-5 text-green-600 dark:text-green-400 flex-shrink-0 mt-0.5" />
-          <div className="flex-1">
-            <h3 className="font-semibold text-green-900 dark:text-green-100">
-              Configuration Valid
-            </h3>
-            <p className="text-sm text-green-700 dark:text-green-300 mt-1">
-              Your vault strategy is ready to deploy!
-            </p>
-          </div>
-          {onClose && (
-            <button
-              onClick={onClose}
-              className="text-green-600 dark:text-green-400 hover:text-green-800 dark:hover:text-green-200"
-            >
-              <X className="w-5 h-5" />
-            </button>
-          )}
+      <div className="h-full flex items-center justify-center">
+        <div className="text-center">
+          <CheckCircle2 className="w-12 h-12 text-green-400 mx-auto mb-3" />
+          <h3 className="font-semibold text-green-100 text-sm">
+            Configuration Valid ✓
+          </h3>
+          <p className="text-xs text-green-300 mt-1">
+            Your vault strategy is ready to deploy!
+          </p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="space-y-3">
+    <div className="h-full overflow-y-auto space-y-2 pr-2">
       {/* Errors */}
       {errors.length > 0 && (
-        <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4">
-          <div className="flex items-start gap-3">
-            <AlertCircle className="w-5 h-5 text-red-600 dark:text-red-400 flex-shrink-0 mt-0.5" />
-            <div className="flex-1">
-              <h3 className="font-semibold text-red-900 dark:text-red-100">
-                {errors.length} Error{errors.length > 1 ? 's' : ''} Found
+        <div className="bg-red-500/10 border border-red-500/30 rounded p-3">
+          <div className="flex items-start gap-2">
+            <AlertCircle className="w-4 h-4 text-red-400 flex-shrink-0 mt-0.5" />
+            <div className="flex-1 min-w-0">
+              <h3 className="font-semibold text-red-100 text-sm">
+                {errors.length} Error{errors.length > 1 ? 's' : ''}
               </h3>
-              <ul className="mt-2 space-y-2">
+              <ul className="mt-2 space-y-1.5">
                 {errors.map((error, index) => (
                   <li
                     key={index}
-                    className="text-sm text-red-700 dark:text-red-300"
+                    className="text-xs text-red-200 leading-relaxed"
                   >
                     <span className="font-medium">
                       {error.blockId !== 'canvas' ? `Block ${error.blockId}: ` : ''}
                     </span>
                     {error.message}
                     {error.field && (
-                      <span className="text-xs ml-2 px-2 py-0.5 bg-red-200 dark:bg-red-800 rounded">
+                      <span className="text-[10px] ml-2 px-1.5 py-0.5 bg-red-500/30 rounded">
                         {error.field}
                       </span>
                     )}
@@ -65,32 +54,24 @@ const ValidationFeedback = ({ validation, onClose }: ValidationFeedbackProps) =>
                 ))}
               </ul>
             </div>
-            {onClose && (
-              <button
-                onClick={onClose}
-                className="text-red-600 dark:text-red-400 hover:text-red-800 dark:hover:text-red-200"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            )}
           </div>
         </div>
       )}
 
       {/* Warnings */}
       {warnings.length > 0 && (
-        <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-4">
-          <div className="flex items-start gap-3">
-            <AlertTriangle className="w-5 h-5 text-yellow-600 dark:text-yellow-400 flex-shrink-0 mt-0.5" />
-            <div className="flex-1">
-              <h3 className="font-semibold text-yellow-900 dark:text-yellow-100">
+        <div className="bg-yellow-500/10 border border-yellow-500/30 rounded p-3">
+          <div className="flex items-start gap-2">
+            <AlertTriangle className="w-4 h-4 text-yellow-400 flex-shrink-0 mt-0.5" />
+            <div className="flex-1 min-w-0">
+              <h3 className="font-semibold text-yellow-100 text-sm">
                 {warnings.length} Warning{warnings.length > 1 ? 's' : ''}
               </h3>
-              <ul className="mt-2 space-y-2">
+              <ul className="mt-2 space-y-1.5">
                 {warnings.map((warning, index) => (
                   <li
                     key={index}
-                    className="text-sm text-yellow-700 dark:text-yellow-300"
+                    className="text-xs text-yellow-200"
                   >
                     <div>
                       <span className="font-medium">
@@ -99,7 +80,7 @@ const ValidationFeedback = ({ validation, onClose }: ValidationFeedbackProps) =>
                       {warning.message}
                     </div>
                     {warning.suggestion && (
-                      <div className="mt-1 text-xs italic text-yellow-600 dark:text-yellow-400">
+                      <div className="mt-1 text-[10px] italic text-yellow-300/80">
                         💡 {warning.suggestion}
                       </div>
                     )}
@@ -107,14 +88,6 @@ const ValidationFeedback = ({ validation, onClose }: ValidationFeedbackProps) =>
                 ))}
               </ul>
             </div>
-            {onClose && (
-              <button
-                onClick={onClose}
-                className="text-yellow-600 dark:text-yellow-400 hover:text-yellow-800 dark:hover:text-yellow-200"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            )}
           </div>
         </div>
       )}

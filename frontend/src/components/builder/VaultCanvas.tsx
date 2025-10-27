@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useRef, useState, useEffect } from 'react';
 import {
   ReactFlow,
   Background,
@@ -12,6 +12,7 @@ import {
   type Node,
   type OnConnect,
   type NodeTypes,
+  type NodeProps,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import AssetBlock from './blocks/AssetBlock';
@@ -20,22 +21,57 @@ import ActionBlock from './blocks/ActionBlock';
 import type { PaletteItem } from '../../types/blocks';
 
 interface VaultCanvasProps {
+  initialNodes?: Node[];
+  initialEdges?: Edge[];
   onNodesChange?: (nodes: Node[]) => void;
   onEdgesChange?: (edges: Edge[]) => void;
 }
 
+// Wrapper components to pass the id prop
+const AssetBlockWrapper = (props: NodeProps) => (
+  <AssetBlock id={props.id} data={props.data as any} selected={props.selected} />
+);
+
+const ConditionBlockWrapper = (props: NodeProps) => (
+  <ConditionBlock id={props.id} data={props.data as any} selected={props.selected} />
+);
+
+const ActionBlockWrapper = (props: NodeProps) => (
+  <ActionBlock id={props.id} data={props.data as any} selected={props.selected} />
+);
+
 const nodeTypes: NodeTypes = {
-  asset: AssetBlock,
-  condition: ConditionBlock,
-  action: ActionBlock,
+  asset: AssetBlockWrapper,
+  condition: ConditionBlockWrapper,
+  action: ActionBlockWrapper,
 };
 
-const VaultCanvas = ({ onNodesChange, onEdgesChange }: VaultCanvasProps) => {
+const VaultCanvas = ({ initialNodes = [], initialEdges = [], onNodesChange, onEdgesChange }: VaultCanvasProps) => {
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
-  const [nodes, setNodes, onNodesChangeInternal] = useNodesState<Node>([]);
-  const [edges, setEdges, onEdgesChangeInternal] = useEdgesState<Edge>([]);
+  const [nodes, setNodes, onNodesChangeInternal] = useNodesState<Node>(initialNodes);
+  const [edges, setEdges, onEdgesChangeInternal] = useEdgesState<Edge>(initialEdges);
   const [reactFlowInstance, setReactFlowInstance] = useState<any>(null);
   const [nodeId, setNodeId] = useState(0);
+
+  // Track if we need to update from external props
+  const prevInitialNodesRef = useRef<string>('');
+  const prevInitialEdgesRef = useRef<string>('');
+
+  // Update internal state when external props change (only if they're actually different)
+  useEffect(() => {
+    const nodesJson = JSON.stringify(initialNodes);
+    const edgesJson = JSON.stringify(initialEdges);
+    
+    if (nodesJson !== prevInitialNodesRef.current || edgesJson !== prevInitialEdgesRef.current) {
+      prevInitialNodesRef.current = nodesJson;
+      prevInitialEdgesRef.current = edgesJson;
+      
+      if (initialNodes.length > 0 || initialEdges.length > 0) {
+        setNodes(initialNodes);
+        setEdges(initialEdges);
+      }
+    }
+  }, [initialNodes, initialEdges, setNodes, setEdges]);
 
   const onConnect: OnConnect = useCallback(
     (connection: Connection) => {
@@ -96,26 +132,44 @@ const VaultCanvas = ({ onNodesChange, onEdgesChange }: VaultCanvasProps) => {
     []
   );
 
-  // Notify parent of changes
+  // Notify parent of changes - wrap the parent callbacks to avoid infinite loops
   const handleNodesChange = useCallback(
     (changes: any) => {
       onNodesChangeInternal(changes);
-      if (onNodesChange) {
-        onNodesChange(nodes);
-      }
     },
-    [nodes, onNodesChange, onNodesChangeInternal]
+    [onNodesChangeInternal]
   );
 
   const handleEdgesChange = useCallback(
     (changes: any) => {
       onEdgesChangeInternal(changes);
+    },
+    [onEdgesChangeInternal]
+  );
+
+  // Sync with parent using refs to avoid infinite loops
+  const nodesRef = useRef<Node[]>([]);
+  const edgesRef = useRef<Edge[]>([]);
+
+  useEffect(() => {
+    // Only notify parent if nodes actually changed
+    if (JSON.stringify(nodesRef.current) !== JSON.stringify(nodes)) {
+      nodesRef.current = nodes;
+      if (onNodesChange) {
+        onNodesChange(nodes);
+      }
+    }
+  }, [nodes, onNodesChange]);
+
+  useEffect(() => {
+    // Only notify parent if edges actually changed
+    if (JSON.stringify(edgesRef.current) !== JSON.stringify(edges)) {
+      edgesRef.current = edges;
       if (onEdgesChange) {
         onEdgesChange(edges);
       }
-    },
-    [edges, onEdgesChange, onEdgesChangeInternal]
-  );
+    }
+  }, [edges, onEdgesChange]);
 
   return (
     <div ref={reactFlowWrapper} className="w-full h-full">

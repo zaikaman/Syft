@@ -1,8 +1,8 @@
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { useState, useCallback, useEffect } from 'react';
 import type { Node, Edge } from '@xyflow/react';
-import { Save, Play, Undo2, Redo2, Download, Upload, Sparkles } from 'lucide-react';
-import { Button, Card, GradientText } from '../components/ui';
+import { Save, Play, Undo2, Redo2, Download, Upload, Sparkles, FileText, AlertCircle, FolderOpen, X, Clock } from 'lucide-react';
+import { Button, GradientText } from '../components/ui';
 import BlockPalette from '../components/builder/BlockPalette';
 import VaultCanvas from '../components/builder/VaultCanvas';
 import ValidationFeedback from '../components/builder/ValidationFeedback';
@@ -15,6 +15,16 @@ import { useWallet } from '../providers/WalletProvider';
 import { useNavigate } from 'react-router-dom';
 import type { PaletteItem, ValidationResult } from '../types/blocks';
 
+interface SavedVault {
+  vault_id: string;
+  name: string;
+  description: string;
+  config: any;
+  status: string;
+  created_at: string;
+  updated_at: string;
+}
+
 
 const VaultBuilder = () => {
   const [nodes, setNodes] = useState<Node[]>([]);
@@ -24,13 +34,61 @@ const VaultBuilder = () => {
     errors: [],
     warnings: [],
   });
-  const [showValidation, setShowValidation] = useState(false);
   const [saving, setSaving] = useState(false);
   const [deploying, setDeploying] = useState(false);
+  const [activeTab, setActiveTab] = useState<'preview' | 'validation'>('preview');
+  const [showLoadModal, setShowLoadModal] = useState(false);
+  const [savedVaults, setSavedVaults] = useState<SavedVault[]>([]);
+  const [loadingVaults, setLoadingVaults] = useState(false);
 
   const { address } = useWallet();
   const navigate = useNavigate();
   const { canUndo, canRedo, undo, redo, pushState } = useBuilderHistory(nodes, edges);
+
+  // Load user's saved vaults when component mounts
+  useEffect(() => {
+    if (address) {
+      loadSavedVaults();
+    }
+  }, [address]);
+
+  // Load saved vaults from backend
+  const loadSavedVaults = async () => {
+    if (!address) return;
+
+    try {
+      setLoadingVaults(true);
+      const backendUrl = import.meta.env.PUBLIC_BACKEND_URL || 'http://localhost:3001';
+      const response = await fetch(`${backendUrl}/api/vaults/user/${address}?status=draft`);
+      const data = await response.json();
+
+      if (data.success) {
+        setSavedVaults(data.data);
+        // Auto-show modal if user has saved drafts
+        if (data.data.length > 0 && nodes.length === 0) {
+          setShowLoadModal(true);
+        }
+      }
+    } catch (error) {
+      console.error('Error loading saved vaults:', error);
+    } finally {
+      setLoadingVaults(false);
+    }
+  };
+
+  // Load a specific vault into the builder
+  const handleLoadVault = useCallback((vault: SavedVault) => {
+    try {
+      const { nodes: importedNodes, edges: importedEdges } = ConfigSerializer.deserialize(vault.config);
+      setNodes(importedNodes);
+      setEdges(importedEdges);
+      pushState(importedNodes, importedEdges);
+      setShowLoadModal(false);
+      alert(`Loaded: ${vault.name}`);
+    } catch (error) {
+      alert(`Failed to load vault: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }, [pushState]);
 
   // Validate on changes
   useEffect(() => {
@@ -47,14 +105,26 @@ const VaultBuilder = () => {
   // Handle nodes change
   const handleNodesChange = useCallback((updatedNodes: Node[]) => {
     setNodes(updatedNodes);
-    pushState(updatedNodes, edges);
-  }, [edges, pushState]);
+    // Only push to history after a debounce to avoid too many history entries
+  }, []);
 
-  // Handle edges change
+  // Handle edges change  
   const handleEdgesChange = useCallback((updatedEdges: Edge[]) => {
     setEdges(updatedEdges);
-    pushState(nodes, updatedEdges);
-  }, [nodes, pushState]);
+    // Only push to history after a debounce to avoid too many history entries
+  }, []);
+
+  // Debounced history update - only save to history after user stops making changes
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (nodes.length > 0 || edges.length > 0) {
+        pushState(nodes, edges);
+      }
+    }, 500); // 500ms debounce
+
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [nodes, edges]);
 
   // Save vault configuration
   const handleSave = useCallback(async () => {
@@ -105,7 +175,7 @@ const VaultBuilder = () => {
     const validationResult = BlockValidator.validateVault(nodes, edges);
     
     if (!validationResult.valid) {
-      setShowValidation(true);
+      setActiveTab('validation');
       alert('Please fix validation errors before deploying');
       return;
     }
@@ -224,146 +294,356 @@ const VaultBuilder = () => {
   }, [pushState]);
 
   return (
-    <div className="min-h-screen pt-20 pb-12">
-      <div className="container mx-auto px-4">
-        {/* Header */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="mb-6"
-        >
-          <div className="flex items-center justify-between mb-4">
-            <div>
-              <h1 className="text-4xl md:text-5xl font-bold mb-2">
-                <GradientText>Visual Vault Builder</GradientText>
-              </h1>
-              <p className="text-gray-400 text-lg">
-                Drag and drop blocks to create your yield strategy
-              </p>
-            </div>
-            <div className="flex gap-3">
-              <Button
-                variant="outline"
-                leftIcon={<Undo2 />}
-                onClick={undo}
-                disabled={!canUndo}
-                className="hidden md:flex"
-              >
-                Undo
-              </Button>
-              <Button
-                variant="outline"
-                leftIcon={<Redo2 />}
-                onClick={redo}
-                disabled={!canRedo}
-                className="hidden md:flex"
-              >
-                Redo
-              </Button>
-              <Button variant="outline" leftIcon={<Download />} onClick={handleExport}>
-                Export
-              </Button>
-              <Button variant="outline" leftIcon={<Upload />} onClick={handleImport}>
-                Import
-              </Button>
-              <Button variant="outline" leftIcon={<Save />} onClick={handleSave} disabled={saving}>
-                {saving ? 'Saving...' : 'Save Draft'}
-              </Button>
-              <Button variant="gradient" leftIcon={<Play />} onClick={handleDeploy} disabled={deploying}>
-                {deploying ? 'Deploying...' : 'Deploy Vault'}
-              </Button>
-            </div>
-          </div>
+    <div className="fixed inset-0 bg-[var(--color-bg)]">
+      <div className="h-full flex flex-col">
+        {/* Compact Header with Syft Logo */}
+        <div className="flex-shrink-0 border-b border-white/10 bg-[var(--color-bg-card)]/50 backdrop-blur-md">
+          <div className="container mx-auto px-4 py-3">
+            <div className="flex items-center justify-between">
+              {/* Logo and Title Section */}
+              <div className="flex items-center gap-6">
+                {/* Syft Logo - Clickable to go home */}
+                <button
+                  onClick={() => navigate('/')}
+                  className="flex items-center gap-2 hover:opacity-80 transition-opacity group"
+                  title="Back to Home"
+                >
+                  <div className="relative">
+                    <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-purple-600 to-pink-600 flex items-center justify-center group-hover:scale-105 transition-transform">
+                      <span className="text-white font-bold text-xl">S</span>
+                    </div>
+                    <div className="absolute inset-0 rounded-lg bg-gradient-to-br from-purple-600 to-pink-600 blur-md opacity-50 group-hover:opacity-70 transition-opacity -z-10"></div>
+                  </div>
+                  <span className="text-xl font-bold bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">
+                    Syft
+                  </span>
+                </button>
 
-          {/* Validation feedback */}
-          {showValidation && (!validation.valid || validation.warnings.length > 0) && (
-            <motion.div
-              initial={{ opacity: 0, y: -10 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="mb-4"
-            >
-              <ValidationFeedback
-                validation={validation}
-                onClose={() => setShowValidation(false)}
-              />
-            </motion.div>
-          )}
+                {/* Divider */}
+                <div className="w-px h-8 bg-white/10"></div>
 
-          {/* Template selector */}
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ delay: 0.1 }}
-            className="mb-4"
-          >
-            <Card className="p-4">
-              <div className="flex items-center gap-4">
-                <Sparkles className="w-5 h-5 text-purple-400" />
-                <span className="text-sm font-semibold">Quick Start:</span>
-                <div className="flex gap-2 flex-wrap">
+                <div>
+                  <h1 className="text-2xl font-bold">
+                    <GradientText>Visual Vault Builder</GradientText>
+                  </h1>
+                </div>
+                
+                {/* Quick Templates - Inline */}
+                <div className="hidden xl:flex items-center gap-2 pl-4 border-l border-white/10">
+                  <Sparkles className="w-4 h-4 text-purple-400" />
+                  <span className="text-xs font-semibold text-gray-400">Templates:</span>
                   {vaultTemplates.map((template) => (
                     <button
                       key={template.id}
                       onClick={() => handleLoadTemplate(template.id)}
-                      className="px-3 py-1 text-sm rounded-lg bg-purple-600/20 hover:bg-purple-600/30 border border-purple-500/30 transition-colors"
+                      className="px-2 py-1 text-xs rounded bg-purple-600/20 hover:bg-purple-600/30 border border-purple-500/30 transition-colors"
                     >
                       {template.name}
                     </button>
                   ))}
                 </div>
               </div>
-            </Card>
-          </motion.div>
-        </motion.div>
 
-        <div className="grid grid-cols-12 gap-6">
-          {/* Block Palette - Left Sidebar */}
-          <motion.div
-            initial={{ opacity: 0, x: -20 }}
-            animate={{ opacity: 1, x: 0 }}
-            className="col-span-12 lg:col-span-3"
-          >
-            <div className="sticky top-24">
-              <BlockPalette onBlockSelect={handleBlockSelect} />
+              {/* Action Buttons - Compact */}
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  leftIcon={<Undo2 className="w-4 h-4" />}
+                  onClick={undo}
+                  disabled={!canUndo}
+                  className="hidden md:flex"
+                />
+                <Button
+                  variant="outline"
+                  size="sm"
+                  leftIcon={<Redo2 className="w-4 h-4" />}
+                  onClick={redo}
+                  disabled={!canRedo}
+                  className="hidden md:flex"
+                />
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  leftIcon={<FolderOpen className="w-4 h-4" />} 
+                  onClick={() => setShowLoadModal(true)}
+                  className="hidden lg:flex"
+                >
+                  Load
+                </Button>
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  leftIcon={<Download className="w-4 h-4" />} 
+                  onClick={handleExport}
+                  className="hidden lg:flex"
+                >
+                  Export
+                </Button>
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  leftIcon={<Upload className="w-4 h-4" />} 
+                  onClick={handleImport}
+                  className="hidden lg:flex"
+                >
+                  Import
+                </Button>
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  leftIcon={<Save className="w-4 h-4" />} 
+                  onClick={handleSave} 
+                  disabled={saving}
+                >
+                  {saving ? 'Saving...' : 'Save'}
+                </Button>
+                <Button 
+                  variant="gradient" 
+                  size="sm" 
+                  leftIcon={<Play className="w-4 h-4" />} 
+                  onClick={handleDeploy} 
+                  disabled={deploying}
+                >
+                  {deploying ? 'Deploying...' : 'Deploy'}
+                </Button>
+              </div>
             </div>
-          </motion.div>
 
-          {/* Canvas - Center */}
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.1 }}
-            className="col-span-12 lg:col-span-9 space-y-6"
-          >
-            {/* Canvas */}
-            <div className="rounded-xl overflow-hidden border border-white/10 backdrop-blur-md bg-[var(--color-bg-card)]" style={{ height: '600px' }}>
-              <VaultCanvas
-                onNodesChange={handleNodesChange}
-                onEdgesChange={handleEdgesChange}
-              />
+            {/* Templates for smaller screens */}
+            <div className="xl:hidden mt-2 pt-2 border-t border-white/10">
+              <div className="flex items-center gap-2 flex-wrap">
+                <Sparkles className="w-4 h-4 text-purple-400" />
+                <span className="text-xs font-semibold text-gray-400">Quick Start:</span>
+                {vaultTemplates.map((template) => (
+                  <button
+                    key={template.id}
+                    onClick={() => handleLoadTemplate(template.id)}
+                    className="px-2 py-1 text-xs rounded bg-purple-600/20 hover:bg-purple-600/30 border border-purple-500/30 transition-colors"
+                  >
+                    {template.name}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Main Content Area - Fixed Height */}
+        <div className="flex-1 overflow-hidden">
+          <div className="h-full flex">
+            {/* Left Sidebar - Block Palette */}
+            <div className="w-64 flex-shrink-0 border-r border-white/10 bg-[var(--color-bg-card)]/30 backdrop-blur-sm overflow-hidden">
+              <div className="h-full overflow-y-auto">
+                <BlockPalette onBlockSelect={handleBlockSelect} />
+              </div>
             </div>
 
-            {/* Strategy Preview */}
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.2 }}
-            >
-              <StrategyPreview nodes={nodes} edges={edges} />
-            </motion.div>
+            {/* Center - Canvas Area */}
+            <div className="flex-1 flex flex-col overflow-hidden">
+              {/* Canvas */}
+              <div className="flex-1 overflow-hidden">
+                <VaultCanvas
+                  initialNodes={nodes}
+                  initialEdges={edges}
+                  onNodesChange={handleNodesChange}
+                  onEdgesChange={handleEdgesChange}
+                />
+              </div>
 
-            {/* Real-time validation (bottom) */}
-            {!showValidation && (!validation.valid || validation.warnings.length > 0) && (
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-              >
-                <ValidationFeedback validation={validation} />
-              </motion.div>
-            )}
-          </motion.div>
+              {/* Bottom Panel - Tabbed Preview/Validation */}
+              <div className="h-64 flex-shrink-0 border-t border-white/10 bg-[var(--color-bg-card)]/50 backdrop-blur-md">
+                {/* Tab Headers */}
+                <div className="flex items-center border-b border-white/10">
+                  <button
+                    onClick={() => setActiveTab('preview')}
+                    className={`
+                      flex items-center gap-2 px-4 py-2 text-sm font-medium transition-colors relative
+                      ${activeTab === 'preview' 
+                        ? 'text-purple-400' 
+                        : 'text-gray-400 hover:text-gray-300'
+                      }
+                    `}
+                  >
+                    <FileText className="w-4 h-4" />
+                    Strategy Preview
+                    {activeTab === 'preview' && (
+                      <motion.div
+                        layoutId="activeTab"
+                        className="absolute bottom-0 left-0 right-0 h-0.5 bg-purple-500"
+                      />
+                    )}
+                  </button>
+                  <button
+                    onClick={() => setActiveTab('validation')}
+                    className={`
+                      flex items-center gap-2 px-4 py-2 text-sm font-medium transition-colors relative
+                      ${activeTab === 'validation' 
+                        ? 'text-purple-400' 
+                        : 'text-gray-400 hover:text-gray-300'
+                      }
+                    `}
+                  >
+                    <AlertCircle className="w-4 h-4" />
+                    Validation
+                    {(!validation.valid || validation.warnings.length > 0) && (
+                      <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+                    )}
+                    {activeTab === 'validation' && (
+                      <motion.div
+                        layoutId="activeTab"
+                        className="absolute bottom-0 left-0 right-0 h-0.5 bg-purple-500"
+                      />
+                    )}
+                  </button>
+                </div>
+
+                {/* Tab Content */}
+                <div className="h-[calc(100%-41px)] overflow-y-auto">
+                  <AnimatePresence mode="wait">
+                    {activeTab === 'preview' ? (
+                      <motion.div
+                        key="preview"
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -10 }}
+                        transition={{ duration: 0.2 }}
+                        className="p-4"
+                      >
+                        <StrategyPreview nodes={nodes} edges={edges} />
+                      </motion.div>
+                    ) : (
+                      <motion.div
+                        key="validation"
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -10 }}
+                        transition={{ duration: 0.2 }}
+                        className="p-4"
+                      >
+                        <ValidationFeedback validation={validation} />
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
+
+      {/* Load Saved Vaults Modal */}
+      <AnimatePresence>
+        {showLoadModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+            onClick={() => setShowLoadModal(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              onClick={(e) => e.stopPropagation()}
+              className="bg-[var(--color-bg-card)] border border-white/10 rounded-xl p-6 max-w-2xl w-full max-h-[80vh] overflow-hidden flex flex-col"
+            >
+              {/* Modal Header */}
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-2xl font-bold">
+                  <GradientText>Load Saved Vault</GradientText>
+                </h2>
+                <button
+                  onClick={() => setShowLoadModal(false)}
+                  className="p-2 hover:bg-white/10 rounded-lg transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Modal Content */}
+              <div className="flex-1 overflow-y-auto">
+                {loadingVaults ? (
+                  <div className="flex items-center justify-center py-12">
+                    <div className="text-gray-400">Loading your vaults...</div>
+                  </div>
+                ) : savedVaults.length === 0 ? (
+                  <div className="text-center py-12">
+                    <FolderOpen className="w-16 h-16 mx-auto mb-4 text-gray-600" />
+                    <p className="text-gray-400 mb-2">No saved vaults found</p>
+                    <p className="text-sm text-gray-500">
+                      Create and save a vault to see it here
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {savedVaults.map((vault) => (
+                      <div
+                        key={vault.vault_id}
+                        className="bg-[var(--color-bg-secondary)] border border-white/10 rounded-lg p-4 hover:border-purple-500/50 transition-all cursor-pointer group"
+                        onClick={() => handleLoadVault(vault)}
+                      >
+                        <div className="flex items-start justify-between">
+                          <div className="flex-1">
+                            <h3 className="font-semibold text-white group-hover:text-purple-400 transition-colors">
+                              {vault.name}
+                            </h3>
+                            {vault.description && (
+                              <p className="text-sm text-gray-400 mt-1">
+                                {vault.description}
+                              </p>
+                            )}
+                            <div className="flex items-center gap-4 mt-2 text-xs text-gray-500">
+                              <span className="flex items-center gap-1">
+                                <Clock className="w-3 h-3" />
+                                {new Date(vault.updated_at).toLocaleDateString()}
+                              </span>
+                              <span className="px-2 py-0.5 bg-yellow-500/20 text-yellow-400 rounded">
+                                {vault.status}
+                              </span>
+                            </div>
+                          </div>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="ml-4"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleLoadVault(vault);
+                            }}
+                          >
+                            Load
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Modal Footer */}
+              <div className="mt-4 pt-4 border-t border-white/10 flex justify-between">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={loadSavedVaults}
+                  disabled={loadingVaults}
+                >
+                  Refresh
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowLoadModal(false)}
+                >
+                  Cancel
+                </Button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };

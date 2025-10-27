@@ -109,7 +109,7 @@ router.get('/:vaultId', async (req: Request, res: Response) => {
       success: true,
       data: {
         vaultId: vault.vault_id,
-        owner: vault.owner,
+        owner: vault.owner_wallet_address,
         contractAddress: vault.contract_address,
         config: vault.config,
         status: vault.status,
@@ -383,7 +383,7 @@ router.get('/', async (req: Request, res: Response) => {
  */
 router.post('/drafts', async (req: Request, res: Response) => {
   try {
-    const { owner, config } = req.body;
+    const { owner, config, name } = req.body;
 
     if (!owner || !config) {
       return res.status(400).json({
@@ -392,16 +392,41 @@ router.post('/drafts', async (req: Request, res: Response) => {
       });
     }
 
+    // Ensure user exists in database (upsert)
+    const { error: userError } = await supabase
+      .from('users')
+      .upsert(
+        {
+          wallet_address: owner,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        },
+        {
+          onConflict: 'wallet_address',
+          ignoreDuplicates: true,
+        }
+      );
+
+    if (userError) {
+      console.error('Error upserting user:', userError);
+      // Continue anyway - user might already exist
+    }
+
     // Generate draft ID
     const draftId = `draft-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
+    // Generate a default name if not provided
+    const vaultName = name || `Vault Draft ${new Date().toLocaleDateString()}`;
 
     // Save draft to database with status 'draft'
     const { data, error } = await supabase
       .from('vaults')
       .insert({
         vault_id: draftId,
-        owner,
+        owner_wallet_address: owner,
         contract_address: null, // No contract yet
+        name: vaultName,
+        description: 'Vault draft created from visual builder',
         config,
         status: 'draft',
         created_at: new Date().toISOString(),
@@ -423,6 +448,53 @@ router.post('/drafts', async (req: Request, res: Response) => {
     });
   } catch (error) {
     console.error('Error in POST /api/vaults/drafts:', error);
+    return res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Internal server error',
+    });
+  }
+});
+
+/**
+ * GET /api/vaults/user/:walletAddress
+ * Get all vaults (including drafts) for a user
+ */
+router.get('/user/:walletAddress', async (req: Request, res: Response) => {
+  try {
+    const { walletAddress } = req.params;
+    const { status } = req.query; // Optional filter by status
+
+    if (!walletAddress) {
+      return res.status(400).json({
+        success: false,
+        error: 'Wallet address is required',
+      });
+    }
+
+    // Build query
+    let query = supabase
+      .from('vaults')
+      .select('*')
+      .eq('owner_wallet_address', walletAddress)
+      .order('created_at', { ascending: false });
+
+    // Apply status filter if provided
+    if (status) {
+      query = query.eq('status', status);
+    }
+
+    const { data: vaults, error } = await query;
+
+    if (error) {
+      throw error;
+    }
+
+    return res.json({
+      success: true,
+      data: vaults || [],
+    });
+  } catch (error) {
+    console.error('Error in GET /api/vaults/user/:walletAddress:', error);
     return res.status(500).json({
       success: false,
       error: error instanceof Error ? error.message : 'Internal server error',

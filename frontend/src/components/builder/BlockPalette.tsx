@@ -167,17 +167,17 @@ const BlockPalette = ({ onBlockSelect }: BlockPaletteProps) => {
   };
 
   return (
-    <div className="w-64 bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 overflow-y-auto">
-      <div className="p-4 border-b border-gray-200 dark:border-gray-700">
-        <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
+    <div className="h-full flex flex-col bg-transparent">
+      <div className="flex-shrink-0 p-4 border-b border-white/10">
+        <h2 className="text-lg font-semibold">
           Block Palette
         </h2>
-        <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
-          Drag blocks onto the canvas
+        <p className="text-xs text-gray-400 mt-1">
+          Drag blocks to canvas
         </p>
       </div>
 
-      <div className="p-2">
+      <div className="flex-1 overflow-y-auto p-2">
         {categories.map((category) => {
           const Icon = category.icon;
           const isExpanded = expandedCategories.has(category.id);
@@ -189,11 +189,11 @@ const BlockPalette = ({ onBlockSelect }: BlockPaletteProps) => {
             <div key={category.id} className="mb-2">
               <button
                 onClick={() => toggleCategory(category.id)}
-                className="w-full flex items-center justify-between p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded transition-colors"
+                className="w-full flex items-center justify-between p-2 hover:bg-white/5 rounded transition-colors"
               >
                 <div className="flex items-center gap-2">
-                  <Icon className={`w-5 h-5 ${category.color}`} />
-                  <span className="font-medium text-gray-900 dark:text-white">
+                  <Icon className={`w-4 h-4 ${category.color}`} />
+                  <span className="font-medium text-sm">
                     {category.label}
                   </span>
                 </div>
@@ -212,12 +212,12 @@ const BlockPalette = ({ onBlockSelect }: BlockPaletteProps) => {
                       draggable
                       onDragStart={(e) => handleDragStart(e, item)}
                       onClick={() => onBlockSelect(item)}
-                      className="p-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded cursor-move hover:border-blue-400 dark:hover:border-blue-500 hover:shadow-md transition-all"
+                      className="p-2 bg-white/5 border border-white/10 rounded cursor-move hover:border-purple-500/50 hover:bg-white/10 transition-all group"
                     >
-                      <div className="font-medium text-sm text-gray-900 dark:text-white">
+                      <div className="font-medium text-xs">
                         {item.label}
                       </div>
-                      <div className="text-xs text-gray-600 dark:text-gray-400 mt-1">
+                      <div className="text-[10px] text-gray-400 mt-0.5 leading-tight">
                         {item.description}
                       </div>
                     </div>
@@ -229,11 +229,10 @@ const BlockPalette = ({ onBlockSelect }: BlockPaletteProps) => {
         })}
       </div>
 
-      <div className="p-4 border-t border-gray-200 dark:border-gray-700 mt-4">
-        <div className="text-xs text-gray-600 dark:text-gray-400 space-y-1">
-          <p><strong>Tip:</strong> Drag blocks to the canvas</p>
-          <p>Connect blocks to create rules</p>
-          <p>Asset → Condition → Action</p>
+      <div className="flex-shrink-0 p-3 border-t border-white/10 bg-white/5">
+        <div className="text-[10px] text-gray-400 space-y-1">
+          <p><strong>Tip:</strong> Drag blocks to canvas</p>
+          <p>Connect: Asset → Condition → Action</p>
         </div>
       </div>
     </div>

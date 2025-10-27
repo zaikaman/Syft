@@ -5,6 +5,8 @@
 CREATE TABLE IF NOT EXISTS users (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   wallet_address TEXT UNIQUE NOT NULL,
+  network TEXT DEFAULT 'futurenet',
+  last_login_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   profile JSONB DEFAULT '{}'::jsonb,
@@ -33,4 +35,6 @@ CREATE TRIGGER update_users_updated_at
 -- Comments for documentation
 COMMENT ON TABLE users IS 'Stores user profiles linked to Stellar wallet addresses';
 COMMENT ON COLUMN users.wallet_address IS 'Unique Stellar public key (G...)';
+COMMENT ON COLUMN users.network IS 'Stellar network the user is connected to (testnet, futurenet, mainnet)';
+COMMENT ON COLUMN users.last_login_at IS 'Timestamp of the most recent wallet connection';
 COMMENT ON COLUMN users.profile IS 'Flexible JSON field for user preferences, display name, etc.';

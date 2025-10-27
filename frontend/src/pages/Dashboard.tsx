@@ -40,7 +40,7 @@ const Dashboard = () => {
       setError(null);
 
       const backendUrl = import.meta.env.PUBLIC_BACKEND_URL || 'http://localhost:3001';
-      const response = await fetch(`${backendUrl}/api/vaults?owner=${address}`);
+      const response = await fetch(`${backendUrl}/api/vaults/user/${address}`);
       
       if (!response.ok) {
         throw new Error('Failed to fetch vaults');
@@ -49,7 +49,7 @@ const Dashboard = () => {
       const data = await response.json();
       
       if (data.success) {
-        setVaults(data.data.vaults || []);
+        setVaults(data.data || []);
       } else {
         throw new Error(data.error || 'Failed to fetch vaults');
       }

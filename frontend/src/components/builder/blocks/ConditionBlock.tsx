@@ -1,14 +1,56 @@
-import { Handle, Position } from '@xyflow/react';
+import { Handle, Position, useReactFlow } from '@xyflow/react';
 import { TrendingUp, Clock, Percent, DollarSign } from 'lucide-react';
+import { useState, useEffect, useCallback } from 'react';
 import type { ConditionBlock as ConditionBlockType } from '../../../types/blocks';
 
 interface ConditionBlockProps {
+  id: string;
   data: ConditionBlockType['data'];
   selected?: boolean;
 }
 
-const ConditionBlock = ({ data, selected }: ConditionBlockProps) => {
+const ConditionBlock = ({ id, data, selected }: ConditionBlockProps) => {
   const { conditionType, operator, value, threshold, timeUnit, timeValue, description } = data;
+  const { updateNodeData } = useReactFlow();
+
+  const [localOperator, setLocalOperator] = useState(operator || 'gt');
+  const [localThreshold, setLocalThreshold] = useState(threshold || 0);
+  const [localValue, setLocalValue] = useState(value || 0);
+  const [localTimeValue, setLocalTimeValue] = useState(timeValue || 1);
+  const [localTimeUnit, setLocalTimeUnit] = useState(timeUnit || 'hours');
+
+  useEffect(() => {
+    setLocalOperator(operator || 'gt');
+    setLocalThreshold(threshold || 0);
+    setLocalValue(value || 0);
+    setLocalTimeValue(timeValue || 1);
+    setLocalTimeUnit(timeUnit || 'hours');
+  }, [operator, threshold, value, timeValue, timeUnit]);
+
+  const handleOperatorChange = useCallback((newOperator: string) => {
+    setLocalOperator(newOperator as any);
+    updateNodeData(id, { operator: newOperator });
+  }, [id, updateNodeData]);
+
+  const handleThresholdChange = useCallback((newThreshold: number) => {
+    setLocalThreshold(newThreshold);
+    updateNodeData(id, { threshold: newThreshold });
+  }, [id, updateNodeData]);
+
+  const handleValueChange = useCallback((newValue: number) => {
+    setLocalValue(newValue);
+    updateNodeData(id, { value: newValue });
+  }, [id, updateNodeData]);
+
+  const handleTimeValueChange = useCallback((newTimeValue: number) => {
+    setLocalTimeValue(newTimeValue);
+    updateNodeData(id, { timeValue: newTimeValue });
+  }, [id, updateNodeData]);
+
+  const handleTimeUnitChange = useCallback((newTimeUnit: string) => {
+    setLocalTimeUnit(newTimeUnit as any);
+    updateNodeData(id, { timeUnit: newTimeUnit });
+  }, [id, updateNodeData]);
 
   const getIcon = () => {
     switch (conditionType) {
@@ -25,37 +67,139 @@ const ConditionBlock = ({ data, selected }: ConditionBlockProps) => {
     }
   };
 
+  const getOperatorDisplay = (op: string) => {
+    switch (op) {
+      case 'gt': return '>';
+      case 'lt': return '<';
+      case 'gte': return '≥';
+      case 'lte': return '≤';
+      case 'eq': return '=';
+      default: return op;
+    }
+  };
+
+  const renderConditionInputs = () => {
+    switch (conditionType) {
+      case 'allocation':
+      case 'apy_threshold':
+        return (
+          <div className="space-y-2">
+            <div>
+              <label className="text-xs text-gray-600 dark:text-gray-400 block mb-1">
+                Operator
+              </label>
+              <select
+                value={localOperator}
+                onChange={(e) => handleOperatorChange(e.target.value)}
+                className="w-full px-2 py-1 text-sm bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded focus:outline-none focus:ring-2 focus:ring-purple-500 text-gray-900 dark:text-white"
+              >
+                <option value="gt">Greater than (&gt;)</option>
+                <option value="gte">Greater or equal (≥)</option>
+                <option value="lt">Less than (&lt;)</option>
+                <option value="lte">Less or equal (≤)</option>
+                <option value="eq">Equal (=)</option>
+              </select>
+            </div>
+            <div>
+              <label className="text-xs text-gray-600 dark:text-gray-400 block mb-1">
+                Threshold (%)
+              </label>
+              <input
+                type="number"
+                min="0"
+                max="100"
+                step="0.1"
+                value={localThreshold}
+                onChange={(e) => handleThresholdChange(parseFloat(e.target.value) || 0)}
+                className="w-full px-2 py-1 text-sm bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded focus:outline-none focus:ring-2 focus:ring-purple-500 text-gray-900 dark:text-white"
+              />
+            </div>
+          </div>
+        );
+
+      case 'time_based':
+        return (
+          <div className="space-y-2">
+            <div>
+              <label className="text-xs text-gray-600 dark:text-gray-400 block mb-1">
+                Interval
+              </label>
+              <div className="flex gap-2">
+                <input
+                  type="number"
+                  min="1"
+                  value={localTimeValue}
+                  onChange={(e) => handleTimeValueChange(parseInt(e.target.value) || 1)}
+                  className="flex-1 px-2 py-1 text-sm bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded focus:outline-none focus:ring-2 focus:ring-purple-500 text-gray-900 dark:text-white"
+                />
+                <select
+                  value={localTimeUnit}
+                  onChange={(e) => handleTimeUnitChange(e.target.value)}
+                  className="flex-1 px-2 py-1 text-sm bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded focus:outline-none focus:ring-2 focus:ring-purple-500 text-gray-900 dark:text-white"
+                >
+                  <option value="minutes">Minutes</option>
+                  <option value="hours">Hours</option>
+                  <option value="days">Days</option>
+                  <option value="weeks">Weeks</option>
+                </select>
+              </div>
+            </div>
+          </div>
+        );
+
+      case 'price_change':
+        return (
+          <div className="space-y-2">
+            <div>
+              <label className="text-xs text-gray-600 dark:text-gray-400 block mb-1">
+                Operator
+              </label>
+              <select
+                value={localOperator}
+                onChange={(e) => handleOperatorChange(e.target.value)}
+                className="w-full px-2 py-1 text-sm bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded focus:outline-none focus:ring-2 focus:ring-purple-500 text-gray-900 dark:text-white"
+              >
+                <option value="gt">Greater than (&gt;)</option>
+                <option value="gte">Greater or equal (≥)</option>
+                <option value="lt">Less than (&lt;)</option>
+                <option value="lte">Less or equal (≤)</option>
+                <option value="eq">Equal (=)</option>
+              </select>
+            </div>
+            <div>
+              <label className="text-xs text-gray-600 dark:text-gray-400 block mb-1">
+                Price Change (%)
+              </label>
+              <input
+                type="number"
+                step="0.1"
+                value={localValue}
+                onChange={(e) => handleValueChange(parseFloat(e.target.value) || 0)}
+                className="w-full px-2 py-1 text-sm bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded focus:outline-none focus:ring-2 focus:ring-purple-500 text-gray-900 dark:text-white"
+              />
+            </div>
+          </div>
+        );
+
+      default:
+        return null;
+    }
+  };
+
   const getDisplayText = () => {
     if (description) return description;
 
     switch (conditionType) {
       case 'allocation':
-        return `Allocation ${operator || 'gt'} ${threshold || 0}%`;
+        return `Allocation ${getOperatorDisplay(localOperator)} ${localThreshold}%`;
       case 'apy_threshold':
-        return `APY ${operator || 'gt'} ${threshold || 0}%`;
+        return `APY ${getOperatorDisplay(localOperator)} ${localThreshold}%`;
       case 'time_based':
-        return `Every ${timeValue || 1} ${timeUnit || 'hours'}`;
+        return `Every ${localTimeValue} ${localTimeUnit}`;
       case 'price_change':
-        return `Price change ${operator || 'gt'} ${value || 0}%`;
+        return `Price change ${getOperatorDisplay(localOperator)} ${localValue}%`;
       default:
         return 'Custom condition';
-    }
-  };
-
-  const getOperatorDisplay = () => {
-    switch (operator) {
-      case 'gt':
-        return '>';
-      case 'lt':
-        return '<';
-      case 'gte':
-        return '≥';
-      case 'lte':
-        return '≤';
-      case 'eq':
-        return '=';
-      default:
-        return operator;
     }
   };
 
@@ -64,7 +208,7 @@ const ConditionBlock = ({ data, selected }: ConditionBlockProps) => {
       className={`
         bg-white dark:bg-gray-800 
         border-2 rounded-lg shadow-lg 
-        min-w-[220px] p-4
+        min-w-[260px] p-4
         transition-all duration-200
         ${selected ? 'border-purple-500 ring-2 ring-purple-300' : 'border-gray-300 dark:border-gray-600'}
         hover:shadow-xl
@@ -99,35 +243,16 @@ const ConditionBlock = ({ data, selected }: ConditionBlockProps) => {
         </div>
       </div>
 
-      {/* Condition details */}
-      <div className="space-y-2">
-        <div className="bg-purple-50 dark:bg-purple-900/20 rounded p-3">
-          <p className="text-sm text-gray-900 dark:text-white font-medium">
-            {getDisplayText()}
-          </p>
-        </div>
+      {/* Condition inputs */}
+      <div className="mb-3">
+        {renderConditionInputs()}
+      </div>
 
-        {/* Additional details for complex conditions */}
-        {(operator || threshold !== undefined || value !== undefined) && (
-          <div className="flex items-center justify-between text-xs text-gray-600 dark:text-gray-400">
-            {operator && (
-              <span className="flex items-center gap-1">
-                <span className="font-semibold">Operator:</span>
-                <span className="bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded">
-                  {getOperatorDisplay()}
-                </span>
-              </span>
-            )}
-            {(threshold !== undefined || value !== undefined) && (
-              <span className="flex items-center gap-1">
-                <span className="font-semibold">Value:</span>
-                <span className="bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded">
-                  {threshold || value}
-                </span>
-              </span>
-            )}
-          </div>
-        )}
+      {/* Display summary */}
+      <div className="bg-purple-50 dark:bg-purple-900/20 rounded p-3">
+        <p className="text-sm text-gray-900 dark:text-white font-medium">
+          {getDisplayText()}
+        </p>
       </div>
     </div>
   );
