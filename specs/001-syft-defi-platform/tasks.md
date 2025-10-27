@@ -49,26 +49,26 @@ This project uses a monorepo structure:
 
 **⚠️ CRITICAL**: No user story work can begin until this phase is complete
 
-- [ ] T017 Create Supabase database schema for users table (wallet_address, created_at, profile) in migrations/001_users.sql
-- [ ] T018 [P] Create Supabase database schema for vaults table (vault_id, owner, contract_address, config, status) in migrations/002_vaults.sql
-- [ ] T019 [P] Create Supabase database schema for vault_performance table (vault_id, timestamp, value, returns) in migrations/003_vault_performance.sql
-- [ ] T020 [P] Create Supabase database schema for backtest_results table (backtest_id, vault_id, timeframe, results) in migrations/004_backtest_results.sql
-- [ ] T021 [P] Create Supabase database schema for ai_suggestions table (suggestion_id, vault_id, suggestion_data) in migrations/005_ai_suggestions.sql
-- [ ] T022 [P] Create Supabase database schema for vault_nfts table (nft_id, vault_id, ownership_pct, holder) in migrations/006_vault_nfts.sql
-- [ ] T023 [P] Create Supabase database schema for marketplace_listings table (listing_id, nft_id, price, status) in migrations/007_marketplace.sql
-- [ ] T024 Implement base error handling middleware in backend/src/middleware/errorHandler.ts
-- [ ] T025 [P] Implement request logging middleware in backend/src/middleware/logger.ts
-- [ ] T026 [P] Setup CORS configuration for frontend-backend communication in backend/src/middleware/cors.ts
-- [ ] T027 Implement base API router structure in backend/src/routes/index.ts
-- [ ] T028 [P] Create shared types for vault configuration in shared/types/vault.ts
-- [ ] T029 [P] Create shared types for blockchain transactions in shared/types/transaction.ts
-- [ ] T030 [P] Create utility for Horizon SDK connection management in backend/src/lib/horizonClient.ts
-- [ ] T031 [P] Create utility for wallet signature verification in backend/src/lib/walletAuth.ts
-- [ ] T032 Implement Prophet time-series forecasting client setup in backend/src/lib/prophetClient.ts
-- [ ] T033 [P] Implement OpenAI API client with prompt templates for sentiment analysis in backend/src/lib/openaiClient.ts
-- [ ] T034 [P] Create frontend layout components (Header, Footer, Navigation) in frontend/src/components/layout/
-- [ ] T035 [P] Setup Zustand store structure for app state in frontend/src/store/
-- [ ] T036 [P] Create reusable UI components (Button, Card, Modal, LoadingSpinner) in frontend/src/components/ui/
+- [x] T017 Create Supabase database schema for users table (wallet_address, created_at, profile) in migrations/001_users.sql
+- [x] T018 [P] Create Supabase database schema for vaults table (vault_id, owner, contract_address, config, status) in migrations/002_vaults.sql
+- [x] T019 [P] Create Supabase database schema for vault_performance table (vault_id, timestamp, value, returns) in migrations/003_vault_performance.sql
+- [x] T020 [P] Create Supabase database schema for backtest_results table (backtest_id, vault_id, timeframe, results) in migrations/004_backtest_results.sql
+- [x] T021 [P] Create Supabase database schema for ai_suggestions table (suggestion_id, vault_id, suggestion_data) in migrations/005_ai_suggestions.sql
+- [x] T022 [P] Create Supabase database schema for vault_nfts table (nft_id, vault_id, ownership_pct, holder) in migrations/006_vault_nfts.sql
+- [x] T023 [P] Create Supabase database schema for marketplace_listings table (listing_id, nft_id, price, status) in migrations/007_marketplace.sql
+- [x] T024 Implement base error handling middleware in backend/src/middleware/errorHandler.ts
+- [x] T025 [P] Implement request logging middleware in backend/src/middleware/logger.ts
+- [x] T026 [P] Setup CORS configuration for frontend-backend communication in backend/src/middleware/cors.ts
+- [x] T027 Implement base API router structure in backend/src/routes/index.ts
+- [x] T028 [P] Create shared types for vault configuration in shared/types/vault.ts
+- [x] T029 [P] Create shared types for blockchain transactions in shared/types/transaction.ts
+- [x] T030 [P] Create utility for Horizon SDK connection management in backend/src/lib/horizonClient.ts
+- [x] T031 [P] Create utility for wallet signature verification in backend/src/lib/walletAuth.ts
+- [x] T032 Implement Prophet time-series forecasting client setup in backend/src/lib/prophetClient.ts
+- [x] T033 [P] Implement OpenAI API client with prompt templates for sentiment analysis in backend/src/lib/openaiClient.ts
+- [x] T034 [P] Create frontend layout components (Header, Footer, Navigation) in frontend/src/components/layout/
+- [x] T035 [P] Setup Zustand store structure for app state in frontend/src/store/
+- [x] T036 [P] Create reusable UI components (Button, Card, Modal, LoadingSpinner) in frontend/src/components/ui/
 
 **Checkpoint**: Foundation ready - user story implementation can now begin in parallel
 
