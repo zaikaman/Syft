@@ -17,4 +17,8 @@ pub enum VaultError {
     NFTNotFound = 10,
     InvalidOwnership = 11,
     OwnershipExceeded = 12,
+    SlippageTooHigh = 13,
+    SwapFailed = 14,
+    PoolNotFound = 15,
+    InsufficientLiquidity = 16,
 }

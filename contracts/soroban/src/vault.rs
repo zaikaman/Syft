@@ -55,6 +55,21 @@ impl VaultContract {
             return Err(VaultError::InvalidAmount);
         }
 
+        // Get config to determine base asset (first asset in the vault)
+        let config: VaultConfig = env.storage().instance().get(&CONFIG)
+            .ok_or(VaultError::NotInitialized)?;
+        
+        if config.assets.is_empty() {
+            return Err(VaultError::InvalidConfiguration);
+        }
+        
+        let base_token = config.assets.get(0)
+            .ok_or(VaultError::InvalidConfiguration)?;
+
+        // Transfer tokens from user to vault
+        crate::token_client::transfer_to_vault(&env, &base_token, &user, amount)
+            .map_err(|_| VaultError::TransferFailed)?;
+
         // Get current state
         let mut state: VaultState = env.storage().instance().get(&STATE)
             .ok_or(VaultError::NotInitialized)?;
@@ -122,6 +137,21 @@ impl VaultContract {
             .and_then(|v| v.checked_div(state.total_shares))
             .ok_or(VaultError::InvalidAmount)?;
 
+        // Get config to determine base asset
+        let config: VaultConfig = env.storage().instance().get(&CONFIG)
+            .ok_or(VaultError::NotInitialized)?;
+        
+        if config.assets.is_empty() {
+            return Err(VaultError::InvalidConfiguration);
+        }
+        
+        let base_token = config.assets.get(0)
+            .ok_or(VaultError::InvalidConfiguration)?;
+
+        // Transfer tokens from vault to user
+        crate::token_client::transfer_from_vault(&env, &base_token, &user, amount)
+            .map_err(|_| VaultError::TransferFailed)?;
+
         // Update state
         state.total_shares = state.total_shares.checked_sub(shares)
             .ok_or(VaultError::InvalidAmount)?;
@@ -169,6 +199,28 @@ impl VaultContract {
     pub fn get_config(env: Env) -> Result<VaultConfig, VaultError> {
         env.storage().instance().get(&CONFIG)
             .ok_or(VaultError::NotInitialized)
+    }
+
+    /// Set router address for swaps (owner only)
+    pub fn set_router(env: Env, router: Address) -> Result<(), VaultError> {
+        // Check vault is initialized
+        if !env.storage().instance().has(&CONFIG) {
+            return Err(VaultError::NotInitialized);
+        }
+
+        // Get config and verify owner
+        let mut config: VaultConfig = env.storage().instance().get(&CONFIG)
+            .ok_or(VaultError::NotInitialized)?;
+        
+        config.owner.require_auth();
+        
+        // Update router address
+        config.router_address = Some(router);
+        
+        // Store updated config
+        env.storage().instance().set(&CONFIG, &config);
+        
+        Ok(())
     }
 
     /// Trigger rebalance (called by rule engine or manually)

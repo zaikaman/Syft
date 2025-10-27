@@ -8,6 +8,7 @@ pub struct VaultConfig {
     pub name: String,
     pub assets: Vec<Address>,
     pub rules: Vec<RebalanceRule>,
+    pub router_address: Option<Address>, // Soroswap/Phoenix router for swaps
 }
 
 #[contracttype]
@@ -32,4 +33,11 @@ pub struct RebalanceRule {
 pub struct UserPosition {
     pub shares: i128,
     pub last_deposit: u64,
+}
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AssetBalance {
+    pub token: Address,
+    pub amount: i128,
 }

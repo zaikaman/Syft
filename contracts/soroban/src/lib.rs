@@ -6,8 +6,10 @@ mod vault;
 mod engine;
 mod rebalance;
 mod events;
-// mod factory;  // Factory should be a separate contract
 mod errors;
+mod token_client;
+mod swap_router;
+// mod factory;  // Factory should be a separate contract
 // mod vault_nft;  // VaultNFT should be a separate contract
 // mod nft_types;
 

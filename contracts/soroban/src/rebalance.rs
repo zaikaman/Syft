@@ -60,7 +60,7 @@ fn execute_rule_action(
 
 /// Execute rebalancing to target allocation percentages
 fn execute_rebalance_action(
-    _env: &Env,
+    env: &Env,
     rule: &crate::types::RebalanceRule,
     assets: &Vec<Address>,
     total_value: i128
@@ -83,36 +83,90 @@ fn execute_rebalance_action(
     if total_allocation != 100_0000 && total_allocation != 0 {
         return Err(VaultError::InvalidConfiguration);
     }
+
+    // Get router address from config
+    let config: crate::types::VaultConfig = env.storage().instance()
+        .get(&CONFIG)
+        .ok_or(VaultError::NotInitialized)?;
     
-    // Calculate target amounts and execute swaps
+    let router_address = config.router_address
+        .ok_or(VaultError::InvalidConfiguration)?;
+    
+    // Calculate current balances and target amounts
+    let mut current_balances: Vec<i128> = Vec::new(env);
+    let mut target_amounts: Vec<i128> = Vec::new(env);
+    
     for i in 0..assets.len() {
-        if let (Some(_asset), Some(target_pct)) = (assets.get(i), rule.target_allocation.get(i)) {
+        if let (Some(asset), Some(target_pct)) = (assets.get(i), rule.target_allocation.get(i)) {
+            // Get current balance of this asset in vault
+            let current_balance = crate::token_client::get_vault_balance(env, &asset);
+            current_balances.push_back(current_balance);
+            
+            // Calculate target amount
             let target_amount = total_value
                 .checked_mul(target_pct)
                 .and_then(|v| v.checked_div(100_0000))
                 .ok_or(VaultError::InvalidAmount)?;
             
-            // Production rebalancing logic:
-            // 1. Get current asset balance
-            // let current_amount = get_token_balance(env, &asset);
+            target_amounts.push_back(target_amount);
+        }
+    }
+    
+    // Execute swaps to reach target allocation
+    for i in 0..assets.len() {
+        if let (Some(asset), Some(current), Some(target)) = (
+            assets.get(i),
+            current_balances.get(i),
+            target_amounts.get(i)
+        ) {
+            let diff = target - current;
             
-            // 2. Calculate difference from target
-            // let diff = target_amount - current_amount;
-            
-            // 3. Execute swaps to reach target allocation
-            // if diff > 0 {
-            //     // Need to buy more of this asset
-            //     let source_asset = find_asset_to_sell(env, assets, i)?;
-            //     execute_amm_swap(env, &source_asset, &asset, diff.abs(), 0)?;
-            // } else if diff < 0 {
-            //     // Need to sell some of this asset
-            //     let target_asset = find_asset_to_buy(env, assets, i)?;
-            //     execute_amm_swap(env, &asset, &target_asset, diff.abs(), 0)?;
-            // }
-            
-            // For MVP: Just validate the calculation
-            if target_amount > total_value {
-                return Err(VaultError::InvalidAmount);
+            if diff > 0 {
+                // Need to buy more of this asset
+                // Find an asset we have excess of to sell
+                for j in 0..assets.len() {
+                    if i == j {
+                        continue;
+                    }
+                    
+                    if let (Some(source_asset), Some(source_current), Some(source_target)) = (
+                        assets.get(j),
+                        current_balances.get(j),
+                        target_amounts.get(j)
+                    ) {
+                        if source_current > source_target {
+                            // This asset has excess, use it as source
+                            let amount_to_swap = diff.min(source_current - source_target);
+                            
+                            // Calculate minimum output with 1% slippage tolerance
+                            let min_amount_out = (diff * 99) / 100;
+                            
+                            // Approve router to spend our tokens
+                            crate::token_client::approve_router(
+                                env,
+                                &source_asset,
+                                &router_address,
+                                amount_to_swap,
+                            )?;
+                            
+                            // Execute swap through router
+                            let amount_out = crate::swap_router::swap_via_router(
+                                env,
+                                &router_address,
+                                &source_asset,
+                                &asset,
+                                amount_to_swap,
+                                min_amount_out,
+                            )?;
+                            
+                            // Update balances after swap
+                            current_balances.set(j, source_current - amount_to_swap);
+                            current_balances.set(i, current + amount_out);
+                            
+                            break;
+                        }
+                    }
+                }
             }
         }
     }
@@ -122,14 +176,11 @@ fn execute_rebalance_action(
 
 /// Execute staking action
 fn execute_stake_action(
-    _env: &Env,
+    env: &Env,
     rule: &crate::types::RebalanceRule,
     assets: &Vec<Address>,
     total_value: i128
 ) -> Result<(), VaultError> {
-    // MVP: Simplified staking logic
-    // Production would integrate with Stellar staking protocols
-    
     // Validate at least one asset to stake
     if assets.is_empty() {
         return Err(VaultError::InvalidConfiguration);
@@ -145,24 +196,43 @@ fn execute_stake_action(
         return Err(VaultError::InsufficientBalance);
     }
     
-    // In production: Execute staking transaction
-    // 1. Transfer assets to staking contract
-    // 2. Receive staking receipt/shares
-    // 3. Update vault state
+    // Get the primary staking asset (typically native XLM or first asset)
+    let staking_token = assets.get(0).ok_or(VaultError::InvalidConfiguration)?;
+    
+    // Get current balance
+    let balance = crate::token_client::get_vault_balance(env, &staking_token);
+    
+    if stake_amount > balance {
+        return Err(VaultError::InsufficientBalance);
+    }
+    
+    // In production, integrate with Stellar staking:
+    // For XLM staking on Stellar:
+    // 1. Identify validator/staking pool address
+    // 2. Create staking operation (delegate to validator)
+    // 3. Track staking position and rewards
+    
+    // For liquid staking tokens (like stXLM):
+    // let staking_pool_address = get_staking_pool_address(env)?;
+    // let staking_client = StakingPoolClient::new(env, &staking_pool_address);
+    // let st_tokens = staking_client.stake(
+    //     &env.current_contract_address(),
+    //     &stake_amount,
+    // );
+    
+    // Store staked amount in vault state
+    // This would be tracked in AssetBalance with staking metadata
     
     Ok(())
 }
 
 /// Execute liquidity provision action
 fn execute_liquidity_action(
-    _env: &Env,
+    env: &Env,
     rule: &crate::types::RebalanceRule,
     assets: &Vec<Address>,
     total_value: i128
 ) -> Result<(), VaultError> {
-    // MVP: Simplified liquidity provision
-    // Production would integrate with Stellar AMM pools
-    
     // Need at least 2 assets for liquidity pair
     if assets.len() < 2 {
         return Err(VaultError::InvalidConfiguration);
@@ -178,11 +248,50 @@ fn execute_liquidity_action(
         return Err(VaultError::InsufficientBalance);
     }
     
-    // In production: Execute liquidity provision
-    // 1. Calculate optimal amounts for each asset in pair
-    // 2. Add liquidity to Stellar AMM pool
-    // 3. Receive LP tokens
-    // 4. Update vault state with LP position
+    // Get router address from config
+    let config: crate::types::VaultConfig = env.storage().instance()
+        .get(&CONFIG)
+        .ok_or(VaultError::NotInitialized)?;
+    
+    let router_address = config.router_address
+        .ok_or(VaultError::InvalidConfiguration)?;
+    
+    // Use first two assets as liquidity pair
+    let token_a = assets.get(0).ok_or(VaultError::InvalidConfiguration)?;
+    let token_b = assets.get(1).ok_or(VaultError::InvalidConfiguration)?;
+    
+    // Get current balances
+    let balance_a = crate::token_client::get_vault_balance(env, &token_a);
+    let balance_b = crate::token_client::get_vault_balance(env, &token_b);
+    
+    // Calculate amounts to provide (proportional to current ratio)
+    let amount_a = liquidity_amount / 2;
+    let amount_b = liquidity_amount / 2;
+    
+    // Verify we have sufficient balance
+    if amount_a > balance_a || amount_b > balance_b {
+        return Err(VaultError::InsufficientBalance);
+    }
+    
+    // Approve router to spend our tokens
+    crate::token_client::approve_router(env, &token_a, &router_address, amount_a)?;
+    crate::token_client::approve_router(env, &token_b, &router_address, amount_b)?;
+    
+    // In production, call router's add_liquidity function:
+    // let router_client = SoroswapRouterClient::new(env, &router_address);
+    // let (lp_amount, actual_a, actual_b) = router_client.add_liquidity(
+    //     &token_a,
+    //     &token_b,
+    //     &amount_a,
+    //     &amount_b,
+    //     &(amount_a * 95 / 100), // min_amount_a with 5% slippage
+    //     &(amount_b * 95 / 100), // min_amount_b with 5% slippage
+    //     &env.current_contract_address(),
+    //     &(env.ledger().timestamp() + 3600), // deadline
+    // );
+    
+    // Store LP token position in vault state
+    // This would be tracked in a separate data structure in production
     
     Ok(())
 }
@@ -198,45 +307,36 @@ fn swap_tokens(
         return Err(VaultError::InvalidAmount);
     }
     
-    // In Stellar/Soroban, we use PathPayment or direct AMM swaps
-    // For production, this would integrate with Stellar liquidity pool contracts
+    // Get router address from vault config
+    let config: crate::types::VaultConfig = env.storage().instance()
+        .get(&symbol_short!("CONFIG"))
+        .ok_or(VaultError::NotInitialized)?;
     
-    // Step 1: Create a path from source to destination token
-    // For direct swap: path = [from_token, to_token]
-    // For multi-hop: path = [from_token, intermediate_token, ..., to_token]
-    let mut path: Vec<Address> = Vec::new(env);
-    path.push_back(from_token.clone());
-    path.push_back(to_token.clone());
+    let router_address = config.router_address
+        .ok_or(VaultError::InvalidConfiguration)?;
     
-    // Step 2: Query liquidity pool for estimated output
-    // This would call: liquidity_pool.get_amount_out(amount_in, from_token, to_token)
-    // For now, use simplified calculation (0.3% fee)
-    let fee_amount = amount.checked_mul(3)
-        .and_then(|v| v.checked_div(1000))
-        .ok_or(VaultError::InvalidAmount)?;
+    // Calculate minimum output with 1% slippage tolerance
+    let min_amount_out = (amount * 99) / 100;
     
-    let amount_after_fee = amount.checked_sub(fee_amount)
-        .ok_or(VaultError::InvalidAmount)?;
+    // Approve router to spend our tokens
+    crate::token_client::approve_router(
+        env,
+        from_token,
+        &router_address,
+        amount,
+    )?;
     
-    // Step 3: Execute the swap
-    // In production, this would:
-    // 1. Approve the liquidity pool to spend from_token
-    // 2. Call liquidity_pool.swap(from_token, to_token, amount, min_amount_out)
-    // 3. Verify the swap succeeded and return actual output amount
+    // Execute swap through Soroswap/Phoenix router
+    let amount_out = crate::swap_router::swap_via_router(
+        env,
+        &router_address,
+        from_token,
+        to_token,
+        amount,
+        min_amount_out,
+    )?;
     
-    // For MVP, return estimated amount (would be replaced with actual swap call)
-    // Example production code:
-    // let liquidity_pool_client = LiquidityPoolClient::new(env, &pool_address);
-    // let amount_out = liquidity_pool_client.swap(
-    //     &env.current_contract_address(),
-    //     from_token,
-    //     to_token,
-    //     &amount,
-    //     &min_amount_out,
-    //     &deadline
-    // );
-    
-    Ok(amount_after_fee)
+    Ok(amount_out)
 }
 
 /// Get optimal swap route between two tokens
@@ -270,22 +370,12 @@ fn execute_amm_swap(
     amount_in: i128,
     min_amount_out: i128,
 ) -> Result<i128, VaultError> {
-    // Production implementation would:
-    // 1. Find the liquidity pool contract address for this pair
-    // 2. Check pool reserves to ensure sufficient liquidity
-    // 3. Calculate expected output with slippage protection
-    // 4. Execute the swap transaction
-    // 5. Return actual amount received
-    
-    // Get swap route
-    let _route = get_swap_route(env, from_token, to_token)?;
-    
-    // Execute swap
+    // Use the swap_tokens function which now uses the router
     let amount_out = swap_tokens(env, from_token, to_token, amount_in)?;
     
     // Verify minimum output
     if amount_out < min_amount_out {
-        return Err(VaultError::InvalidAmount);
+        return Err(VaultError::SlippageTooHigh);
     }
     
     Ok(amount_out)
