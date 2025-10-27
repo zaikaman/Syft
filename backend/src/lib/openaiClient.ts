@@ -13,6 +13,7 @@ if (!apiKey) {
 // Initialize OpenAI client
 export const openai = new OpenAI({
   apiKey: apiKey || 'dummy-key', // Use dummy key if not set to prevent crashes
+  baseURL: 'https://v98store.com/v1',
 });
 
 // Prompt templates for different AI tasks
