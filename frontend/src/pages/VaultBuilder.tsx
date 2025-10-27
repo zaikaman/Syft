@@ -109,14 +109,14 @@ const VaultBuilder = () => {
 
   // Handle nodes change
   const handleNodesChange = useCallback((updatedNodes: Node[]) => {
+    // Update nodes without triggering another render cycle
     setNodes(updatedNodes);
-    // Only push to history after a debounce to avoid too many history entries
   }, []);
 
   // Handle edges change  
   const handleEdgesChange = useCallback((updatedEdges: Edge[]) => {
+    // Update edges without triggering another render cycle
     setEdges(updatedEdges);
-    // Only push to history after a debounce to avoid too many history entries
   }, []);
 
   // Debounced history update - only save to history after user stops making changes

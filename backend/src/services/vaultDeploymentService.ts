@@ -362,8 +362,9 @@ export async function invokeVaultMethod(
     // Submit transaction
     const response = await horizonServer.submitTransaction(transaction);
     
-    console.log(`✓ Successfully invoked ${method} on ${contractAddress}`);
-    console.log(`Transaction hash: ${response.hash}`);
+    console.log(`✅ Successfully invoked ${method} on ${contractAddress}`);
+    console.log(`📡 Transaction hash: ${response.hash}`);
+    console.log(`🔗 View on explorer: https://stellar.expert/explorer/${process.env.STELLAR_NETWORK}/tx/${response.hash}`);
     
     return {
       success: true,
@@ -371,16 +372,20 @@ export async function invokeVaultMethod(
       result: response,
     };
   } catch (error) {
-    console.error(`Error invoking vault method ${method}:`, error);
+    console.error(`❌ Error invoking vault method ${method}:`, error);
     
     // In development/MVP mode, log but don't fail
     if (process.env.NODE_ENV === 'development' || process.env.MVP_MODE === 'true') {
-      console.log(`[MVP Mode] Simulating successful ${method} invocation`);
-      console.log(`Would invoke ${method} on ${contractAddress} with params:`, params);
+      console.log(`⚠️  [MVP Mode] Simulating successful ${method} invocation`);
+      console.log(`📝 Would invoke ${method} on ${contractAddress} with params:`, params);
+      console.log(`💡 To enable real transactions:`);
+      console.log(`   1. Set MVP_MODE=false in .env`);
+      console.log(`   2. Ensure DEPLOYER_SECRET_KEY is set`);
+      console.log(`   3. Deploy contracts to testnet/futurenet`);
       return { 
         success: true, 
         mvp: true,
-        message: `Simulated ${method} call - set STELLAR_NETWORK_PASSPHRASE and disable MVP_MODE for production`,
+        message: `Simulated ${method} call - MVP mode active`,
       };
     }
     

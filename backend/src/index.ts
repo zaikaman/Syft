@@ -64,6 +64,15 @@ app.listen(port, () => {
   console.log('📡 Server is ready to accept connections');
   console.log('🏥 Health check: http://localhost:' + port + '/health');
   
+  // Display transaction mode
+  const mvpMode = process.env.MVP_MODE === 'true';
+  const hasDeployerKey = !!process.env.DEPLOYER_SECRET_KEY;
+  console.log('\n⚙️  Configuration:');
+  console.log(`   Network: ${process.env.STELLAR_NETWORK || 'testnet'}`);
+  console.log(`   MVP Mode: ${mvpMode ? '⚠️  ENABLED (simulated txs)' : '✅ DISABLED (real txs)'}`);
+  console.log(`   Rebalancer Key: ${hasDeployerKey ? '✅ Configured' : '❌ Missing'}`);
+  console.log(`   Transaction Mode: ${!mvpMode && hasDeployerKey ? '🔴 LIVE ON-CHAIN' : '🟡 SIMULATION'}`);
+  
   // Start background services
   console.log('\n🔄 Starting background services...');
   
@@ -77,6 +86,9 @@ app.listen(port, () => {
     executeRebalance(trigger.vaultId, trigger.ruleIndex).then((result) => {
       if (result.success) {
         console.log(`✅ Rebalance executed successfully for vault ${trigger.vaultId}`);
+        if (result.transactionHash && !result.transactionHash.startsWith('mock_') && !result.transactionHash.startsWith('simulated_')) {
+          console.log(`🔗 TX Hash: ${result.transactionHash}`);
+        }
       } else {
         console.error(`❌ Rebalance failed for vault ${trigger.vaultId}:`, result.error);
       }

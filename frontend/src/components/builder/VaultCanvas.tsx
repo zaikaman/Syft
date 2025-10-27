@@ -53,23 +53,36 @@ const VaultCanvas = ({ initialNodes = [], initialEdges = [], onNodesChange, onEd
   const [reactFlowInstance, setReactFlowInstance] = useState<any>(null);
   const [nodeId, setNodeId] = useState(0);
 
-  // Track if we need to update from external props
-  const prevInitialNodesRef = useRef<string>('');
-  const prevInitialEdgesRef = useRef<string>('');
+  // Track if we're currently syncing from parent to avoid loops
+  const isSyncingFromParent = useRef(false);
 
-  // Update internal state when external props change (only if they're actually different)
+  // Track previous props to detect external changes
+  const prevInitialNodesRef = useRef<Node[]>(initialNodes);
+  const prevInitialEdgesRef = useRef<Edge[]>(initialEdges);
+
+  // Update internal state when external props change
   useEffect(() => {
-    const nodesJson = JSON.stringify(initialNodes);
-    const edgesJson = JSON.stringify(initialEdges);
+    const nodesChanged = JSON.stringify(initialNodes) !== JSON.stringify(prevInitialNodesRef.current);
+    const edgesChanged = JSON.stringify(initialEdges) !== JSON.stringify(prevInitialEdgesRef.current);
     
-    if (nodesJson !== prevInitialNodesRef.current || edgesJson !== prevInitialEdgesRef.current) {
-      prevInitialNodesRef.current = nodesJson;
-      prevInitialEdgesRef.current = edgesJson;
+    if (nodesChanged || edgesChanged) {
+      prevInitialNodesRef.current = initialNodes;
+      prevInitialEdgesRef.current = initialEdges;
       
-      if (initialNodes.length > 0 || initialEdges.length > 0) {
+      // Set flag to prevent notifying parent of this change
+      isSyncingFromParent.current = true;
+      
+      if (nodesChanged) {
         setNodes(initialNodes);
+      }
+      if (edgesChanged) {
         setEdges(initialEdges);
       }
+      
+      // Reset flag after state updates are complete
+      setTimeout(() => {
+        isSyncingFromParent.current = false;
+      }, 0);
     }
   }, [initialNodes, initialEdges, setNodes, setEdges]);
 
@@ -147,27 +160,26 @@ const VaultCanvas = ({ initialNodes = [], initialEdges = [], onNodesChange, onEd
     [onEdgesChangeInternal]
   );
 
-  // Sync with parent using refs to avoid infinite loops
-  const nodesRef = useRef<Node[]>([]);
-  const edgesRef = useRef<Edge[]>([]);
-
+  // Sync with parent - only notify when internal changes occur
   useEffect(() => {
-    // Only notify parent if nodes actually changed
-    if (JSON.stringify(nodesRef.current) !== JSON.stringify(nodes)) {
-      nodesRef.current = nodes;
-      if (onNodesChange) {
-        onNodesChange(nodes);
-      }
+    // Skip if we're syncing from parent props
+    if (isSyncingFromParent.current) {
+      return;
+    }
+
+    if (onNodesChange) {
+      onNodesChange(nodes);
     }
   }, [nodes, onNodesChange]);
 
   useEffect(() => {
-    // Only notify parent if edges actually changed
-    if (JSON.stringify(edgesRef.current) !== JSON.stringify(edges)) {
-      edgesRef.current = edges;
-      if (onEdgesChange) {
-        onEdgesChange(edges);
-      }
+    // Skip if we're syncing from parent props
+    if (isSyncingFromParent.current) {
+      return;
+    }
+
+    if (onEdgesChange) {
+      onEdgesChange(edges);
     }
   }, [edges, onEdgesChange]);
 
