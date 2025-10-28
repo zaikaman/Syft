@@ -97,11 +97,12 @@ export const VaultActions: React.FC<VaultActionsProps> = ({
       );
       setAmount('');
       
-      // Wait a moment for the transaction to be processed on-chain
-      // then refresh wallet balance in header
+      // Refresh wallet balance immediately and again after a delay
+      // This ensures quick feedback and catches any delayed updates
+      await updateBalance();
       setTimeout(async () => {
         await updateBalance();
-      }, 2000); // Wait 2 seconds before refreshing
+      }, 3000); // Wait 3 seconds for transaction to fully propagate
       
       onActionComplete?.('deposit', data.data);
     } catch (error) {
@@ -170,11 +171,12 @@ export const VaultActions: React.FC<VaultActionsProps> = ({
       );
       setShares('');
       
-      // Wait a moment for the transaction to be processed on-chain
-      // then refresh wallet balance in header
+      // Refresh wallet balance immediately and again after a delay
+      // This ensures quick feedback and catches any delayed updates
+      await updateBalance();
       setTimeout(async () => {
         await updateBalance();
-      }, 2000); // Wait 2 seconds before refreshing
+      }, 3000); // Wait 3 seconds for transaction to fully propagate
       
       onActionComplete?.('withdraw', data.data);
     } catch (error) {
