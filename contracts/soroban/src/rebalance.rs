@@ -112,6 +112,35 @@ fn execute_rebalance_action(
         }
     }
     
+    // Check if rebalancing is actually needed (tolerance: 1% of total value)
+    let tolerance = total_value / 100; // 1% tolerance
+    let mut needs_rebalance = false;
+    
+    for i in 0..assets.len() {
+        if let (Some(current), Some(target)) = (
+            current_balances.get(i),
+            target_amounts.get(i)
+        ) {
+            let diff = if current > target {
+                current - target
+            } else {
+                target - current
+            };
+            
+            // If any asset is off by more than tolerance, we need to rebalance
+            if diff > tolerance {
+                needs_rebalance = true;
+                break;
+            }
+        }
+    }
+    
+    // Skip rebalancing if already at target allocation
+    if !needs_rebalance {
+        // No error, just skip - allocation is already correct
+        return Ok(());
+    }
+    
     // Execute swaps to reach target allocation
     for i in 0..assets.len() {
         if let (Some(asset), Some(current), Some(target)) = (
@@ -120,6 +149,11 @@ fn execute_rebalance_action(
             target_amounts.get(i)
         ) {
             let diff = target - current;
+            
+            // Skip if this asset is already close to target
+            if diff.abs() <= tolerance {
+                continue;
+            }
             
             if diff > 0 {
                 // Need to buy more of this asset
@@ -137,6 +171,11 @@ fn execute_rebalance_action(
                         if source_current > source_target {
                             // This asset has excess, use it as source
                             let amount_to_swap = diff.min(source_current - source_target);
+                            
+                            // Skip if amount is negligible
+                            if amount_to_swap <= 0 {
+                                continue;
+                            }
                             
                             // Calculate minimum output with 1% slippage tolerance
                             let min_amount_out = (diff * 99) / 100;

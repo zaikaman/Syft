@@ -57,6 +57,116 @@ export async function evaluateVaultRules(vaultId: string): Promise<RuleTrigger[]
 }
 
 /**
+ * Check if rebalancing is actually needed by comparing current vs target allocation
+ */
+async function checkIfRebalanceNeeded(rule: any, vault: any): Promise<boolean> {
+  try {
+    // Validate vault has a valid contract address
+    const contractAddress = vault.contract_address;
+    if (!contractAddress) {
+      console.log(`⏭️  Vault ${vault.vault_id} has no contract address - skipping rebalance check`);
+      return false;
+    }
+
+    // Check if contract address is valid (should start with C or G and be 56 chars)
+    if (!contractAddress.startsWith('C') && !contractAddress.startsWith('G')) {
+      console.log(`⏭️  Vault ${vault.vault_id} has invalid contract address format: ${contractAddress} - skipping rebalance check`);
+      return false;
+    }
+
+    if (contractAddress.length !== 56) {
+      console.log(`⏭️  Vault ${vault.vault_id} has invalid contract address length: ${contractAddress.length} - skipping rebalance check`);
+      return false;
+    }
+
+    // Get target allocation from rule
+    const targetAllocation = rule.target_allocation || [];
+    if (targetAllocation.length === 0) {
+      return false;
+    }
+
+    // Get vault configuration to determine which assets to check
+    const config = vault.config || {};
+    const assets = config.assets || [];
+    
+    if (assets.length === 0) {
+      return false;
+    }
+
+    // Import necessary functions
+    const { fetchAssetBalances } = await import('./assetService.js');
+    
+    // Get current balances from the vault's wallet
+    const walletAssets = await fetchAssetBalances(contractAddress);
+    
+    // Calculate total value
+    let totalValue = 0;
+    const assetValues: number[] = [];
+    
+    for (const asset of assets) {
+      const assetCode = asset.code || 'XLM';
+      
+      // Find balance for this asset
+      let balance = 0;
+      const assetBalance = walletAssets.balances.find(b => {
+        if (assetCode === 'XLM' && b.asset_type === 'native') {
+          return true;
+        }
+        return b.asset_code === assetCode;
+      });
+      
+      if (assetBalance) {
+        balance = parseFloat(assetBalance.balance);
+      }
+      
+      // Get price in USD (for now use mock prices, in production use real prices)
+      const priceUSD = assetCode === 'XLM' ? 0.12 : 1.0; // Mock: XLM=$0.12, USDC=$1
+      const value = balance * priceUSD;
+      
+      assetValues.push(value);
+      totalValue += value;
+    }
+
+    if (totalValue === 0) {
+      console.log(`⏭️  Vault ${vault.vault_id} has 0 total value - no rebalance needed`);
+      return false;
+    }
+
+    // Calculate current allocation percentages
+    const currentAllocation = assetValues.map(value => (value / totalValue) * 100);
+
+    // Compare current vs target (target is in basis points, 100_0000 = 100%)
+    const TOLERANCE_PERCENT = 1.0; // 1% tolerance
+    let maxDrift = 0;
+
+    for (let i = 0; i < Math.min(currentAllocation.length, targetAllocation.length); i++) {
+      const current = currentAllocation[i];
+      const target = targetAllocation[i] / 1000; // Convert from basis points (100_0000 = 100%) to percentage
+      const drift = Math.abs(current - target);
+      maxDrift = Math.max(maxDrift, drift);
+      
+      console.log(`  Asset ${i} (${assets[i]?.code || 'unknown'}): Current=${current.toFixed(2)}%, Target=${target.toFixed(2)}%, Drift=${drift.toFixed(2)}%`);
+    }
+
+    console.log(`  Max allocation drift: ${maxDrift.toFixed(2)}% (tolerance: ${TOLERANCE_PERCENT}%)`);
+
+    // Need rebalance if drift exceeds tolerance
+    const needsRebalance = maxDrift > TOLERANCE_PERCENT;
+    
+    if (!needsRebalance) {
+      console.log(`  ✓ Already at target allocation (drift ${maxDrift.toFixed(2)}% < ${TOLERANCE_PERCENT}%)`);
+    }
+    
+    return needsRebalance;
+  } catch (error) {
+    console.error('[checkIfRebalanceNeeded] Error:', error);
+    // If we can't determine (e.g., invalid address), skip rebalancing to avoid errors
+    // The vault needs to be properly deployed first
+    return false;
+  }
+}
+
+/**
  * Evaluate a single rule
  */
 async function evaluateRule(
@@ -73,7 +183,26 @@ async function evaluateRule(
     const currentTime = Date.now();
     const timeSinceRebalance = (currentTime - lastRebalance) / 1000; // seconds
     
-    return timeSinceRebalance >= threshold;
+    // Check if enough time has passed
+    if (timeSinceRebalance < threshold) {
+      return false;
+    }
+
+    // Additionally check if rebalancing is actually needed
+    // by comparing current allocation to target allocation
+    if (!state || !state.totalValue || state.totalValue === '0') {
+      console.log(`⏭️  Skipping rebalance for vault ${vault.vault_id}: No assets in vault (TVL = 0)`);
+      return false;
+    }
+
+    // Check if we're already at target allocation (within 1% tolerance)
+    const needsRebalance = await checkIfRebalanceNeeded(rule, vault);
+    if (!needsRebalance) {
+      console.log(`⏭️  Skipping rebalance for vault ${vault.vault_id}: Already at target allocation`);
+      return false;
+    }
+    
+    return true;
   }
 
   // APY threshold condition

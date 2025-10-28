@@ -417,43 +417,7 @@ export async function getVaultDeploymentStatus(
   }
 }
 
-/**
- * Helper function to retry async operations with exponential backoff
- */
-async function retryWithBackoff<T>(
-  operation: () => Promise<T>,
-  maxRetries: number = 2,
-  initialDelay: number = 1000
-): Promise<T> {
-  let lastError: any;
-  
-  for (let attempt = 0; attempt < maxRetries; attempt++) {
-    try {
-      return await operation();
-    } catch (error: any) {
-      lastError = error;
-      
-      // Don't retry if it's a 4xx error (client error)
-      if (error.status && error.status >= 400 && error.status < 500 && error.status !== 504) {
-        throw error;
-      }
-      
-      // Don't retry on the last attempt
-      if (attempt === maxRetries - 1) {
-        break;
-      }
-      
-      // Calculate delay with exponential backoff
-      const delay = initialDelay * Math.pow(2, attempt);
-      console.log(`[Retry] Attempt ${attempt + 1} failed, retrying in ${delay}ms...`);
-      
-      // Wait before retrying
-      await new Promise(resolve => setTimeout(resolve, delay));
-    }
-  }
-  
-  throw lastError;
-}
+
 
 /**
  * Invoke a vault contract method
@@ -548,6 +512,44 @@ export async function invokeVaultMethod(
     
     console.log(`[Contract Invocation] Simulation successful, preparing transaction...`);
     
+    // Define read-only methods that don't need to be submitted
+    const readOnlyMethods = [
+      'get_state',
+      'get_position',
+      'get_config',
+      'get_total_value',
+      'get_share_price',
+      'balance',
+      'allowance',
+    ];
+    
+    const isReadOnly = readOnlyMethods.includes(method);
+    
+    // Extract the actual contract return value from simulation
+    let contractResult = null;
+    if (simulationResponse.result && 'retval' in simulationResponse.result) {
+      contractResult = simulationResponse.result.retval;
+    }
+    
+    // For read-only methods, return simulation result without submitting transaction
+    if (isReadOnly) {
+      console.log(`📖 Read-only method detected - using simulation result (no transaction submitted)`);
+      console.log(`✅ Successfully queried ${method} from ${contractAddress}`);
+      if (contractResult) {
+        console.log(`📦 Contract return value:`, contractResult);
+      }
+      
+      return {
+        success: true,
+        hash: null, // No transaction hash for read-only calls
+        result: contractResult,
+        readOnly: true,
+      };
+    }
+    
+    // For write methods, assemble and submit the transaction
+    console.log(`✍️  Write method detected - submitting transaction...`);
+    
     // Assemble the transaction with simulation results (adds footprint and auth)
     transaction = StellarSdk.SorobanRpc.assembleTransaction(
       transaction,
@@ -566,10 +568,7 @@ export async function invokeVaultMethod(
     console.log(`📡 Transaction hash: ${response.hash}`);
     console.log(`🔗 View on explorer: https://stellar.expert/explorer/${servers.network}/tx/${response.hash}`);
     
-    // Extract the actual contract return value from simulation
-    let contractResult = null;
-    if (simulationResponse.result && 'retval' in simulationResponse.result) {
-      contractResult = simulationResponse.result.retval;
+    if (contractResult) {
       console.log(`📦 Contract return value:`, contractResult);
     }
     
