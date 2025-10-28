@@ -623,7 +623,7 @@ const Dashboard = () => {
                             <p className="text-sm text-neutral-400">{assets}</p>
                             {userPositions[vault.vault_id]?.shares && userPositions[vault.vault_id]?.shares !== '0' && (
                               <p className="text-xs text-primary-400 mt-1">
-                                Shares: {(parseFloat(userPositions[vault.vault_id].shares) / 10_000_000).toFixed(7)}
+                                Shares: {(parseFloat(userPositions[vault.vault_id].shares) / 10_000_000).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 7 })}
                               </p>
                             )}
                             <p className="text-xs text-neutral-500 mt-0.5">ID: {vault.vault_id.slice(0, 8)}...</p>

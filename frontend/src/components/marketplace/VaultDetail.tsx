@@ -324,7 +324,7 @@ export function VaultDetail({ vaultId, listingId }: VaultDetailProps) {
           </div>
           <div className="text-2xl font-bold mb-1 text-neutral-50">
             ${tvlValue.toLocaleString(undefined, { 
-              minimumFractionDigits: 2, 
+              minimumFractionDigits: 0, 
               maximumFractionDigits: 2 
             })}
           </div>
@@ -367,7 +367,7 @@ export function VaultDetail({ vaultId, listingId }: VaultDetailProps) {
           <div className={`text-2xl font-bold mb-1 ${
             (vaultAnalytics?.totalEarnings || 0) >= 0 ? 'text-success-400' : 'text-error-400'
           }`}>
-            ${(vaultAnalytics?.totalEarnings || 0).toFixed(2)}
+            ${(vaultAnalytics?.totalEarnings || 0) > 0 ? (vaultAnalytics.totalEarnings).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 }) : '0.00'}
           </div>
           <div className="text-sm text-neutral-400 mb-2">Total Earnings</div>
           <p className="text-xs text-neutral-500">
@@ -385,8 +385,8 @@ export function VaultDetail({ vaultId, listingId }: VaultDetailProps) {
           </div>
           <div className="text-2xl font-bold mb-1 text-neutral-50">
             {vault?.state?.totalShares 
-              ? (Number(vault.state.totalShares) / 10_000_000).toFixed(2)
-              : '0.00'}
+              ? (Number(vault.state.totalShares) / 10_000_000).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })
+              : '0'}
           </div>
           <div className="text-sm text-neutral-400 mb-2">Total Shares</div>
           <p className="text-xs text-neutral-500">
@@ -493,10 +493,10 @@ export function VaultDetail({ vaultId, listingId }: VaultDetailProps) {
               <div className="bg-neutral-900 rounded-lg p-4 border border-default">
                 <div className="text-xs text-neutral-500 mb-2">Your Shares</div>
                 <div className="text-xl font-bold text-primary-400">
-                  {(parseFloat(userPosition.shares) / 10_000_000).toFixed(7)}
+                  {(parseFloat(userPosition.shares) / 10_000_000).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 7 })}
                 </div>
                 <div className="text-xs text-neutral-500 mt-1">
-                  @ ${userPosition.sharePrice.toFixed(7)} per share
+                  @ ${userPosition.sharePrice.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 7 })} per share
                 </div>
               </div>
 
@@ -504,13 +504,13 @@ export function VaultDetail({ vaultId, listingId }: VaultDetailProps) {
                 <div className="text-xs text-neutral-500 mb-2">Your Investment</div>
                 <div className="text-xl font-bold text-neutral-50">
                   {userPosition.investmentAmount.toLocaleString(undefined, {
-                    minimumFractionDigits: 2,
+                    minimumFractionDigits: 0,
                     maximumFractionDigits: 2,
                   })}
                   {' '}XLM
                 </div>
                 <div className="text-xs text-neutral-500 mt-1">
-                  ${(userPosition.investmentAmount * xlmPrice).toFixed(2)} USD
+                  ${(userPosition.investmentAmount * xlmPrice).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })} USD
                 </div>
               </div>
 
@@ -518,13 +518,13 @@ export function VaultDetail({ vaultId, listingId }: VaultDetailProps) {
                 <div className="text-xs text-neutral-500 mb-2">Current Value</div>
                 <div className="text-xl font-bold text-neutral-50">
                   {userPosition.currentValue.toLocaleString(undefined, {
-                    minimumFractionDigits: 2,
+                    minimumFractionDigits: 0,
                     maximumFractionDigits: 2,
                   })}
                   {' '}XLM
                 </div>
                 <div className="text-xs text-neutral-500 mt-1">
-                  ${(userPosition.currentValue * xlmPrice).toFixed(2)} USD
+                  ${(userPosition.currentValue * xlmPrice).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })} USD
                 </div>
               </div>
 
@@ -535,14 +535,14 @@ export function VaultDetail({ vaultId, listingId }: VaultDetailProps) {
                 }`}>
                   {userPosition.unrealizedGainLoss >= 0 ? '+' : ''}
                   {userPosition.unrealizedGainLoss.toLocaleString(undefined, {
-                    minimumFractionDigits: 2,
+                    minimumFractionDigits: 0,
                     maximumFractionDigits: 2,
                   })}
                   {' '}XLM
                 </div>
                 <div className="text-xs text-neutral-500 mt-1">
                   {userPosition.investmentAmount > 0 
-                    ? `${((userPosition.unrealizedGainLoss / userPosition.investmentAmount) * 100).toFixed(2)}%`
+                    ? `${((userPosition.unrealizedGainLoss / userPosition.investmentAmount) * 100).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })}%`
                     : 'N/A'}
                 </div>
               </div>
