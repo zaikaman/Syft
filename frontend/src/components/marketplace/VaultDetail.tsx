@@ -56,13 +56,13 @@ export function VaultDetail({ vaultId, listingId }: VaultDetailProps) {
   const [vaultAnalytics, setVaultAnalytics] = useState<any>(null);
 
   useEffect(() => {
-    loadVaultDetails();
+    loadVaultDetails(true); // Initial load with loading state
     fetchXLMPrice();
     fetchVaultAnalytics();
 
-    // Auto-refresh every 10 seconds for real-time updates
+    // Auto-refresh every 10 seconds for real-time updates (without loading state)
     const refreshInterval = setInterval(() => {
-      loadVaultDetails();
+      loadVaultDetails(false); // Background refresh without loading state
       fetchVaultAnalytics();
     }, 10000);
 
@@ -111,8 +111,10 @@ export function VaultDetail({ vaultId, listingId }: VaultDetailProps) {
     }
   };
 
-  const loadVaultDetails = async () => {
-    setIsLoading(true);
+  const loadVaultDetails = async (showLoading: boolean = false) => {
+    if (showLoading) {
+      setIsLoading(true);
+    }
     setError('');
 
     try {
@@ -138,7 +140,9 @@ export function VaultDetail({ vaultId, listingId }: VaultDetailProps) {
     } catch (err: any) {
       setError(err.message || 'Failed to load vault details');
     } finally {
-      setIsLoading(false);
+      if (showLoading) {
+        setIsLoading(false);
+      }
     }
   };
 
@@ -409,7 +413,7 @@ export function VaultDetail({ vaultId, listingId }: VaultDetailProps) {
         contractAddress={vault.contractAddress}
         onActionComplete={(action) => {
           console.log(`${action} completed, reloading vault...`);
-          loadVaultDetails();
+          loadVaultDetails(false); // Update without showing loading state
           fetchVaultAnalytics(); // Refresh analytics too
         }}
       />

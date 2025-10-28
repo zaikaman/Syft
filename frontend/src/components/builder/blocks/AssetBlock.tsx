@@ -79,27 +79,30 @@ const AssetBlock = ({ id, data, selected }: AssetBlockProps) => {
         <div className="space-y-2 mb-3">
           <div>
             <label className="text-xs text-gray-600 dark:text-gray-400 block mb-1">
-              Asset Code
+              Token Symbol
             </label>
             <input
               type="text"
               value={localAssetCode}
               onChange={(e) => handleAssetCodeChange(e.target.value)}
-              placeholder="e.g. AQUA"
+              placeholder="e.g. AQUA, USDC"
               className="w-full px-2 py-1 text-sm bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900 dark:text-white"
             />
           </div>
           <div>
             <label className="text-xs text-gray-600 dark:text-gray-400 block mb-1">
-              Issuer Address
+              Contract Address (Soroban) or Issuer (Classic)
             </label>
             <input
               type="text"
               value={localAssetIssuer}
               onChange={(e) => handleAssetIssuerChange(e.target.value)}
-              placeholder="GXXXXXXX..."
+              placeholder="C... (56 chars) or G... (Classic)"
               className="w-full px-2 py-1 text-xs bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900 dark:text-white font-mono"
             />
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+              💡 Use 'C' address for Soroban tokens
+            </p>
           </div>
         </div>
       )}

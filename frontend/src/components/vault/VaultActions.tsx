@@ -61,9 +61,10 @@ export const VaultActions: React.FC<VaultActionsProps> = ({
       const normalizedNetwork = normalizeNetwork(network, networkPassphrase);
       console.log(`[VaultActions] Using network: ${normalizedNetwork} (raw: ${network}, passphrase: ${networkPassphrase})`);
       
-      // Use connected wallet to sign transaction - no private key needed
-      const response = await fetch(
-        `http://localhost:3001/api/vaults/${vaultId}/deposit`,
+      // Step 1: Build unsigned transaction from backend
+      console.log(`[VaultActions] Building unsigned deposit transaction...`);
+      const buildResponse = await fetch(
+        `http://localhost:3001/api/vaults/${vaultId}/build-deposit`,
         {
           method: 'POST',
           headers: {
@@ -72,39 +73,69 @@ export const VaultActions: React.FC<VaultActionsProps> = ({
           body: JSON.stringify({
             userAddress: address,
             amount: amountInStroops,
-            network: normalizedNetwork, // Pass the normalized network
+            network: normalizedNetwork,
           }),
         }
       );
 
-      const data = await response.json();
+      const buildData = await buildResponse.json();
 
-      if (!response.ok || !data.success) {
-        throw new Error(data.error || 'Deposit failed');
+      if (!buildResponse.ok || !buildData.success) {
+        throw new Error(buildData.error || 'Failed to build transaction');
       }
 
-      // Format shares for display (shares are in stroops, same as amount)
-      const sharesReceived = (Number(data.data.shares) / 10_000_000).toFixed(7);
+      const { xdr } = buildData.data;
+      console.log(`[VaultActions] Transaction built, requesting wallet signature...`);
+
+      // Step 2: Sign transaction with user's wallet
+      const { wallet } = await import('../../util/wallet');
+      const { signedTxXdr } = await wallet.signTransaction(xdr, {
+        networkPassphrase: networkPassphrase || 'Test SDF Network ; September 2015',
+      });
+
+      console.log(`[VaultActions] Transaction signed, submitting...`);
+
+      // Step 3: Submit signed transaction
+      const submitResponse = await fetch(
+        `http://localhost:3001/api/vaults/${vaultId}/submit-deposit`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            signedXDR: signedTxXdr,
+            network: normalizedNetwork,
+          }),
+        }
+      );
+
+      const submitData = await submitResponse.json();
+
+      if (!submitResponse.ok || !submitData.success) {
+        throw new Error(submitData.error || 'Failed to submit transaction');
+      }
+
+      console.log(`[VaultActions] ✅ Deposit successful! TX: ${submitData.data.transactionHash}`);
 
       setMessage({
         type: 'success',
-        text: `Successfully deposited ${amount} XLM! Received ${sharesReceived} shares.`,
+        text: `Successfully deposited ${amount} XLM!`,
       });
       modal.message(
-        `Successfully deposited ${amount} XLM!\n\nReceived ${sharesReceived} shares.`,
+        `Successfully deposited ${amount} XLM!`,
         'Deposit Complete',
         'success'
       );
       setAmount('');
       
       // Refresh wallet balance immediately and again after a delay
-      // This ensures quick feedback and catches any delayed updates
       await updateBalance();
       setTimeout(async () => {
         await updateBalance();
-      }, 3000); // Wait 3 seconds for transaction to fully propagate
+      }, 3000);
       
-      onActionComplete?.('deposit', data.data);
+      onActionComplete?.('deposit', submitData.data);
     } catch (error) {
       const errorText = error instanceof Error ? error.message : 'Deposit failed';
       setMessage({
@@ -135,9 +166,10 @@ export const VaultActions: React.FC<VaultActionsProps> = ({
       console.log(`[VaultActions] Withdraw using network: ${normalizedNetwork}`);
       console.log(`[VaultActions] Withdrawing ${shares} shares (${sharesInStroops} stroops)`);
       
-      // Use connected wallet to sign transaction - no private key needed
-      const response = await fetch(
-        `http://localhost:3001/api/vaults/${vaultId}/withdraw`,
+      // Step 1: Build unsigned transaction from backend
+      console.log(`[VaultActions] Building unsigned withdrawal transaction...`);
+      const buildResponse = await fetch(
+        `http://localhost:3001/api/vaults/${vaultId}/build-withdraw`,
         {
           method: 'POST',
           headers: {
@@ -146,39 +178,69 @@ export const VaultActions: React.FC<VaultActionsProps> = ({
           body: JSON.stringify({
             userAddress: address,
             shares: sharesInStroops,
-            network: normalizedNetwork, // Include network
+            network: normalizedNetwork,
           }),
         }
       );
 
-      const data = await response.json();
+      const buildData = await buildResponse.json();
 
-      if (!response.ok || !data.success) {
-        throw new Error(data.error || 'Withdrawal failed');
+      if (!buildResponse.ok || !buildData.success) {
+        throw new Error(buildData.error || 'Failed to build transaction');
       }
 
-      // Convert stroops to XLM for display (1 XLM = 10,000,000 stroops)
-      const amountInXLM = (Number(data.data.amount) / 10_000_000).toFixed(7);
+      const { xdr } = buildData.data;
+      console.log(`[VaultActions] Transaction built, requesting wallet signature...`);
+
+      // Step 2: Sign transaction with user's wallet
+      const { wallet } = await import('../../util/wallet');
+      const { signedTxXdr } = await wallet.signTransaction(xdr, {
+        networkPassphrase: networkPassphrase || 'Test SDF Network ; September 2015',
+      });
+
+      console.log(`[VaultActions] Transaction signed, submitting...`);
+
+      // Step 3: Submit signed transaction
+      const submitResponse = await fetch(
+        `http://localhost:3001/api/vaults/${vaultId}/submit-withdraw`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            signedXDR: signedTxXdr,
+            network: normalizedNetwork,
+          }),
+        }
+      );
+
+      const submitData = await submitResponse.json();
+
+      if (!submitResponse.ok || !submitData.success) {
+        throw new Error(submitData.error || 'Failed to submit transaction');
+      }
+
+      console.log(`[VaultActions] ✅ Withdrawal successful! TX: ${submitData.data.transactionHash}`);
 
       setMessage({
         type: 'success',
-        text: `Successfully withdrawn! Received ${amountInXLM} XLM for ${shares} shares.`,
+        text: `Successfully withdrawn ${shares} shares!`,
       });
       modal.message(
-        `Successfully withdrawn!\n\nReceived ${amountInXLM} XLM for ${shares} shares.`,
+        `Successfully withdrawn ${shares} shares!`,
         'Withdrawal Complete',
         'success'
       );
       setShares('');
       
       // Refresh wallet balance immediately and again after a delay
-      // This ensures quick feedback and catches any delayed updates
       await updateBalance();
       setTimeout(async () => {
         await updateBalance();
-      }, 3000); // Wait 3 seconds for transaction to fully propagate
+      }, 3000);
       
-      onActionComplete?.('withdraw', data.data);
+      onActionComplete?.('withdraw', submitData.data);
     } catch (error) {
       const errorText = error instanceof Error ? error.message : 'Withdrawal failed';
       setMessage({

@@ -11,6 +11,7 @@ import marketplaceRoutes from './marketplace.js';
 import userRoutes from './users.js';
 import priceRoutes from './price.js';
 import analyticsRoutes from './analytics.js';
+import tokenRoutes from './tokens.js';
 
 const router = Router();
 
@@ -41,6 +42,7 @@ router.get('/', (_req, res) => {
       marketplace: '/api/marketplace',
       price: '/api/price',
       analytics: '/api/analytics',
+      tokens: '/api/tokens',
     },
   });
 });
@@ -55,5 +57,6 @@ router.use('/nfts', nftRoutes);
 router.use('/marketplace', marketplaceRoutes);
 router.use('/price', priceRoutes);
 router.use('/analytics', analyticsRoutes);
+router.use('/tokens', tokenRoutes);
 
 export default router;

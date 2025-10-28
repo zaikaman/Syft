@@ -24,6 +24,71 @@ export interface DeploymentResult {
 }
 
 /**
+ * Validate if a token contract exists and is properly initialized on the network
+ */
+async function validateTokenContract(
+  contractAddress: string,
+  network?: string
+): Promise<{ valid: boolean; error?: string; metadata?: { name?: string; symbol?: string; decimals?: number } }> {
+  try {
+    const servers = getNetworkServers(network);
+    
+    // Try to call the token contract's metadata functions
+    // We'll use a dummy account for simulation (read-only operations don't need auth)
+    const dummyKeypair = StellarSdk.Keypair.random();
+    
+    try {
+      // Load the contract to check if it exists
+      const contract = new StellarSdk.Contract(contractAddress);
+      const account = await servers.horizonServer.loadAccount(dummyKeypair.publicKey()).catch(() => {
+        // If account doesn't exist, create a temporary one for simulation
+        return new StellarSdk.Account(dummyKeypair.publicKey(), '0');
+      });
+      
+      // Try to call name() function - all SEP-41 tokens should have this
+      const nameOp = contract.call('name');
+      const tx = new StellarSdk.TransactionBuilder(account, {
+        fee: '1000',
+        networkPassphrase: servers.networkPassphrase,
+      })
+        .addOperation(nameOp)
+        .setTimeout(30)
+        .build();
+      
+      // Simulate the transaction (read-only, no submission)
+      const simResult = await servers.sorobanServer.simulateTransaction(tx);
+      
+      if (StellarSdk.SorobanRpc.Api.isSimulationSuccess(simResult)) {
+        // Token exists and is callable
+        console.log(`✅ Token contract ${contractAddress} validated on ${network}`);
+        return { valid: true };
+      } else {
+        return { 
+          valid: false, 
+          error: `Token contract exists but doesn't implement standard token interface (SEP-41)`
+        };
+      }
+    } catch (contractError) {
+      const errorMsg = contractError instanceof Error ? contractError.message : String(contractError);
+      
+      if (errorMsg.includes('MissingValue') || errorMsg.includes('not found')) {
+        return {
+          valid: false,
+          error: `Token contract not found or not initialized on ${network || 'testnet'}`
+        };
+      }
+      
+      // Other errors - might still be valid, just can't verify
+      console.warn(`⚠️  Could not validate token contract: ${errorMsg}`);
+      return { valid: true }; // Assume valid, let deployment try
+    }
+  } catch (error) {
+    console.warn(`⚠️  Token validation skipped:`, error);
+    return { valid: true }; // Assume valid, let deployment try
+  }
+}
+
+/**
  * Convert asset symbol to Stellar contract address
  */
 function getAssetAddress(asset: string, network?: string): string {
@@ -60,9 +125,22 @@ function getAssetAddress(asset: string, network?: string): string {
     },
   };
 
-  // If it's already a valid contract address (starts with C and is the right length), return it
-  if (asset.startsWith('C') && asset.length > 50) {
+  // If it's already a valid contract address (starts with C and is 56 characters), return it directly
+  // This allows users to use ANY token on the Stellar network by providing the contract address
+  if (asset.startsWith('C') && asset.length === 56) {
+    console.log(`[Asset Resolution] Using custom token contract: ${asset}`);
     return asset;
+  }
+  
+  // Also support 'G' addresses (Stellar account format) - these need to be wrapped as SAC
+  if (asset.startsWith('G') && asset.length === 56) {
+    console.warn(`⚠️  Classic Stellar asset (${asset}) provided. Make sure this is a wrapped SAC token.`);
+    // For now, we can't automatically convert Classic assets to SAC addresses
+    // User must provide the SAC wrapper address
+    throw new Error(
+      `Classic Stellar asset address detected. Please provide the Stellar Asset Contract (SAC) wrapper address instead. ` +
+      `Learn more: https://developers.stellar.org/docs/tokens/stellar-asset-contract`
+    );
   }
 
   // Look up asset in network-specific map
@@ -70,7 +148,11 @@ function getAssetAddress(asset: string, network?: string): string {
   const networkAddresses = tokenAddresses[assetSymbol];
   
   if (!networkAddresses) {
-    throw new Error(`Unknown asset symbol: ${asset}. Please provide a valid Stellar contract address or use XLM.`);
+    throw new Error(
+      `Unknown asset symbol: "${asset}". ` +
+      `Please use a known symbol (XLM, USDC, EURC, AQUA) or provide a Stellar contract address (starts with 'C', 56 characters). ` +
+      `Find token addresses at: https://github.com/soroswap/token-list`
+    );
   }
 
   const address = networkAddresses[normalizedNetwork];
@@ -82,6 +164,118 @@ function getAssetAddress(asset: string, network?: string): string {
   }
 
   return address;
+}
+
+/**
+ * Build unsigned deployment transaction for user to sign
+ */
+export async function buildDeploymentTransaction(
+  config: VaultDeploymentConfig,
+  sourceAddress: string,
+  network?: string
+): Promise<{ xdr: string; vaultId: string }> {
+  try {
+    const vaultId = generateVaultId();
+
+    console.log(`[Build Deploy TX] Building deployment transaction for ${config.name}`);
+    console.log(`[Build Deploy TX] Network: ${network || 'testnet'}`);
+    console.log(`[Build Deploy TX] Owner: ${config.owner}`);
+
+    // Convert asset symbols to contract addresses
+    const assetAddressStrings = config.assets.map(asset => {
+      const address = getAssetAddress(asset, network);
+      console.log(`[Build Deploy TX] ${asset} -> ${address}`);
+      return address;
+    });
+
+    // Get network-specific servers
+    const servers = getNetworkServers(network);
+    
+    // Load source account
+    const sourceAccount = await servers.horizonServer.loadAccount(sourceAddress);
+
+    // Get vault factory contract address
+    let factoryAddress: string;
+    const normalizedNetwork = (network || 'testnet').toLowerCase();
+    
+    if (normalizedNetwork === 'futurenet') {
+      factoryAddress = process.env.VAULT_FACTORY_CONTRACT_ID_FUTURENET || '';
+    } else if (normalizedNetwork === 'mainnet' || normalizedNetwork === 'public') {
+      factoryAddress = process.env.VAULT_FACTORY_CONTRACT_ID_MAINNET || '';
+    } else {
+      factoryAddress = process.env.VAULT_FACTORY_CONTRACT_ID || '';
+    }
+    
+    if (!factoryAddress) {
+      throw new Error(`VAULT_FACTORY_CONTRACT_ID not set for network: ${normalizedNetwork}`);
+    }
+
+    console.log(`[Build Deploy TX] Using factory: ${factoryAddress}`);
+
+    // Create contract instance for factory
+    const factoryContract = new StellarSdk.Contract(factoryAddress);
+
+    // Convert assets to Address ScVals
+    const assetAddresses = assetAddressStrings.map(asset => 
+      StellarSdk.Address.fromString(asset).toScVal()
+    );
+
+    // Build VaultConfig struct
+    const vaultConfigStruct = StellarSdk.xdr.ScVal.scvMap([
+      new StellarSdk.xdr.ScMapEntry({
+        key: StellarSdk.xdr.ScVal.scvSymbol(Buffer.from('assets')),
+        val: StellarSdk.xdr.ScVal.scvVec(assetAddresses),
+      }),
+      new StellarSdk.xdr.ScMapEntry({
+        key: StellarSdk.xdr.ScVal.scvSymbol(Buffer.from('name')),
+        val: StellarSdk.nativeToScVal(config.name, { type: 'string' }),
+      }),
+      new StellarSdk.xdr.ScMapEntry({
+        key: StellarSdk.xdr.ScVal.scvSymbol(Buffer.from('owner')),
+        val: StellarSdk.Address.fromString(config.owner).toScVal(),
+      }),
+    ]);
+
+    // Build transaction to call create_vault on factory
+    const operation = factoryContract.call('create_vault', vaultConfigStruct);
+
+    let transaction = new StellarSdk.TransactionBuilder(sourceAccount, {
+      fee: StellarSdk.BASE_FEE,
+      networkPassphrase: servers.network === 'futurenet' 
+        ? StellarSdk.Networks.FUTURENET
+        : servers.network === 'mainnet' || servers.network === 'public'
+        ? StellarSdk.Networks.PUBLIC
+        : StellarSdk.Networks.TESTNET,
+    })
+      .addOperation(operation)
+      .setTimeout(300)
+      .build();
+
+    console.log(`[Build Deploy TX] Simulating transaction...`);
+
+    // Simulate transaction to get resource footprint
+    const simulationResponse = await servers.sorobanServer.simulateTransaction(transaction);
+    
+    if (StellarSdk.SorobanRpc.Api.isSimulationError(simulationResponse)) {
+      throw new Error(`Simulation failed: ${simulationResponse.error}`);
+    }
+
+    // Prepare the transaction with simulation results
+    transaction = StellarSdk.SorobanRpc.assembleTransaction(
+      transaction,
+      simulationResponse
+    ).build();
+
+    console.log(`[Build Deploy TX] Transaction built successfully, returning XDR for signing`);
+
+    return {
+      xdr: transaction.toXDR(),
+      vaultId,
+    };
+  } catch (error) {
+    console.error('Error building deployment transaction:', error);
+    throw error;
+  }
 }
 
 /**
@@ -108,6 +302,26 @@ export async function deployVault(
       console.log(`[Vault Deployment] ${asset} -> ${address}`);
       return address;
     });
+    
+    // Optional: Validate custom token contracts (for addresses starting with 'C')
+    // This is a best-effort validation - if it fails, we'll still allow deployment
+    for (let i = 0; i < config.assets.length; i++) {
+      const asset = config.assets[i];
+      const address = assetAddressStrings[i];
+      
+      // Only validate custom addresses (not well-known tokens)
+      if (asset.startsWith('C') && asset.length === 56) {
+        console.log(`[Vault Deployment] Validating custom token: ${address}`);
+        const validation = await validateTokenContract(address, network);
+        
+        if (!validation.valid && validation.error) {
+          console.warn(`⚠️  Token validation warning: ${validation.error}`);
+          console.warn(`⚠️  Continuing deployment anyway - vault may fail if token is invalid`);
+        } else if (validation.valid) {
+          console.log(`✅ Custom token validated successfully`);
+        }
+      }
+    }
     
     // Warn if non-XLM tokens are being used on futurenet
     if ((network || 'testnet').toLowerCase() === 'futurenet') {

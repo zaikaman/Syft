@@ -238,55 +238,143 @@ const VaultBuilder = () => {
         })),
       };
 
-      // Deploy vault using connected wallet (no private key needed)
-      const backendUrl = import.meta.env.PUBLIC_BACKEND_URL || 'http://localhost:3001';
-      
-      // Map Freighter network names to our backend format
-      const normalizeNetwork = (net?: string, passphrase?: string): string => {
-        if (!net) return 'testnet';
-        
-        // Check network passphrase for accurate detection
-        if (passphrase) {
-          if (passphrase.includes('Test SDF Future')) return 'futurenet';
-          if (passphrase.includes('Test SDF Network')) return 'testnet';
-          if (passphrase.includes('Public Global')) return 'mainnet';
-        }
-        
-        // Fallback to network name mapping
-        const normalized = net.toLowerCase();
-        if (normalized === 'standalone' || normalized === 'futurenet') return 'futurenet';
-        if (normalized === 'testnet') return 'testnet';
-        if (normalized === 'mainnet' || normalized === 'public') return 'mainnet';
-        
-        return 'testnet'; // Default fallback
-      };
-      
       const normalizedNetwork = normalizeNetwork(network, networkPassphrase);
       console.log(`[VaultBuilder] Deploying vault on network: ${normalizedNetwork}`);
       
-      const response = await fetch(`${backendUrl}/api/vaults`, {
+      const backendUrl = import.meta.env.PUBLIC_BACKEND_URL || 'http://localhost:3001';
+      
+      // Step 1: Build unsigned transaction from backend
+      console.log(`[VaultBuilder] Building unsigned deployment transaction...`);
+      const buildResponse = await fetch(`${backendUrl}/api/vaults/build-deployment`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
           config: backendConfig,
-          network: normalizedNetwork, // Include network in deployment
+          userAddress: address,
+          network: normalizedNetwork,
         }),
       });
 
-      const data = await response.json();
+      const buildData = await buildResponse.json();
 
-      if (data.success) {
+      if (!buildData.success) {
+        throw new Error(buildData.error || 'Failed to build deployment transaction');
+      }
+
+      const { xdr, vaultId } = buildData.data;
+      console.log(`[VaultBuilder] Transaction built (Vault ID: ${vaultId}), requesting wallet signature...`);
+
+      // Step 2: Sign transaction with user's wallet
+      const { wallet } = await import('../util/wallet');
+      const { signedTxXdr } = await wallet.signTransaction(xdr, {
+        networkPassphrase: networkPassphrase || 'Test SDF Network ; September 2015',
+      });
+
+      console.log(`[VaultBuilder] Transaction signed, submitting...`);
+
+      // Step 3: Submit signed transaction
+      const submitResponse = await fetch(`${backendUrl}/api/vaults/submit-deployment`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          signedXDR: signedTxXdr,
+          vaultId,
+          config: backendConfig,
+          network: normalizedNetwork,
+        }),
+      });
+
+      const submitData = await submitResponse.json();
+
+      if (submitData.success) {
+        const { vaultId, contractAddress, transactionHash } = submitData.data;
+        console.log(`[VaultBuilder] ✅ Vault deployed: ${contractAddress}`);
+        console.log(`[VaultBuilder] TX Hash: ${transactionHash}`);
+        
+        // Step 4: Initialize the vault contract
+        try {
+          console.log(`[VaultBuilder] Initializing vault contract...`);
+          
+          // Build initialization transaction
+          const initBuildResponse = await fetch(`${backendUrl}/api/vaults/build-initialize`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              contractAddress,
+              config: backendConfig,
+              sourceAddress: address,
+              network: normalizedNetwork,
+            }),
+          });
+
+          const initBuildData = await initBuildResponse.json();
+
+          if (!initBuildData.success) {
+            throw new Error(initBuildData.error || 'Failed to build initialization transaction');
+          }
+
+          console.log(`[VaultBuilder] Initialization transaction built, requesting wallet signature...`);
+
+          // Sign initialization transaction
+          const { wallet } = await import('../util/wallet');
+          const { signedTxXdr: signedInitXdr } = await wallet.signTransaction(initBuildData.data.xdr, {
+            networkPassphrase: networkPassphrase || 'Test SDF Network ; September 2015',
+          });
+
+          console.log(`[VaultBuilder] Initialization transaction signed, submitting...`);
+
+          // Submit initialization transaction
+          const initSubmitResponse = await fetch(`${backendUrl}/api/vaults/submit-initialize`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              signedXDR: signedInitXdr,
+              contractAddress,
+              network: normalizedNetwork,
+            }),
+          });
+
+          const initSubmitData = await initSubmitResponse.json();
+
+          if (initSubmitData.success) {
+            console.log(`[VaultBuilder] ✅ Vault initialized successfully`);
+          } else {
+            console.warn(`[VaultBuilder] ⚠️ Vault deployed but initialization failed:`, initSubmitData.error);
+            modal.message(
+              `Vault deployed but initialization failed. You may need to initialize manually.\n\nContract: ${contractAddress}`,
+              'Initialization Failed',
+              'warning'
+            );
+            return;
+          }
+        } catch (initError) {
+          console.error(`[VaultBuilder] Error during initialization:`, initError);
+          modal.message(
+            `Vault deployed but initialization failed. You may need to initialize manually.\n\nContract: ${contractAddress}`,
+            'Initialization Failed',
+            'warning'
+          );
+          return;
+        }
+
+        // Success - both deployment and initialization complete
         modal.message(
-          `Vault ID: ${data.data.vaultId}\n\nContract: ${data.data.contractAddress}`,
+          `Vault ID: ${vaultId}\n\nContract: ${contractAddress}\n\nYour vault is ready to use!`,
           'Vault Deployed Successfully',
           'success'
         );
         // Navigate to dashboard
         navigate('/app/dashboard');
       } else {
-        throw new Error(data.error || 'Failed to deploy vault');
+        throw new Error(submitData.error || 'Failed to deploy vault');
       }
     } catch (error) {
       console.error('Error deploying vault:', error);
@@ -298,7 +386,7 @@ const VaultBuilder = () => {
     } finally {
       setDeploying(false);
     }
-  }, [nodes, edges, address, navigate, modal]);
+  }, [nodes, edges, address, navigate, modal, network, networkPassphrase]);
 
   // Load template
   const handleLoadTemplate = useCallback((templateId: string) => {

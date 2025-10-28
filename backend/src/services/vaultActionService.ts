@@ -1,8 +1,162 @@
 import * as StellarSdk from '@stellar/stellar-sdk';
-import { horizonServer } from '../lib/horizonClient.js';
+import { horizonServer, getNetworkServers } from '../lib/horizonClient.js';
 import { supabase } from '../lib/supabase.js';
 import { invokeVaultMethod } from './vaultDeploymentService.js';
 import { invalidateVaultCache } from './vaultMonitorService.js';
+
+/**
+ * Build unsigned deposit transaction for user to sign
+ */
+export async function buildDepositTransaction(
+  vaultId: string,
+  userAddress: string,
+  amount: string,
+  network?: string
+): Promise<{ xdr: string; contractAddress: string }> {
+  try {
+    // Get vault from database
+    const { data: vault, error } = await supabase
+      .from('vaults')
+      .select('*')
+      .eq('vault_id', vaultId)
+      .single();
+
+    if (error || !vault) {
+      throw new Error('Vault not found');
+    }
+
+    // Get network-specific servers
+    const servers = getNetworkServers(network);
+    
+    // Load user account
+    const userAccount = await servers.horizonServer.loadAccount(userAddress);
+
+    // Create contract instance
+    const contract = new StellarSdk.Contract(vault.contract_address);
+
+    // Build deposit operation
+    const operation = contract.call(
+      'deposit',
+      StellarSdk.Address.fromString(userAddress).toScVal(),
+      StellarSdk.nativeToScVal(BigInt(amount), { type: 'i128' })
+    );
+
+    // Build transaction
+    let transaction = new StellarSdk.TransactionBuilder(userAccount, {
+      fee: StellarSdk.BASE_FEE,
+      networkPassphrase: servers.network === 'futurenet' 
+        ? StellarSdk.Networks.FUTURENET
+        : servers.network === 'mainnet' || servers.network === 'public'
+        ? StellarSdk.Networks.PUBLIC
+        : StellarSdk.Networks.TESTNET,
+    })
+      .addOperation(operation)
+      .setTimeout(300)
+      .build();
+
+    console.log(`[Build Deposit TX] Simulating transaction...`);
+
+    // Simulate transaction to get resource footprint
+    const simulationResponse = await servers.sorobanServer.simulateTransaction(transaction);
+    
+    if (StellarSdk.SorobanRpc.Api.isSimulationError(simulationResponse)) {
+      throw new Error(`Simulation failed: ${simulationResponse.error}`);
+    }
+
+    // Assemble transaction with simulation results
+    transaction = StellarSdk.SorobanRpc.assembleTransaction(
+      transaction,
+      simulationResponse
+    ).build();
+
+    console.log(`[Build Deposit TX] Transaction built successfully, returning XDR for signing`);
+
+    return {
+      xdr: transaction.toXDR(),
+      contractAddress: vault.contract_address,
+    };
+  } catch (error) {
+    console.error('Error building deposit transaction:', error);
+    throw error;
+  }
+}
+
+/**
+ * Build unsigned withdrawal transaction for user to sign
+ */
+export async function buildWithdrawalTransaction(
+  vaultId: string,
+  userAddress: string,
+  shares: string,
+  network?: string
+): Promise<{ xdr: string; contractAddress: string }> {
+  try {
+    // Get vault from database
+    const { data: vault, error } = await supabase
+      .from('vaults')
+      .select('*')
+      .eq('vault_id', vaultId)
+      .single();
+
+    if (error || !vault) {
+      throw new Error('Vault not found');
+    }
+
+    // Get network-specific servers
+    const servers = getNetworkServers(network);
+    
+    // Load user account
+    const userAccount = await servers.horizonServer.loadAccount(userAddress);
+
+    // Create contract instance
+    const contract = new StellarSdk.Contract(vault.contract_address);
+
+    // Build withdraw operation
+    const operation = contract.call(
+      'withdraw',
+      StellarSdk.Address.fromString(userAddress).toScVal(),
+      StellarSdk.nativeToScVal(BigInt(shares), { type: 'i128' })
+    );
+
+    // Build transaction
+    let transaction = new StellarSdk.TransactionBuilder(userAccount, {
+      fee: StellarSdk.BASE_FEE,
+      networkPassphrase: servers.network === 'futurenet' 
+        ? StellarSdk.Networks.FUTURENET
+        : servers.network === 'mainnet' || servers.network === 'public'
+        ? StellarSdk.Networks.PUBLIC
+        : StellarSdk.Networks.TESTNET,
+    })
+      .addOperation(operation)
+      .setTimeout(300)
+      .build();
+
+    console.log(`[Build Withdrawal TX] Simulating transaction...`);
+
+    // Simulate transaction to get resource footprint
+    const simulationResponse = await servers.sorobanServer.simulateTransaction(transaction);
+    
+    if (StellarSdk.SorobanRpc.Api.isSimulationError(simulationResponse)) {
+      throw new Error(`Simulation failed: ${simulationResponse.error}`);
+    }
+
+    // Assemble transaction with simulation results
+    transaction = StellarSdk.SorobanRpc.assembleTransaction(
+      transaction,
+      simulationResponse
+    ).build();
+
+    console.log(`[Build Withdrawal TX] Transaction built successfully, returning XDR for signing`);
+
+    return {
+      xdr: transaction.toXDR(),
+      contractAddress: vault.contract_address,
+    };
+  } catch (error) {
+    console.error('Error building withdrawal transaction:', error);
+    throw error;
+  }
+}
 
 export interface RebalanceResult {
   success: boolean;

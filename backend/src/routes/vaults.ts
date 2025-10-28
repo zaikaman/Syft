@@ -5,6 +5,7 @@ import {
   estimateDeploymentFees,
   getVaultDeploymentStatus,
   VaultDeploymentConfig,
+  buildDeploymentTransaction,
 } from '../services/vaultDeploymentService.js';
 import {
   monitorVaultState,
@@ -17,9 +18,12 @@ import {
 import {
   executeDeposit,
   executeWithdrawal,
+  buildDepositTransaction,
+  buildWithdrawalTransaction,
 } from '../services/vaultActionService.js';
 import { supabase } from '../lib/supabase.js';
 import { syncVaultState } from '../services/vaultSyncService.js';
+import { getNetworkServers } from '../lib/horizonClient.js';
 
 const router = Router();
 
@@ -213,8 +217,606 @@ router.get('/:vaultId/position/:userAddress', async (req: Request, res: Response
 });
 
 /**
+ * POST /api/vaults/build-deployment
+ * Build unsigned deployment transaction for user to sign
+ */
+router.post('/build-deployment', async (req: Request, res: Response) => {
+  try {
+    const { config, userAddress, network } = req.body as {
+      config: VaultDeploymentConfig;
+      userAddress: string;
+      network?: string;
+    };
+
+    if (!config || !userAddress) {
+      return res.status(400).json({
+        success: false,
+        error: 'Missing required fields: config, userAddress',
+      });
+    }
+
+    // Build unsigned transaction
+    const { xdr, vaultId } = await buildDeploymentTransaction(config, userAddress, network);
+
+    return res.json({
+      success: true,
+      data: {
+        xdr,
+        vaultId,
+      },
+    });
+  } catch (error) {
+    console.error('Error in POST /api/vaults/build-deployment:', error);
+    return res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Internal server error',
+    });
+  }
+});
+
+/**
+ * POST /api/vaults/submit-deployment
+ * Submit signed deployment transaction
+ */
+router.post('/submit-deployment', async (req: Request, res: Response) => {
+  try {
+    const { signedXDR, vaultId, config, network } = req.body;
+
+    if (!signedXDR || !vaultId || !config) {
+      return res.status(400).json({
+        success: false,
+        error: 'Missing required fields: signedXDR, vaultId, config',
+      });
+    }
+
+    // Get network-specific servers
+    const servers = getNetworkServers(network);
+
+    // Parse the signed transaction
+    const transaction = StellarSdk.TransactionBuilder.fromXDR(
+      signedXDR,
+      servers.networkPassphrase
+    );
+
+    console.log(`[Submit Deploy] Simulating signed transaction to extract contract address...`);
+
+    // Simulate the signed transaction to get the return value BEFORE submitting
+    const simulationResult = await servers.sorobanServer.simulateTransaction(transaction);
+    
+    if (StellarSdk.SorobanRpc.Api.isSimulationError(simulationResult)) {
+      console.error(`[Submit Deploy] Simulation failed:`, simulationResult);
+      return res.status(500).json({
+        success: false,
+        error: 'Transaction simulation failed',
+        details: simulationResult,
+      });
+    }
+
+    // Extract contract address from simulation result
+    let contractAddress = '';
+    try {
+      if (simulationResult.result?.retval) {
+        const addressScVal = StellarSdk.Address.fromScVal(simulationResult.result.retval);
+        contractAddress = addressScVal.toString();
+        console.log(`[Submit Deploy] ✅ Extracted vault contract address from simulation: ${contractAddress}`);
+      } else {
+        console.error(`[Submit Deploy] No return value in simulation result`);
+        return res.status(500).json({
+          success: false,
+          error: 'Could not extract contract address from simulation',
+        });
+      }
+    } catch (extractError) {
+      console.error(`[Submit Deploy] Error extracting contract address:`, extractError);
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to extract contract address from simulation',
+        details: extractError,
+      });
+    }
+
+    // Validate contract address before storing
+    if (!contractAddress || !contractAddress.startsWith('C') || contractAddress.length !== 56) {
+      console.error(`[Submit Deploy] ❌ Invalid contract address: ${contractAddress}`);
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to extract valid contract address from simulation',
+      });
+    }
+
+    // Now submit the transaction via Horizon (fast, no polling needed)
+    console.log(`[Submit Deploy] Submitting transaction to network...`);
+    
+    let txHash: string;
+    try {
+      const submitResult = await servers.horizonServer.submitTransaction(transaction);
+      txHash = submitResult.hash;
+      console.log(`[Submit Deploy] ✅ Transaction submitted successfully: ${txHash}`);
+    } catch (submitError: any) {
+      console.error(`[Submit Deploy] Error submitting transaction:`, submitError);
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to submit transaction to network',
+        details: submitError?.response?.data || submitError.message,
+      });
+    }
+
+    // Store vault metadata
+    await supabase
+      .from('users')
+      .upsert(
+        {
+          wallet_address: config.owner,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        },
+        {
+          onConflict: 'wallet_address',
+          ignoreDuplicates: true,
+        }
+      );
+
+    await supabase.from('vaults').insert({
+      vault_id: vaultId,
+      owner_wallet_address: config.owner,
+      contract_address: contractAddress,
+      name: config.name,
+      description: 'Deployed vault from visual builder',
+      config: {
+        assets: config.assets,
+        rules: config.rules,
+      },
+      status: 'active',
+      network: network || 'testnet',
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      deployed_at: new Date().toISOString(),
+    });
+
+    return res.json({
+      success: true,
+      data: {
+        vaultId,
+        contractAddress,
+        transactionHash: txHash,
+      },
+    });
+  } catch (error) {
+    console.error('Error in POST /api/vaults/submit-deployment:', error);
+    return res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Internal server error',
+    });
+  }
+});
+
+/**
+ * POST /api/vaults/build-initialize
+ * Build unsigned initialization transaction for a deployed vault
+ */
+router.post('/build-initialize', async (req: Request, res: Response) => {
+  try {
+    const { contractAddress, config, sourceAddress, network } = req.body;
+
+    if (!contractAddress || !config || !sourceAddress) {
+      return res.status(400).json({
+        success: false,
+        error: 'Missing required fields: contractAddress, config, sourceAddress',
+      });
+    }
+
+    console.log(`[Build Initialize] Building initialization transaction for ${contractAddress}`);
+
+    // Get network-specific servers
+    const servers = getNetworkServers(network);
+
+    // Load source account
+    const sourceAccount = await servers.horizonServer.loadAccount(sourceAddress);
+
+    // Create contract instance
+    const vaultContract = new StellarSdk.Contract(contractAddress);
+
+    // Helper function to convert asset symbol/address to contract address
+    const getAssetAddress = (asset: string, network?: string): string => {
+      const normalizedNetwork = (network || 'testnet').toLowerCase();
+      
+      // If already a valid contract address, return it
+      if (asset.startsWith('C') && asset.length === 56) {
+        return asset;
+      }
+      
+      // Network-specific Native XLM SAC addresses
+      const nativeXLMAddresses: { [key: string]: string } = {
+        'testnet': 'CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC',
+        'futurenet': 'CB64D3G7SM2RTH6JSGG34DDTFTQ5CFDKVDZJZSODMCX4NJ2HV2KN7OHT',
+        'mainnet': 'CAS3J7GYLGXMF6TDJBBYYSE3HQ6BBSMLNUQ34T6TZMYMW2EVH34XOWMA',
+        'public': 'CAS3J7GYLGXMF6TDJBBYYSE3HQ6BBSMLNUQ34T6TZMYMW2EVH34XOWMA',
+      };
+      
+      // Network-specific token addresses
+      const tokenAddresses: { [key: string]: { [key: string]: string } } = {
+        'XLM': nativeXLMAddresses,
+        'USDC': {
+          'testnet': 'CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA',
+          'futurenet': process.env.FUTURENET_USDC_ADDRESS || nativeXLMAddresses['futurenet'],
+          'mainnet': '',
+          'public': '',
+        },
+      };
+
+      const assetSymbol = asset.toUpperCase();
+      const networkAddresses = tokenAddresses[assetSymbol];
+      
+      if (!networkAddresses) {
+        throw new Error(`Unknown asset symbol: "${asset}"`);
+      }
+
+      const address = networkAddresses[normalizedNetwork];
+      
+      if (!address) {
+        console.warn(`⚠️  ${asset} not available on ${network}, using Native XLM instead`);
+        return nativeXLMAddresses[normalizedNetwork] || nativeXLMAddresses['testnet'];
+      }
+
+      return address;
+    };
+
+    // Convert assets to Address ScVals
+    const assetAddresses = config.assets.map((asset: string) => {
+      const address = getAssetAddress(asset, network);
+      return StellarSdk.Address.fromString(address).toScVal();
+    });
+
+    // Build VaultConfig struct (must be sorted alphabetically by key!)
+    const vaultConfigStruct = StellarSdk.xdr.ScVal.scvMap([
+      new StellarSdk.xdr.ScMapEntry({
+        key: StellarSdk.xdr.ScVal.scvSymbol(Buffer.from('assets')),
+        val: StellarSdk.xdr.ScVal.scvVec(assetAddresses),
+      }),
+      new StellarSdk.xdr.ScMapEntry({
+        key: StellarSdk.xdr.ScVal.scvSymbol(Buffer.from('name')),
+        val: StellarSdk.nativeToScVal(config.name, { type: 'string' }),
+      }),
+      new StellarSdk.xdr.ScMapEntry({
+        key: StellarSdk.xdr.ScVal.scvSymbol(Buffer.from('owner')),
+        val: StellarSdk.Address.fromString(config.owner).toScVal(),
+      }),
+      new StellarSdk.xdr.ScMapEntry({
+        key: StellarSdk.xdr.ScVal.scvSymbol(Buffer.from('router_address')),
+        val: StellarSdk.nativeToScVal(null, { type: 'option' }),
+      }),
+      new StellarSdk.xdr.ScMapEntry({
+        key: StellarSdk.xdr.ScVal.scvSymbol(Buffer.from('rules')),
+        val: StellarSdk.xdr.ScVal.scvVec([]),
+      }),
+    ]);
+
+    // Build transaction
+    const operation = vaultContract.call('initialize', vaultConfigStruct);
+
+    let transaction = new StellarSdk.TransactionBuilder(sourceAccount, {
+      fee: StellarSdk.BASE_FEE,
+      networkPassphrase: servers.networkPassphrase,
+    })
+      .addOperation(operation)
+      .setTimeout(300)
+      .build();
+
+    console.log(`[Build Initialize] Simulating transaction...`);
+
+    // Simulate transaction
+    const simulationResponse = await servers.sorobanServer.simulateTransaction(transaction);
+
+    if (StellarSdk.SorobanRpc.Api.isSimulationError(simulationResponse)) {
+      throw new Error(`Simulation failed: ${simulationResponse.error}`);
+    }
+
+    // Prepare transaction with simulation results
+    transaction = StellarSdk.SorobanRpc.assembleTransaction(
+      transaction,
+      simulationResponse
+    ).build();
+
+    console.log(`[Build Initialize] Transaction built successfully`);
+
+    return res.json({
+      success: true,
+      data: {
+        xdr: transaction.toXDR(),
+        contractAddress,
+      },
+    });
+  } catch (error) {
+    console.error('Error in POST /api/vaults/build-initialize:', error);
+    return res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Internal server error',
+    });
+  }
+});
+
+/**
+ * POST /api/vaults/submit-initialize
+ * Submit signed initialization transaction
+ */
+router.post('/submit-initialize', async (req: Request, res: Response) => {
+  try {
+    const { signedXDR, contractAddress, network } = req.body;
+
+    if (!signedXDR || !contractAddress) {
+      return res.status(400).json({
+        success: false,
+        error: 'Missing required fields: signedXDR, contractAddress',
+      });
+    }
+
+    // Get network-specific servers
+    const servers = getNetworkServers(network);
+
+    // Parse signed transaction
+    const transaction = StellarSdk.TransactionBuilder.fromXDR(
+      signedXDR,
+      servers.networkPassphrase
+    );
+
+    console.log(`[Submit Initialize] Submitting initialization transaction...`);
+
+    // Submit via Horizon
+    let txHash: string;
+    try {
+      const submitResult = await servers.horizonServer.submitTransaction(transaction);
+      txHash = submitResult.hash;
+      console.log(`[Submit Initialize] ✅ Transaction submitted successfully: ${txHash}`);
+    } catch (submitError: any) {
+      console.error(`[Submit Initialize] Error submitting transaction:`, submitError);
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to submit initialization transaction',
+        details: submitError?.response?.data || submitError.message,
+      });
+    }
+
+    console.log(`[Submit Initialize] ✅ Vault initialized successfully`);
+
+    return res.json({
+      success: true,
+      data: {
+        transactionHash: txHash,
+        contractAddress,
+      },
+    });
+  } catch (error) {
+    console.error('Error in POST /api/vaults/submit-initialize:', error);
+    return res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Internal server error',
+    });
+  }
+});
+
+/**
+ * POST /api/vaults/:vaultId/build-deposit
+ * Build unsigned deposit transaction for user to sign
+ */
+router.post('/:vaultId/build-deposit', async (req: Request, res: Response) => {
+  try {
+    const { vaultId } = req.params;
+    const { userAddress, amount, network } = req.body;
+
+    if (!userAddress || !amount) {
+      return res.status(400).json({
+        success: false,
+        error: 'Missing required fields: userAddress, amount',
+      });
+    }
+
+    // Build unsigned transaction
+    const { xdr, contractAddress } = await buildDepositTransaction(
+      vaultId,
+      userAddress,
+      amount,
+      network
+    );
+
+    return res.json({
+      success: true,
+      data: {
+        xdr,
+        contractAddress,
+      },
+    });
+  } catch (error) {
+    console.error('Error in POST /api/vaults/:vaultId/build-deposit:', error);
+    return res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Internal server error',
+    });
+  }
+});
+
+/**
+ * POST /api/vaults/:vaultId/submit-deposit
+ * Submit signed deposit transaction
+ */
+router.post('/:vaultId/submit-deposit', async (req: Request, res: Response) => {
+  try {
+    const { vaultId } = req.params;
+    const { signedXDR, network } = req.body;
+
+    if (!signedXDR) {
+      return res.status(400).json({
+        success: false,
+        error: 'Missing required field: signedXDR',
+      });
+    }
+
+    // Get network-specific servers
+    const servers = getNetworkServers(network);
+
+    // Parse and submit the signed transaction
+    const transaction = StellarSdk.TransactionBuilder.fromXDR(
+      signedXDR,
+      servers.networkPassphrase
+    );
+
+    console.log(`[Submit Deposit] Submitting signed deposit transaction...`);
+
+    // Submit transaction via Horizon (fast, no polling needed)
+    let txHash: string;
+    try {
+      const submitResult = await servers.horizonServer.submitTransaction(transaction);
+      txHash = submitResult.hash;
+      console.log(`[Submit Deposit] ✅ Transaction submitted successfully: ${txHash}`);
+    } catch (submitError: any) {
+      console.error(`[Submit Deposit] Error submitting transaction:`, submitError);
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to submit deposit transaction',
+        details: submitError?.response?.data || submitError.message,
+      });
+    }
+
+    // Invalidate cache and sync state
+    const { data: vault } = await supabase
+      .from('vaults')
+      .select('contract_address')
+      .eq('vault_id', vaultId)
+      .single();
+
+    if (vault?.contract_address) {
+      invalidateVaultCache(vault.contract_address);
+    }
+
+    await syncVaultState(vaultId);
+
+    return res.json({
+      success: true,
+      data: {
+        transactionHash: txHash,
+      },
+    });
+  } catch (error) {
+    console.error('Error in POST /api/vaults/:vaultId/submit-deposit:', error);
+    return res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Internal server error',
+    });
+  }
+});
+
+/**
+ * POST /api/vaults/:vaultId/build-withdraw
+ * Build unsigned withdrawal transaction for user to sign
+ */
+router.post('/:vaultId/build-withdraw', async (req: Request, res: Response) => {
+  try {
+    const { vaultId } = req.params;
+    const { userAddress, shares, network } = req.body;
+
+    if (!userAddress || !shares) {
+      return res.status(400).json({
+        success: false,
+        error: 'Missing required fields: userAddress, shares',
+      });
+    }
+
+    // Build unsigned transaction
+    const { xdr, contractAddress } = await buildWithdrawalTransaction(
+      vaultId,
+      userAddress,
+      shares,
+      network
+    );
+
+    return res.json({
+      success: true,
+      data: {
+        xdr,
+        contractAddress,
+      },
+    });
+  } catch (error) {
+    console.error('Error in POST /api/vaults/:vaultId/build-withdraw:', error);
+    return res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Internal server error',
+    });
+  }
+});
+
+/**
+ * POST /api/vaults/:vaultId/submit-withdraw
+ * Submit signed withdrawal transaction
+ */
+router.post('/:vaultId/submit-withdraw', async (req: Request, res: Response) => {
+  try {
+    const { vaultId } = req.params;
+    const { signedXDR, network } = req.body;
+
+    if (!signedXDR) {
+      return res.status(400).json({
+        success: false,
+        error: 'Missing required field: signedXDR',
+      });
+    }
+
+    // Get network-specific servers
+    const servers = getNetworkServers(network);
+
+    // Parse and submit the signed transaction
+    const transaction = StellarSdk.TransactionBuilder.fromXDR(
+      signedXDR,
+      servers.networkPassphrase
+    );
+
+    console.log(`[Submit Withdrawal] Submitting signed withdrawal transaction...`);
+
+    // Submit transaction via Horizon (fast, no polling needed)
+    let txHash: string;
+    try {
+      const submitResult = await servers.horizonServer.submitTransaction(transaction);
+      txHash = submitResult.hash;
+      console.log(`[Submit Withdrawal] ✅ Transaction submitted successfully: ${txHash}`);
+    } catch (submitError: any) {
+      console.error(`[Submit Withdrawal] Error submitting transaction:`, submitError);
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to submit withdrawal transaction',
+        details: submitError?.response?.data || submitError.message,
+      });
+    }
+
+    // Invalidate cache and sync state
+    const { data: vault } = await supabase
+      .from('vaults')
+      .select('contract_address')
+      .eq('vault_id', vaultId)
+      .single();
+
+    if (vault?.contract_address) {
+      invalidateVaultCache(vault.contract_address);
+    }
+
+    await syncVaultState(vaultId);
+
+    return res.json({
+      success: true,
+      data: {
+        transactionHash: txHash,
+      },
+    });
+  } catch (error) {
+    console.error('Error in POST /api/vaults/:vaultId/submit-withdraw:', error);
+    return res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Internal server error',
+    });
+  }
+});
+
+/**
  * POST /api/vaults/:vaultId/deposit
- * Deposit assets into vault
+ * Deposit assets into vault (legacy endpoint - uses server-side signing)
  */
 router.post('/:vaultId/deposit', async (req: Request, res: Response) => {
   try {

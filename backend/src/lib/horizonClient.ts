@@ -21,30 +21,36 @@ export function getNetworkServers(network?: string) {
   
   let horizonUrl: string;
   let sorobanUrl: string;
+  let networkPassphrase: string;
   
   switch (userNetwork.toLowerCase()) {
     case 'futurenet':
       horizonUrl = 'https://horizon-futurenet.stellar.org';
       sorobanUrl = 'https://rpc-futurenet.stellar.org';
+      networkPassphrase = 'Test SDF Future Network ; October 2022';
       break;
     case 'testnet':
       horizonUrl = 'https://horizon-testnet.stellar.org';
       sorobanUrl = 'https://soroban-testnet.stellar.org';
+      networkPassphrase = 'Test SDF Network ; September 2015';
       break;
     case 'mainnet':
     case 'public':
       horizonUrl = 'https://horizon.stellar.org';
       sorobanUrl = 'https://soroban-rpc.stellar.org';
+      networkPassphrase = 'Public Global Stellar Network ; September 2015';
       break;
     default:
       horizonUrl = 'https://horizon-testnet.stellar.org';
       sorobanUrl = 'https://soroban-testnet.stellar.org';
+      networkPassphrase = 'Test SDF Network ; September 2015';
   }
   
   return {
     horizonServer: new StellarSdk.Horizon.Server(horizonUrl),
     sorobanServer: new StellarSdk.SorobanRpc.Server(sorobanUrl),
     network: userNetwork,
+    networkPassphrase,
   };
 }
 
