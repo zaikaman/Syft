@@ -12,6 +12,7 @@ import {
   getPerformanceHistory,
   getVaultTransactionHistory,
   getUserPosition,
+  invalidateVaultCache,
 } from '../services/vaultMonitorService.js';
 import {
   executeDeposit,
@@ -118,6 +119,15 @@ router.get('/:vaultId', async (req: Request, res: Response) => {
     // Get performance metrics
     const performance = await getVaultPerformance(vaultId);
 
+    // Get latest performance snapshot for time-based returns
+    const { data: latestSnapshot } = await supabase
+      .from('vault_performance')
+      .select('returns_24h, returns_7d, returns_30d, returns_all_time, apy_current')
+      .eq('vault_id', vault.id)
+      .order('timestamp', { ascending: false })
+      .limit(1)
+      .single();
+
     return res.json({
       success: true,
       data: {
@@ -127,7 +137,14 @@ router.get('/:vaultId', async (req: Request, res: Response) => {
         config: vault.config,
         status: vault.status,
         state,
-        performance,
+        performance: {
+          ...performance,
+          returns24h: latestSnapshot?.returns_24h || null,
+          returns7d: latestSnapshot?.returns_7d || null,
+          returns30d: latestSnapshot?.returns_30d || null,
+          returnsAllTime: latestSnapshot?.returns_all_time || null,
+          apyCurrent: latestSnapshot?.apy_current || null,
+        },
         createdAt: vault.created_at,
         updatedAt: vault.updated_at,
       },
@@ -234,6 +251,18 @@ router.post('/:vaultId/deposit', async (req: Request, res: Response) => {
       });
     }
 
+    // Get vault contract address to invalidate cache
+    const { data: vault } = await supabase
+      .from('vaults')
+      .select('contract_address')
+      .eq('vault_id', vaultId)
+      .single();
+
+    if (vault?.contract_address) {
+      // Invalidate cache immediately after deposit
+      invalidateVaultCache(vault.contract_address);
+    }
+
     // Sync vault state after deposit
     await syncVaultState(vaultId);
 
@@ -334,6 +363,11 @@ router.post('/:vaultId/withdraw', async (req: Request, res: Response) => {
         success: false,
         error: result.error || 'Withdrawal failed',
       });
+    }
+
+    // Invalidate cache immediately after withdrawal
+    if (vault.contract_address) {
+      invalidateVaultCache(vault.contract_address);
     }
 
     // Sync vault state after withdrawal
@@ -559,11 +593,36 @@ router.get('/', async (req: Request, res: Response) => {
       throw error;
     }
 
+    // Enrich vaults with latest performance data
+    const enrichedVaults = await Promise.all(
+      (vaults || []).map(async (vault) => {
+        const { data: latestSnapshot } = await supabase
+          .from('vault_performance')
+          .select('total_value, returns_24h, returns_7d, returns_30d, returns_all_time, apy_current')
+          .eq('vault_id', vault.id)
+          .order('timestamp', { ascending: false })
+          .limit(1)
+          .single();
+
+        return {
+          ...vault,
+          performance: {
+            tvl: latestSnapshot?.total_value || 0,
+            returns24h: latestSnapshot?.returns_24h || null,
+            returns7d: latestSnapshot?.returns_7d || null,
+            returns30d: latestSnapshot?.returns_30d || null,
+            returnsAllTime: latestSnapshot?.returns_all_time || null,
+            apyCurrent: latestSnapshot?.apy_current || null,
+          },
+        };
+      })
+    );
+
     return res.json({
       success: true,
       data: {
-        vaults: vaults || [],
-        count: vaults?.length || 0,
+        vaults: enrichedVaults,
+        count: enrichedVaults.length,
       },
     });
   } catch (error) {
@@ -698,9 +757,34 @@ router.get('/user/:walletAddress', async (req: Request, res: Response) => {
       throw error;
     }
 
+    // Enrich vaults with latest performance data
+    const enrichedVaults = await Promise.all(
+      (vaults || []).map(async (vault) => {
+        const { data: latestSnapshot } = await supabase
+          .from('vault_performance')
+          .select('total_value, returns_24h, returns_7d, returns_30d, returns_all_time, apy_current')
+          .eq('vault_id', vault.id)
+          .order('timestamp', { ascending: false })
+          .limit(1)
+          .single();
+
+        return {
+          ...vault,
+          performance: {
+            tvl: latestSnapshot?.total_value || 0,
+            returns24h: latestSnapshot?.returns_24h || null,
+            returns7d: latestSnapshot?.returns_7d || null,
+            returns30d: latestSnapshot?.returns_30d || null,
+            returnsAllTime: latestSnapshot?.returns_all_time || null,
+            apyCurrent: latestSnapshot?.apy_current || null,
+          },
+        };
+      })
+    );
+
     return res.json({
       success: true,
-      data: vaults || [],
+      data: enrichedVaults,
     });
   } catch (error) {
     console.error('Error in GET /api/vaults/user/:walletAddress:', error);

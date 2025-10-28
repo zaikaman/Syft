@@ -28,6 +28,11 @@ interface VaultData {
     netReturn: number;
     returnPercentage: number;
     lastUpdated: string;
+    returns24h?: number | null;
+    returns7d?: number | null;
+    returns30d?: number | null;
+    returnsAllTime?: number | null;
+    apyCurrent?: number | null;
   };
   createdAt: string;
   updatedAt: string;
@@ -54,6 +59,23 @@ export function VaultDetail({ vaultId, listingId }: VaultDetailProps) {
     loadVaultDetails();
     fetchXLMPrice();
     fetchVaultAnalytics();
+
+    // Auto-refresh every 10 seconds for real-time updates
+    const refreshInterval = setInterval(() => {
+      loadVaultDetails();
+      fetchVaultAnalytics();
+    }, 10000);
+
+    // Refresh XLM price every 60 seconds
+    const priceInterval = setInterval(() => {
+      fetchXLMPrice();
+    }, 60000);
+
+    // Cleanup intervals on unmount
+    return () => {
+      clearInterval(refreshInterval);
+      clearInterval(priceInterval);
+    };
   }, [vaultId]);
 
   const fetchXLMPrice = async () => {
@@ -208,18 +230,19 @@ export function VaultDetail({ vaultId, listingId }: VaultDetailProps) {
         </Card>
 
         <Card className="p-6">
-          <h3 className="text-sm font-medium text-gray-600 mb-2">Performance</h3>
+          <h3 className="text-sm font-medium text-gray-600 mb-2">Current APY</h3>
           <p
             className={`text-3xl font-bold ${
-              (vaultAnalytics?.apy || 0) >= 0 ? 'text-green-600' : 'text-red-600'
+              (vault.performance?.apyCurrent ?? vaultAnalytics?.apy ?? 0) >= 0 ? 'text-green-600' : 'text-red-600'
             }`}
           >
-            {vaultAnalytics?.apy 
-              ? `${vaultAnalytics.apy >= 0 ? '+' : ''}${vaultAnalytics.apy.toFixed(2)}%`
+            {(vault.performance?.apyCurrent ?? vaultAnalytics?.apy) !== null && 
+             (vault.performance?.apyCurrent ?? vaultAnalytics?.apy) !== undefined
+              ? `${(vault.performance?.apyCurrent ?? vaultAnalytics?.apy) >= 0 ? '+' : ''}${(vault.performance?.apyCurrent ?? vaultAnalytics?.apy).toFixed(2)}%`
               : 'N/A'}
           </p>
           <p className="text-sm text-gray-600 mt-1">
-            {vaultAnalytics?.apy ? 'APY' : 'Not enough data'}
+            {(vault.performance?.apyCurrent ?? vaultAnalytics?.apy) ? 'Annualized Yield' : 'Not enough data'}
           </p>
         </Card>
 
@@ -234,6 +257,76 @@ export function VaultDetail({ vaultId, listingId }: VaultDetailProps) {
             {vaultAnalytics?.earningsPercentage 
               ? `${vaultAnalytics.earningsPercentage.toFixed(2)}% ROI`
               : 'No earnings yet'}
+          </p>
+        </Card>
+      </div>
+
+      {/* Time-Based Returns */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <Card className="p-4">
+          <h3 className="text-xs font-medium text-gray-500 mb-1">24h Return</h3>
+          <p
+            className={`text-xl font-bold ${
+              (vault.performance?.returns24h ?? vaultAnalytics?.tvlChange24h ?? 0) >= 0
+                ? 'text-green-600'
+                : 'text-red-600'
+            }`}
+          >
+            {(vault.performance?.returns24h ?? vaultAnalytics?.tvlChange24h) !== null &&
+             (vault.performance?.returns24h ?? vaultAnalytics?.tvlChange24h) !== undefined
+              ? `${(vault.performance?.returns24h ?? vaultAnalytics?.tvlChange24h) >= 0 ? '+' : ''}${(
+                  vault.performance?.returns24h ?? vaultAnalytics?.tvlChange24h
+                ).toFixed(2)}%`
+              : 'N/A'}
+          </p>
+        </Card>
+
+        <Card className="p-4">
+          <h3 className="text-xs font-medium text-gray-500 mb-1">7d Return</h3>
+          <p
+            className={`text-xl font-bold ${
+              (vault.performance?.returns7d ?? vaultAnalytics?.tvlChange7d ?? 0) >= 0
+                ? 'text-green-600'
+                : 'text-red-600'
+            }`}
+          >
+            {(vault.performance?.returns7d ?? vaultAnalytics?.tvlChange7d) !== null &&
+             (vault.performance?.returns7d ?? vaultAnalytics?.tvlChange7d) !== undefined
+              ? `${(vault.performance?.returns7d ?? vaultAnalytics?.tvlChange7d) >= 0 ? '+' : ''}${(
+                  vault.performance?.returns7d ?? vaultAnalytics?.tvlChange7d
+                ).toFixed(2)}%`
+              : 'N/A'}
+          </p>
+        </Card>
+
+        <Card className="p-4">
+          <h3 className="text-xs font-medium text-gray-500 mb-1">30d Return</h3>
+          <p
+            className={`text-xl font-bold ${
+              (vault.performance?.returns30d ?? 0) >= 0 ? 'text-green-600' : 'text-red-600'
+            }`}
+          >
+            {vault.performance?.returns30d !== null && vault.performance?.returns30d !== undefined
+              ? `${vault.performance.returns30d >= 0 ? '+' : ''}${vault.performance.returns30d.toFixed(2)}%`
+              : 'N/A'}
+          </p>
+        </Card>
+
+        <Card className="p-4">
+          <h3 className="text-xs font-medium text-gray-500 mb-1">All-Time</h3>
+          <p
+            className={`text-xl font-bold ${
+              (vault.performance?.returnsAllTime ?? vault.performance?.returnPercentage ?? 0) >= 0
+                ? 'text-green-600'
+                : 'text-red-600'
+            }`}
+          >
+            {((vault.performance?.returnsAllTime !== null && vault.performance?.returnsAllTime !== undefined) ||
+              (vault.performance?.returnPercentage !== null && vault.performance?.returnPercentage !== undefined))
+              ? `${((vault.performance?.returnsAllTime ?? vault.performance?.returnPercentage) ?? 0) >= 0 ? '+' : ''}${((
+                  vault.performance?.returnsAllTime ?? vault.performance?.returnPercentage
+                ) ?? 0).toFixed(2)}%`
+              : 'N/A'}
           </p>
         </Card>
       </div>

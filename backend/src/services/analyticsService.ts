@@ -356,7 +356,7 @@ export async function getVaultAnalytics(vaultId: string): Promise<VaultAnalytics
       throw new Error('Vault not found');
     }
 
-    // Get the LATEST performance snapshot (which already has USD value)
+    // Get the LATEST performance snapshot (which already has USD value and calculated returns)
     const { data: latestSnapshot } = await supabase
       .from('vault_performance')
       .select('*')
@@ -371,8 +371,15 @@ export async function getVaultAnalytics(vaultId: string): Promise<VaultAnalytics
 
     console.log(`[getVaultAnalytics] ${vaultId} - Current TVL from latest snapshot: $${tvl.toFixed(2)}`);
 
-    // Calculate APY
-    const apy = await calculateAPY(vaultId);
+    // Use pre-calculated APY from snapshot if available, otherwise calculate it
+    let apy: number;
+    if (latestSnapshot && latestSnapshot.length > 0 && latestSnapshot[0].apy_current !== null) {
+      apy = latestSnapshot[0].apy_current;
+      console.log(`[getVaultAnalytics] ${vaultId} - Using pre-calculated APY: ${apy.toFixed(2)}%`);
+    } else {
+      apy = await calculateAPY(vaultId);
+      console.log(`[getVaultAnalytics] ${vaultId} - Calculated APY on-the-fly: ${apy.toFixed(2)}%`);
+    }
 
     // Get transaction totals (pass current TVL for safety checks)
     const { totalDeposits, totalWithdrawals } = await getTransactionTotals(vaultId, tvl);
@@ -419,9 +426,25 @@ export async function getVaultAnalytics(vaultId: string): Promise<VaultAnalytics
       ? tvl / Number(totalShares)
       : 1.0;
 
-    // Get TVL changes
-    const tvlChange24h = await getTVLChange(vaultId, 24);
-    const tvlChange7d = await getTVLChange(vaultId, 24 * 7);
+    // Use pre-calculated TVL changes from snapshots if available, otherwise calculate
+    let tvlChange24h: number;
+    let tvlChange7d: number;
+    
+    if (latestSnapshot && latestSnapshot.length > 0 && latestSnapshot[0].returns_24h !== null) {
+      tvlChange24h = latestSnapshot[0].returns_24h;
+      console.log(`[getVaultAnalytics] ${vaultId} - Using pre-calculated 24h change: ${tvlChange24h.toFixed(2)}%`);
+    } else {
+      tvlChange24h = await getTVLChange(vaultId, 24);
+      console.log(`[getVaultAnalytics] ${vaultId} - Calculated 24h change on-the-fly: ${tvlChange24h.toFixed(2)}%`);
+    }
+
+    if (latestSnapshot && latestSnapshot.length > 0 && latestSnapshot[0].returns_7d !== null) {
+      tvlChange7d = latestSnapshot[0].returns_7d;
+      console.log(`[getVaultAnalytics] ${vaultId} - Using pre-calculated 7d change: ${tvlChange7d.toFixed(2)}%`);
+    } else {
+      tvlChange7d = await getTVLChange(vaultId, 24 * 7);
+      console.log(`[getVaultAnalytics] ${vaultId} - Calculated 7d change on-the-fly: ${tvlChange7d.toFixed(2)}%`);
+    }
 
     return {
       vaultId,

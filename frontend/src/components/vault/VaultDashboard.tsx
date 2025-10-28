@@ -18,6 +18,11 @@ interface VaultPerformance {
   netReturn: number;
   returnPercentage: number;
   lastUpdated: string;
+  returns24h?: number | null;
+  returns7d?: number | null;
+  returns30d?: number | null;
+  returnsAllTime?: number | null;
+  apyCurrent?: number | null;
 }
 
 interface VaultDashboardProps {
@@ -173,19 +178,19 @@ export const VaultDashboard: React.FC<VaultDashboardProps> = ({
 
         <div className="bg-white rounded-lg shadow-md p-6">
           <h3 className="text-sm font-medium text-gray-600 mb-2">
-            Net Return
+            Current APY
           </h3>
           <p
             className={`text-3xl font-bold ${
-              performance.netReturn >= 0 ? 'text-green-600' : 'text-red-600'
+              (performance.apyCurrent ?? 0) >= 0 ? 'text-green-600' : 'text-red-600'
             }`}
           >
-            {performance.netReturn >= 0 ? '+' : ''}
-            {performance.netReturn.toLocaleString()}
+            {performance.apyCurrent !== null && performance.apyCurrent !== undefined
+              ? `${performance.apyCurrent >= 0 ? '+' : ''}${performance.apyCurrent.toFixed(2)}%`
+              : 'N/A'}
           </p>
           <p className="text-sm text-gray-500 mt-1">
-            {performance.returnPercentage >= 0 ? '+' : ''}
-            {performance.returnPercentage.toFixed(2)}%
+            Annualized Yield
           </p>
         </div>
 
@@ -203,6 +208,80 @@ export const VaultDashboard: React.FC<VaultDashboardProps> = ({
               ? new Date(state.lastRebalance).toLocaleTimeString()
               : '—'}
           </p>
+        </div>
+      </div>
+
+      {/* Time-Based Returns */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div className="bg-white rounded-lg shadow-md p-6">
+          <h3 className="text-sm font-medium text-gray-600 mb-2">
+            24h Return
+          </h3>
+          <p
+            className={`text-2xl font-bold ${
+              (performance.returns24h ?? 0) >= 0 ? 'text-green-600' : 'text-red-600'
+            }`}
+          >
+            {performance.returns24h !== null && performance.returns24h !== undefined
+              ? `${performance.returns24h >= 0 ? '+' : ''}${performance.returns24h.toFixed(2)}%`
+              : 'N/A'}
+          </p>
+          <p className="text-xs text-gray-500 mt-1">Last 24 hours</p>
+        </div>
+
+        <div className="bg-white rounded-lg shadow-md p-6">
+          <h3 className="text-sm font-medium text-gray-600 mb-2">
+            7d Return
+          </h3>
+          <p
+            className={`text-2xl font-bold ${
+              (performance.returns7d ?? 0) >= 0 ? 'text-green-600' : 'text-red-600'
+            }`}
+          >
+            {performance.returns7d !== null && performance.returns7d !== undefined
+              ? `${performance.returns7d >= 0 ? '+' : ''}${performance.returns7d.toFixed(2)}%`
+              : 'N/A'}
+          </p>
+          <p className="text-xs text-gray-500 mt-1">Last 7 days</p>
+        </div>
+
+        <div className="bg-white rounded-lg shadow-md p-6">
+          <h3 className="text-sm font-medium text-gray-600 mb-2">
+            30d Return
+          </h3>
+          <p
+            className={`text-2xl font-bold ${
+              (performance.returns30d ?? 0) >= 0 ? 'text-green-600' : 'text-red-600'
+            }`}
+          >
+            {performance.returns30d !== null && performance.returns30d !== undefined
+              ? `${performance.returns30d >= 0 ? '+' : ''}${performance.returns30d.toFixed(2)}%`
+              : 'N/A'}
+          </p>
+          <p className="text-xs text-gray-500 mt-1">Last 30 days</p>
+        </div>
+
+        <div className="bg-white rounded-lg shadow-md p-6">
+          <h3 className="text-sm font-medium text-gray-600 mb-2">
+            All-Time Return
+          </h3>
+          <p
+            className={`text-2xl font-bold ${
+              (performance.returnsAllTime ?? performance.returnPercentage ?? 0) >= 0
+                ? 'text-green-600'
+                : 'text-red-600'
+            }`}
+          >
+            {(performance.returnsAllTime !== null && performance.returnsAllTime !== undefined
+              ? performance.returnsAllTime
+              : performance.returnPercentage
+            ) !== undefined
+              ? `${(performance.returnsAllTime ?? performance.returnPercentage) >= 0 ? '+' : ''}${(
+                  performance.returnsAllTime ?? performance.returnPercentage
+                ).toFixed(2)}%`
+              : 'N/A'}
+          </p>
+          <p className="text-xs text-gray-500 mt-1">Since inception</p>
         </div>
       </div>
 

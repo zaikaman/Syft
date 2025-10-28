@@ -22,6 +22,14 @@ interface Vault {
   status: string;
   created_at: string;
   updated_at: string;
+  performance?: {
+    tvl: number;
+    returns24h: number | null;
+    returns7d: number | null;
+    returns30d: number | null;
+    returnsAllTime: number | null;
+    apyCurrent: number | null;
+  };
 }
 
 const Dashboard = () => {
@@ -31,19 +39,34 @@ const Dashboard = () => {
   const [error, setError] = useState<string | null>(null);
   const [xlmPrice, setXlmPrice] = useState<number>(0.10); // Default fallback
   const [portfolioAnalytics, setPortfolioAnalytics] = useState<any>(null);
-  const [performanceData, setPerformanceData] = useState<any[]>([]);
+  const [performanceData] = useState<any[]>([]); // Placeholder for future use
   const [vaultAnalytics, setVaultAnalytics] = useState<Record<string, any>>({});
   const { address, network, networkPassphrase } = useWallet();
 
   useEffect(() => {
     // Fetch XLM price on mount
     fetchXLMPrice();
+
+    // Auto-refresh XLM price every 60 seconds
+    const priceInterval = setInterval(() => {
+      fetchXLMPrice();
+    }, 60000);
+
+    return () => clearInterval(priceInterval);
   }, []);
 
   useEffect(() => {
     if (address) {
       fetchVaults();
       fetchPortfolioAnalytics();
+
+      // Auto-refresh vaults and analytics every 15 seconds
+      const refreshInterval = setInterval(() => {
+        fetchVaults();
+        fetchPortfolioAnalytics();
+      }, 15000);
+
+      return () => clearInterval(refreshInterval);
     } else {
       setLoading(false);
     }
@@ -491,10 +514,16 @@ const Dashboard = () => {
                 {vaults.map((vault, index) => {
                   const assets = vault.config.assets?.map(a => a.code).join('/') || 'Unknown';
                   
-                  // Calculate TVL for this vault
-                  const vaultTVL = vault.config?.current_state?.totalValue || '0';
-                  const vaultTVLInXLM = Number(vaultTVL) / 10_000_000;
-                  const vaultTVLInUSD = vaultTVLInXLM * xlmPrice;
+                  // Use performance data from API if available, otherwise calculate
+                  const vaultTVL = vault.performance?.tvl 
+                    ? vault.performance.tvl
+                    : (vault.config?.current_state?.totalValue 
+                        ? (Number(vault.config.current_state.totalValue) / 10_000_000) * xlmPrice
+                        : 0);
+                  
+                  const apy = vault.performance?.apyCurrent ?? vaultAnalytics[vault.vault_id]?.apy;
+                  const returns24h = vault.performance?.returns24h;
+                  const returns7d = vault.performance?.returns7d;
                   
                   return (
                     <motion.div
@@ -504,7 +533,7 @@ const Dashboard = () => {
                       transition={{ delay: 0.5 + index * 0.05 }}
                     >
                       <Card hover className="p-4 bg-neutral-900">
-                        <div className="grid grid-cols-1 md:grid-cols-5 gap-3 items-center">
+                        <div className="grid grid-cols-1 md:grid-cols-6 gap-3 items-center">
                           <div className="md:col-span-2">
                             <h3 className="text-base font-semibold text-neutral-50 mb-1">{vault.config.name || 'Unnamed Vault'}</h3>
                             <p className="text-sm text-neutral-400">{assets}</p>
@@ -513,21 +542,39 @@ const Dashboard = () => {
                           <div>
                             <div className="text-xs text-neutral-500 mb-0.5">TVL</div>
                             <div className="text-base font-semibold text-neutral-50">
-                              {vaultTVLInUSD > 0 
-                                ? `$${vaultTVLInUSD.toFixed(2)}` 
-                                : vaultTVLInXLM > 0 
-                                  ? `${vaultTVLInXLM.toFixed(4)} XLM`
-                                  : '$0.00'}
+                              {vaultTVL > 0 
+                                ? `$${vaultTVL.toFixed(2)}` 
+                                : '$0.00'}
                             </div>
                           </div>
                           <div>
                             <div className="text-xs text-neutral-500 mb-0.5">APY</div>
                             <div className={`text-base font-semibold ${
-                              vaultAnalytics[vault.vault_id]?.apy >= 0 ? 'text-success-400' : 'text-error-400'
+                              (apy ?? 0) >= 0 ? 'text-success-400' : 'text-error-400'
                             }`}>
-                              {vaultAnalytics[vault.vault_id]?.apy 
-                                ? `${vaultAnalytics[vault.vault_id].apy.toFixed(2)}%`
+                              {apy !== null && apy !== undefined
+                                ? `${apy >= 0 ? '+' : ''}${apy.toFixed(2)}%`
                                 : 'N/A'}
+                            </div>
+                          </div>
+                          <div>
+                            <div className="text-xs text-neutral-500 mb-0.5">24h / 7d</div>
+                            <div className="text-sm">
+                              <span className={`font-medium ${
+                                (returns24h ?? 0) >= 0 ? 'text-success-400' : 'text-error-400'
+                              }`}>
+                                {returns24h !== null && returns24h !== undefined
+                                  ? `${returns24h >= 0 ? '+' : ''}${returns24h.toFixed(1)}%`
+                                  : 'N/A'}
+                              </span>
+                              <span className="text-neutral-500 mx-1">/</span>
+                              <span className={`font-medium ${
+                                (returns7d ?? 0) >= 0 ? 'text-success-400' : 'text-error-400'
+                              }`}>
+                                {returns7d !== null && returns7d !== undefined
+                                  ? `${returns7d >= 0 ? '+' : ''}${returns7d.toFixed(1)}%`
+                                  : 'N/A'}
+                              </span>
                             </div>
                           </div>
                           <div className="flex items-center justify-between md:justify-end gap-3">

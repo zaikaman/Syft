@@ -2,6 +2,7 @@ import * as StellarSdk from '@stellar/stellar-sdk';
 import { horizonServer } from '../lib/horizonClient.js';
 import { supabase } from '../lib/supabase.js';
 import { invokeVaultMethod } from './vaultDeploymentService.js';
+import { invalidateVaultCache } from './vaultMonitorService.js';
 
 export interface RebalanceResult {
   success: boolean;
@@ -117,6 +118,11 @@ export async function executeRebalance(
 
     if (updateError) {
       console.error('Error updating vault:', updateError);
+    }
+
+    // Invalidate cache immediately after rebalance
+    if (vault.contract_address) {
+      invalidateVaultCache(vault.contract_address);
     }
 
     // Record performance snapshot after rebalance with REAL TVL
