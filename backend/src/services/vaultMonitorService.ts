@@ -216,10 +216,12 @@ export async function monitorVaultState(
         if (contractResult && typeof contractResult === 'object') {
           // Try to access the values directly if they're already parsed
           if ('total_shares' in contractResult) {
-            totalShares = contractResult.total_shares?.toString() || '0';
+            const sharesValue = contractResult.total_shares;
+            totalShares = (typeof sharesValue === 'bigint' ? sharesValue : BigInt(sharesValue || 0)).toString();
           }
           if ('total_value' in contractResult) {
-            totalValue = contractResult.total_value?.toString() || '0';
+            const valueValue = contractResult.total_value;
+            totalValue = (typeof valueValue === 'bigint' ? valueValue : BigInt(valueValue || 0)).toString();
           }
           
           // If it's an ScVal, decode it
@@ -228,13 +230,16 @@ export async function monitorVaultState(
             console.log('[monitorVaultState] Decoded contract state:', decoded);
             
             if (decoded && typeof decoded === 'object') {
-              totalShares = decoded.total_shares?.toString() || '0';
-              totalValue = decoded.total_value?.toString() || '0';
+              const sharesValue = decoded.total_shares;
+              const valueValue = decoded.total_value;
+              totalShares = (typeof sharesValue === 'bigint' ? sharesValue : BigInt(sharesValue || 0)).toString();
+              totalValue = (typeof valueValue === 'bigint' ? valueValue : BigInt(valueValue || 0)).toString();
             }
           }
         }
         
         console.log('[monitorVaultState] Parsed state - shares:', totalShares, 'value:', totalValue);
+        console.log('[monitorVaultState] TVL in XLM:', (Number(totalValue) / 10_000_000).toFixed(7));
       } catch (parseError) {
         console.error('[monitorVaultState] Error parsing contract result:', parseError);
       }

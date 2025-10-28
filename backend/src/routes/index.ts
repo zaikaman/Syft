@@ -9,6 +9,8 @@ import suggestionsRoutes from './suggestions.js';
 import nftRoutes from './nfts.js';
 import marketplaceRoutes from './marketplace.js';
 import userRoutes from './users.js';
+import priceRoutes from './price.js';
+import analyticsRoutes from './analytics.js';
 
 const router = Router();
 
@@ -37,6 +39,8 @@ router.get('/', (_req, res) => {
       suggestions: '/api/suggestions',
       nfts: '/api/nfts',
       marketplace: '/api/marketplace',
+      price: '/api/price',
+      analytics: '/api/analytics',
     },
   });
 });
@@ -49,5 +53,7 @@ router.use('/backtests', backtestRoutes);
 router.use('/suggestions', suggestionsRoutes);
 router.use('/nfts', nftRoutes);
 router.use('/marketplace', marketplaceRoutes);
+router.use('/price', priceRoutes);
+router.use('/analytics', analyticsRoutes);
 
 export default router;

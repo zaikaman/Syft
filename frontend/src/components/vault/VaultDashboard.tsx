@@ -31,11 +31,27 @@ export const VaultDashboard: React.FC<VaultDashboardProps> = ({
 }) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>('');
+  const [xlmPrice, setXlmPrice] = useState<number>(0.10); // Fallback price
   const [vaultData, setVaultData] = useState<{
     config: any;
     state: VaultState | null;
     performance: VaultPerformance;
   } | null>(null);
+
+  const fetchXLMPrice = async () => {
+    try {
+      const backendUrl = 'http://localhost:3001';
+      const response = await fetch(`${backendUrl}/api/price/xlm`);
+      if (response.ok) {
+        const data = await response.json();
+        if (data.success && data.price) {
+          setXlmPrice(data.price);
+        }
+      }
+    } catch (err) {
+      console.error('[VaultDashboard] Failed to fetch XLM price:', err);
+    }
+  };
 
   const fetchVaultData = async () => {
     setLoading(true);
@@ -64,9 +80,13 @@ export const VaultDashboard: React.FC<VaultDashboardProps> = ({
   };
 
   useEffect(() => {
+    fetchXLMPrice();
     fetchVaultData();
     // Refresh every 30 seconds
-    const interval = setInterval(fetchVaultData, 30000);
+    const interval = setInterval(() => {
+      fetchXLMPrice();
+      fetchVaultData();
+    }, 30000);
     return () => clearInterval(interval);
   }, [vaultId]);
 
@@ -133,15 +153,21 @@ export const VaultDashboard: React.FC<VaultDashboardProps> = ({
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div className="bg-white rounded-lg shadow-md p-6">
           <h3 className="text-sm font-medium text-gray-600 mb-2">
-            Total Value
+            Total Value Locked
           </h3>
           <p className="text-3xl font-bold text-gray-900">
-            {state
-              ? parseFloat(state.totalValue).toLocaleString()
-              : performance.currentValue.toLocaleString()}
+            ${state
+              ? ((Number(state.totalValue) / 10_000_000) * xlmPrice).toLocaleString(undefined, {
+                  minimumFractionDigits: 2,
+                  maximumFractionDigits: 2,
+                })
+              : performance.currentValue.toLocaleString(undefined, {
+                  minimumFractionDigits: 2,
+                  maximumFractionDigits: 2,
+                })}
           </p>
           <p className="text-sm text-gray-500 mt-1">
-            {state?.totalShares || '0'} shares
+            {state ? (Number(state.totalValue) / 10_000_000).toFixed(7) : '0'} XLM @ ${xlmPrice.toFixed(4)}
           </p>
         </div>
 

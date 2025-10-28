@@ -47,10 +47,47 @@ export function VaultDetail({ vaultId, listingId }: VaultDetailProps) {
   const [nftHolders, setNftHolders] = useState<NFTHolder[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
+  const [xlmPrice, setXlmPrice] = useState<number>(0.10); // Fallback price
+  const [vaultAnalytics, setVaultAnalytics] = useState<any>(null);
 
   useEffect(() => {
     loadVaultDetails();
+    fetchXLMPrice();
+    fetchVaultAnalytics();
   }, [vaultId]);
+
+  const fetchXLMPrice = async () => {
+    try {
+      const backendUrl = import.meta.env.PUBLIC_BACKEND_URL || 'http://localhost:3001';
+      const response = await fetch(`${backendUrl}/api/price/xlm`);
+      if (response.ok) {
+        const data = await response.json();
+        if (data.success && data.price) {
+          setXlmPrice(data.price);
+          console.log(`[VaultDetail] XLM Price: $${data.price.toFixed(4)}`);
+        }
+      }
+    } catch (err) {
+      console.error('[VaultDetail] Failed to fetch XLM price:', err);
+      // Keep using fallback price
+    }
+  };
+
+  const fetchVaultAnalytics = async () => {
+    try {
+      const backendUrl = import.meta.env.PUBLIC_BACKEND_URL || 'http://localhost:3001';
+      const response = await fetch(`${backendUrl}/api/analytics/vault/${vaultId}`);
+      if (response.ok) {
+        const data = await response.json();
+        if (data.success) {
+          setVaultAnalytics(data.data);
+          console.log(`[VaultDetail] Analytics:`, data.data);
+        }
+      }
+    } catch (err) {
+      console.error('[VaultDetail] Failed to fetch analytics:', err);
+    }
+  };
 
   const loadVaultDetails = async () => {
     setIsLoading(true);
@@ -100,6 +137,20 @@ export function VaultDetail({ vaultId, listingId }: VaultDetailProps) {
     0
   );
 
+  // Calculate TVL from vault state in stroops
+  const calculateTVL = () => {
+    if (!vault?.state?.totalValue) {
+      // Fallback to performance data if state is not available
+      return vault?.performance?.currentValue || 0;
+    }
+    
+    const stateValue = Number(vault.state.totalValue);
+    const xlmAmount = stateValue / 10_000_000; // Convert stroops to XLM
+    return xlmAmount * xlmPrice; // Convert to USD
+  };
+
+  const tvlValue = calculateTVL();
+
   if (isLoading) {
     return (
       <div className="flex justify-center py-12">
@@ -142,34 +193,47 @@ export function VaultDetail({ vaultId, listingId }: VaultDetailProps) {
       {/* Performance Metrics */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <Card className="p-6">
-          <h3 className="text-sm font-medium text-gray-600 mb-2">Total Value</h3>
+          <h3 className="text-sm font-medium text-gray-600 mb-2">Total Value Locked</h3>
           <p className="text-3xl font-bold">
-            ${(vault.performance?.currentValue || 0).toLocaleString(undefined, { 
+            ${tvlValue.toLocaleString(undefined, { 
               minimumFractionDigits: 2, 
               maximumFractionDigits: 2 
             })}
           </p>
+          {vault?.state?.totalValue && (
+            <p className="text-xs text-gray-500 mt-2">
+              {(Number(vault.state.totalValue) / 10_000_000).toFixed(7)} XLM @ ${xlmPrice.toFixed(4)}
+            </p>
+          )}
         </Card>
 
         <Card className="p-6">
           <h3 className="text-sm font-medium text-gray-600 mb-2">Performance</h3>
           <p
             className={`text-3xl font-bold ${
-              (vault.performance?.returnPercentage || 0) >= 0 ? 'text-green-600' : 'text-red-600'
+              (vaultAnalytics?.apy || 0) >= 0 ? 'text-green-600' : 'text-red-600'
             }`}
           >
-            {(vault.performance?.returnPercentage || 0) >= 0 ? '+' : ''}
-            {(vault.performance?.returnPercentage || 0).toFixed(2)}%
+            {vaultAnalytics?.apy 
+              ? `${vaultAnalytics.apy >= 0 ? '+' : ''}${vaultAnalytics.apy.toFixed(2)}%`
+              : 'N/A'}
+          </p>
+          <p className="text-sm text-gray-600 mt-1">
+            {vaultAnalytics?.apy ? 'APY' : 'Not enough data'}
           </p>
         </Card>
 
         <Card className="p-6">
-          <h3 className="text-sm font-medium text-gray-600 mb-2">Tokenized</h3>
-          <p className="text-3xl font-bold text-blue-600">
-            {(totalOwnership / 100).toFixed(1)}%
+          <h3 className="text-sm font-medium text-gray-600 mb-2">Total Earnings</h3>
+          <p className={`text-3xl font-bold ${
+            (vaultAnalytics?.totalEarnings || 0) >= 0 ? 'text-green-600' : 'text-red-600'
+          }`}>
+            ${(vaultAnalytics?.totalEarnings || 0).toFixed(2)}
           </p>
           <p className="text-sm text-gray-600 mt-1">
-            {nftHolders.length} NFT{nftHolders.length !== 1 ? 's' : ''}
+            {vaultAnalytics?.earningsPercentage 
+              ? `${vaultAnalytics.earningsPercentage.toFixed(2)}% ROI`
+              : 'No earnings yet'}
           </p>
         </Card>
       </div>
@@ -253,6 +317,7 @@ export function VaultDetail({ vaultId, listingId }: VaultDetailProps) {
         onActionComplete={(action) => {
           console.log(`${action} completed, reloading vault...`);
           loadVaultDetails();
+          fetchVaultAnalytics(); // Refresh analytics too
         }}
       />
 

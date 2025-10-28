@@ -1,5 +1,6 @@
 import { supabase } from '../lib/supabase.js';
 import { monitorVaultState, recordPerformanceSnapshot } from './vaultMonitorService.js';
+import { stroopsToUSD } from './priceService.js';
 
 /**
  * Sync vault state from blockchain to Supabase
@@ -44,8 +45,13 @@ export async function syncVaultState(vaultId: string): Promise<boolean> {
     }
 
     // Record performance snapshot
-    const totalValue = parseFloat(state.totalValue);
-    await recordPerformanceSnapshot(vaultId, totalValue, 0);
+    // Convert stroops to USD using real-time XLM price
+    const totalValueInStroops = parseFloat(state.totalValue);
+    const totalValueInUSD = await stroopsToUSD(totalValueInStroops);
+    
+    console.log(`[syncVaultState] TVL - Stroops: ${totalValueInStroops}, USD: $${totalValueInUSD.toFixed(2)}`);
+    
+    await recordPerformanceSnapshot(vaultId, totalValueInUSD, 0);
 
     return true;
   } catch (error) {

@@ -2,7 +2,6 @@ import * as StellarSdk from '@stellar/stellar-sdk';
 import { horizonServer } from '../lib/horizonClient.js';
 import { supabase } from '../lib/supabase.js';
 import { invokeVaultMethod } from './vaultDeploymentService.js';
-import { recordPerformanceSnapshot } from './vaultMonitorService.js';
 
 export interface RebalanceResult {
   success: boolean;
@@ -120,8 +119,11 @@ export async function executeRebalance(
       console.error('Error updating vault:', updateError);
     }
 
-    // Record performance snapshot after rebalance
-    await recordPerformanceSnapshot(vaultId, 1000000, 0); // Mock values
+    // Record performance snapshot after rebalance with REAL TVL
+    // Force sync vault state to get accurate post-rebalance TVL
+    const { syncVaultState } = await import('./vaultSyncService.js');
+    await syncVaultState(vaultId);
+    console.log(`✅ Performance snapshot recorded after rebalance for vault ${vaultId}`);
 
     return {
       success: true,
@@ -198,6 +200,41 @@ export async function executeDeposit(
       shares = amount;
     }
 
+    // Record transaction in ledger for accurate earnings tracking
+    try {
+      const { stroopsToUSD, getXLMPrice } = await import('./priceService.js');
+      const amountInStroops = parseFloat(amount);
+      const xlmPrice = await getXLMPrice();
+      const amountUSD = await stroopsToUSD(amountInStroops);
+      
+      // Get vault UUID
+      const { data: vaultData } = await supabase
+        .from('vaults')
+        .select('id')
+        .eq('vault_id', vaultId)
+        .single();
+
+      if (vaultData) {
+        await supabase.from('vault_transactions').insert({
+          vault_id: vaultData.id,
+          user_address: userAddress,
+          type: 'deposit',
+          amount_xlm: amountInStroops / 10_000_000, // Convert stroops to XLM
+          amount_usd: amountUSD,
+          shares: shares,
+          xlm_price: xlmPrice,
+          share_price: amountUSD / parseFloat(shares), // USD per share
+          transaction_hash: result.transactionHash,
+          metadata: { network, timestamp: new Date().toISOString() },
+        });
+        
+        console.log(`✅ Recorded deposit transaction: ${(amountInStroops / 10_000_000).toFixed(1)} XLM = $${amountUSD.toFixed(2)} → ${shares} shares`);
+      }
+    } catch (txError) {
+      console.error('⚠️  Failed to record transaction (non-critical):', txError);
+      // Don't fail the deposit if transaction recording fails
+    }
+
     return {
       success: true,
       shares,
@@ -270,6 +307,41 @@ export async function executeWithdrawal(
     } else {
       // Fallback if no result
       amount = shares;
+    }
+
+    // Record transaction in ledger for accurate earnings tracking
+    try {
+      const { stroopsToUSD, getXLMPrice } = await import('./priceService.js');
+      const amountInStroops = parseFloat(amount);
+      const xlmPrice = await getXLMPrice();
+      const amountUSD = await stroopsToUSD(amountInStroops);
+      
+      // Get vault UUID
+      const { data: vaultData } = await supabase
+        .from('vaults')
+        .select('id')
+        .eq('vault_id', vaultId)
+        .single();
+
+      if (vaultData) {
+        await supabase.from('vault_transactions').insert({
+          vault_id: vaultData.id,
+          user_address: userAddress,
+          type: 'withdrawal',
+          amount_xlm: amountInStroops / 10_000_000, // Convert stroops to XLM
+          amount_usd: amountUSD,
+          shares: shares,
+          xlm_price: xlmPrice,
+          share_price: amountUSD / parseFloat(shares), // USD per share
+          transaction_hash: result.transactionHash,
+          metadata: { network, timestamp: new Date().toISOString() },
+        });
+        
+        console.log(`✅ Recorded withdrawal transaction: ${shares} shares → ${(amountInStroops / 10_000_000).toFixed(1)} XLM = $${amountUSD.toFixed(2)}`);
+      }
+    } catch (txError) {
+      console.error('⚠️  Failed to record transaction (non-critical):', txError);
+      // Don't fail the withdrawal if transaction recording fails
     }
 
     return {

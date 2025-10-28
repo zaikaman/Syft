@@ -13,6 +13,11 @@ interface Vault {
   config: {
     name: string;
     assets: Array<{ code: string; issuer?: string }>;
+    current_state?: {
+      totalShares: string;
+      totalValue: string;
+      lastRebalance: number;
+    };
   };
   status: string;
   created_at: string;
@@ -24,15 +29,97 @@ const Dashboard = () => {
   const [vaults, setVaults] = useState<Vault[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [xlmPrice, setXlmPrice] = useState<number>(0.10); // Default fallback
+  const [portfolioAnalytics, setPortfolioAnalytics] = useState<any>(null);
+  const [performanceData, setPerformanceData] = useState<any[]>([]);
+  const [vaultAnalytics, setVaultAnalytics] = useState<Record<string, any>>({});
   const { address, network, networkPassphrase } = useWallet();
+
+  useEffect(() => {
+    // Fetch XLM price on mount
+    fetchXLMPrice();
+  }, []);
 
   useEffect(() => {
     if (address) {
       fetchVaults();
+      fetchPortfolioAnalytics();
     } else {
       setLoading(false);
     }
   }, [address, network]); // Refetch when network changes
+
+  // Fetch analytics for all vaults when vaults change
+  useEffect(() => {
+    if (vaults.length > 0) {
+      fetchVaultAnalytics();
+    }
+  }, [vaults]);
+
+  const fetchXLMPrice = async () => {
+    try {
+      const backendUrl = import.meta.env.PUBLIC_BACKEND_URL || 'http://localhost:3001';
+      const response = await fetch(`${backendUrl}/api/price/xlm`);
+      if (response.ok) {
+        const data = await response.json();
+        if (data.success && data.price) {
+          setXlmPrice(data.price);
+          console.log(`[Dashboard] XLM Price: $${data.price.toFixed(4)}`);
+        }
+      }
+    } catch (err) {
+      console.error('[Dashboard] Failed to fetch XLM price:', err);
+      // Keep using fallback price
+    }
+  };
+
+  const fetchPortfolioAnalytics = async () => {
+    try {
+      const normalizedNetwork = normalizeNetwork(network, networkPassphrase);
+      const backendUrl = import.meta.env.PUBLIC_BACKEND_URL || 'http://localhost:3001';
+      const response = await fetch(
+        `${backendUrl}/api/analytics/portfolio/${address}?network=${normalizedNetwork}`
+      );
+      
+      if (response.ok) {
+        const data = await response.json();
+        if (data.success) {
+          setPortfolioAnalytics(data.data);
+          console.log('[Dashboard] Portfolio Analytics:', data.data);
+        }
+      }
+    } catch (err) {
+      console.error('[Dashboard] Failed to fetch portfolio analytics:', err);
+    }
+  };
+
+  const fetchVaultAnalytics = async () => {
+    try {
+      const backendUrl = import.meta.env.PUBLIC_BACKEND_URL || 'http://localhost:3001';
+      const analyticsMap: Record<string, any> = {};
+      
+      await Promise.all(
+        vaults.map(async (vault) => {
+          try {
+            const response = await fetch(`${backendUrl}/api/analytics/vault/${vault.vault_id}`);
+            if (response.ok) {
+              const data = await response.json();
+              if (data.success) {
+                analyticsMap[vault.vault_id] = data.data;
+              }
+            }
+          } catch (err) {
+            console.error(`[Dashboard] Failed to fetch analytics for vault ${vault.vault_id}:`, err);
+          }
+        })
+      );
+      
+      setVaultAnalytics(analyticsMap);
+      console.log('[Dashboard] Vault Analytics:', analyticsMap);
+    } catch (err) {
+      console.error('[Dashboard] Failed to fetch vault analytics:', err);
+    }
+  };
 
   // Map Freighter network names to our backend format
   const normalizeNetwork = (net?: string, passphrase?: string): string => {
@@ -86,47 +173,74 @@ const Dashboard = () => {
   };
 
   // Calculate stats from real vault data
+  const calculateTotalTVL = () => {
+    if (vaults.length === 0) return 0;
+    
+    return vaults.reduce((total, vault) => {
+      // Get TVL from vault's current state if available
+      const tvl = vault.config?.current_state?.totalValue || '0';
+      // Convert from stroops to XLM, then to USD using real price
+      const tvlInXLM = Number(tvl) / 10_000_000;
+      const tvlInUSD = tvlInXLM * xlmPrice;
+      return total + tvlInUSD;
+    }, 0);
+  };
+
+  const totalTVL = portfolioAnalytics?.totalTVL || calculateTotalTVL();
+
   const stats = [
     {
       label: 'Total Value Locked',
-      value: vaults.length > 0 ? '$0.00' : '$0.00', // Would need to fetch balances
-      change: 'N/A',
+      value: totalTVL > 0 ? `$${totalTVL.toFixed(2)}` : '$0.00',
+      change: totalTVL > 0 ? `${vaults.length} vault${vaults.length !== 1 ? 's' : ''}` : 'No deposits yet',
       icon: DollarSign,
       isPositive: true,
     },
     {
-      label: 'Average APY',
-      value: 'N/A', // Would need performance data
-      change: 'N/A',
+      label: 'Weighted APY',
+      value: portfolioAnalytics?.weightedAPY 
+        ? `${portfolioAnalytics.weightedAPY.toFixed(2)}%`
+        : 'N/A',
+      change: portfolioAnalytics?.averageAPY 
+        ? `Avg: ${portfolioAnalytics.averageAPY.toFixed(2)}%`
+        : 'No data yet',
       icon: Percent,
-      isPositive: true,
+      isPositive: (portfolioAnalytics?.weightedAPY || 0) >= 0,
     },
     {
       label: 'Active Vaults',
-      value: vaults.length.toString(),
-      change: vaults.filter(v => v.status === 'active').length === vaults.length ? 'All Active' : 'Some Inactive',
+      value: portfolioAnalytics?.activeVaultCount?.toString() || vaults.length.toString(),
+      change: portfolioAnalytics
+        ? `${portfolioAnalytics.vaultCount} total`
+        : vaults.filter(v => v.status === 'active').length === vaults.length ? 'All Active' : 'Some Inactive',
       icon: Box,
       isPositive: true,
     },
     {
       label: 'Total Earnings',
-      value: '$0.00', // Would need performance data
-      change: 'N/A',
+      value: portfolioAnalytics?.totalEarnings 
+        ? `$${portfolioAnalytics.totalEarnings.toFixed(2)}`
+        : '$0.00',
+      change: portfolioAnalytics?.totalEarnings && portfolioAnalytics?.totalDeposits
+        ? `${((portfolioAnalytics.totalEarnings / portfolioAnalytics.totalDeposits) * 100).toFixed(2)}% ROI`
+        : 'No data yet',
       icon: TrendingUp,
-      isPositive: true,
+      isPositive: (portfolioAnalytics?.totalEarnings || 0) >= 0,
     },
   ];
 
-  // Placeholder data for charts (would need to fetch from API)
-  const performanceData = [
-    { date: 'Day 1', value: 0, apy: 0 },
-    { date: 'Day 2', value: 0, apy: 0 },
-    { date: 'Day 3', value: 0, apy: 0 },
-    { date: 'Day 4', value: 0, apy: 0 },
-    { date: 'Day 5', value: 0, apy: 0 },
-    { date: 'Day 6', value: 0, apy: 0 },
-    { date: 'Day 7', value: 0, apy: 0 },
-  ];
+  // Use real performance data or placeholder
+  const displayPerformanceData = performanceData.length > 0 
+    ? performanceData 
+    : [
+        { date: 'Day 1', value: 0, apy: 0 },
+        { date: 'Day 2', value: 0, apy: 0 },
+        { date: 'Day 3', value: 0, apy: 0 },
+        { date: 'Day 4', value: 0, apy: 0 },
+        { date: 'Day 5', value: 0, apy: 0 },
+        { date: 'Day 6', value: 0, apy: 0 },
+        { date: 'Day 7', value: 0, apy: 0 },
+      ];
 
   // Calculate allocation from vaults
   const allocationData = vaults.length > 0
@@ -244,7 +358,7 @@ const Dashboard = () => {
                 </div>
               </div>
               <ResponsiveContainer width="100%" height={250}>
-                <AreaChart data={performanceData}>
+                <AreaChart data={displayPerformanceData}>
                   <defs>
                     <linearGradient id="colorValue" x1="0" y1="0" x2="0" y2="1">
                       <stop offset="5%" stopColor="#dce85d" stopOpacity={0.3}/>
@@ -377,6 +491,11 @@ const Dashboard = () => {
                 {vaults.map((vault, index) => {
                   const assets = vault.config.assets?.map(a => a.code).join('/') || 'Unknown';
                   
+                  // Calculate TVL for this vault
+                  const vaultTVL = vault.config?.current_state?.totalValue || '0';
+                  const vaultTVLInXLM = Number(vaultTVL) / 10_000_000;
+                  const vaultTVLInUSD = vaultTVLInXLM * xlmPrice;
+                  
                   return (
                     <motion.div
                       key={vault.vault_id}
@@ -393,11 +512,23 @@ const Dashboard = () => {
                           </div>
                           <div>
                             <div className="text-xs text-neutral-500 mb-0.5">TVL</div>
-                            <div className="text-base font-semibold text-neutral-50">N/A</div>
+                            <div className="text-base font-semibold text-neutral-50">
+                              {vaultTVLInUSD > 0 
+                                ? `$${vaultTVLInUSD.toFixed(2)}` 
+                                : vaultTVLInXLM > 0 
+                                  ? `${vaultTVLInXLM.toFixed(4)} XLM`
+                                  : '$0.00'}
+                            </div>
                           </div>
                           <div>
                             <div className="text-xs text-neutral-500 mb-0.5">APY</div>
-                            <div className="text-base font-semibold text-success-400">N/A</div>
+                            <div className={`text-base font-semibold ${
+                              vaultAnalytics[vault.vault_id]?.apy >= 0 ? 'text-success-400' : 'text-error-400'
+                            }`}>
+                              {vaultAnalytics[vault.vault_id]?.apy 
+                                ? `${vaultAnalytics[vault.vault_id].apy.toFixed(2)}%`
+                                : 'N/A'}
+                            </div>
                           </div>
                           <div className="flex items-center justify-between md:justify-end gap-3">
                             <div className="flex items-center gap-2">
