@@ -40,6 +40,7 @@ interface MarketplaceBrowseProps {
 export function MarketplaceBrowse({ onSelectListing }: MarketplaceBrowseProps) {
   const [listings, setListings] = useState<Listing[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isInitialLoad, setIsInitialLoad] = useState(true);
   const [error, setError] = useState('');
 
   // Filters
@@ -49,11 +50,13 @@ export function MarketplaceBrowse({ onSelectListing }: MarketplaceBrowseProps) {
   const [sortOrder, setSortOrder] = useState('desc');
 
   useEffect(() => {
-    loadListings();
+    loadListings(isInitialLoad);
   }, [minPrice, maxPrice, sortBy, sortOrder]);
 
-  const loadListings = async () => {
-    setIsLoading(true);
+  const loadListings = async (showLoading = false) => {
+    if (showLoading) {
+      setIsLoading(true);
+    }
     setError('');
 
     try {
@@ -75,9 +78,14 @@ export function MarketplaceBrowse({ onSelectListing }: MarketplaceBrowseProps) {
 
       setListings(data.data);
     } catch (err: any) {
-      setError(err.message || 'Failed to load marketplace listings');
+      if (showLoading) {
+        setError(err.message || 'Failed to load marketplace listings');
+      }
     } finally {
-      setIsLoading(false);
+      if (showLoading) {
+        setIsLoading(false);
+        setIsInitialLoad(false);
+      }
     }
   };
 
@@ -169,14 +177,14 @@ export function MarketplaceBrowse({ onSelectListing }: MarketplaceBrowseProps) {
       </Card>
 
       {/* Listings Grid */}
-      {isLoading ? (
+      {isLoading && isInitialLoad ? (
         <div className="flex justify-center py-12">
           <LoadingSpinner />
         </div>
-      ) : error ? (
+      ) : error && listings.length === 0 ? (
         <Card className="p-8 text-center">
           <p className="text-red-600">{error}</p>
-          <Button onClick={loadListings} className="mt-4" variant="outline">
+          <Button onClick={() => loadListings(true)} className="mt-4" variant="outline">
             Try Again
           </Button>
         </Card>

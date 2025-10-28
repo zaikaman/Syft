@@ -36,6 +36,7 @@ const Dashboard = () => {
   const [selectedPeriod, setSelectedPeriod] = useState('7d');
   const [vaults, setVaults] = useState<Vault[]>([]);
   const [loading, setLoading] = useState(true);
+  const [isInitialLoad, setIsInitialLoad] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [xlmPrice, setXlmPrice] = useState<number>(0.10); // Default fallback
   const [portfolioAnalytics, setPortfolioAnalytics] = useState<any>(null);
@@ -58,18 +59,19 @@ const Dashboard = () => {
 
   useEffect(() => {
     if (address) {
-      fetchVaults();
+      fetchVaults(false);
       fetchPortfolioAnalytics();
 
-      // Auto-refresh vaults and analytics every 15 seconds
+      // Auto-refresh vaults and analytics every 15 seconds (background updates)
       const refreshInterval = setInterval(() => {
-        fetchVaults();
+        fetchVaults(true);
         fetchPortfolioAnalytics();
       }, 15000);
 
       return () => clearInterval(refreshInterval);
     } else {
       setLoading(false);
+      setIsInitialLoad(false);
     }
   }, [address, network]); // Refetch when network changes
 
@@ -217,13 +219,16 @@ const Dashboard = () => {
     return 'testnet'; // Default fallback
   };
 
-  const fetchVaults = async () => {
+  const fetchVaults = async (isBackground = false) => {
     try {
-      setLoading(true);
+      // Only show loading state on initial load, not on background refreshes
+      if (!isBackground) {
+        setLoading(true);
+      }
       setError(null);
 
       const normalizedNetwork = normalizeNetwork(network, networkPassphrase);
-      console.log(`[Dashboard] Fetching vaults for network: ${normalizedNetwork}`);
+      console.log(`[Dashboard] Fetching vaults for network: ${normalizedNetwork}${isBackground ? ' (background)' : ''}`);
 
       const backendUrl = import.meta.env.PUBLIC_BACKEND_URL || 'http://localhost:3001';
       const response = await fetch(`${backendUrl}/api/vaults/user/${address}?network=${normalizedNetwork}`);
@@ -241,10 +246,16 @@ const Dashboard = () => {
       }
     } catch (err) {
       console.error('Error fetching vaults:', err);
-      setError(err instanceof Error ? err.message : 'Failed to load vaults');
-      setVaults([]);
+      // Only show error on initial load, silently fail on background updates
+      if (!isBackground) {
+        setError(err instanceof Error ? err.message : 'Failed to load vaults');
+        setVaults([]);
+      }
     } finally {
-      setLoading(false);
+      if (!isBackground) {
+        setLoading(false);
+        setIsInitialLoad(false);
+      }
     }
   };
 
@@ -526,17 +537,17 @@ const Dashboard = () => {
               </Link>
             </div>
 
-            {loading ? (
+            {loading && isInitialLoad ? (
               <div className="text-center py-12">
                 <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-primary-500"></div>
                 <p className="text-neutral-400 mt-4 text-sm">Loading vaults...</p>
               </div>
-            ) : error ? (
+            ) : error && vaults.length === 0 ? (
               <div className="text-center py-12">
                 <AlertCircle className="w-12 h-12 text-error-400 mx-auto mb-4" />
                 <p className="text-error-400 mb-2">Failed to load vaults</p>
                 <p className="text-neutral-400 text-sm mb-4">{error}</p>
-                <Button onClick={fetchVaults} variant="outline">Try Again</Button>
+                <Button onClick={() => fetchVaults(false)} variant="outline">Try Again</Button>
               </div>
             ) : vaults.length === 0 ? (
               <div className="text-center py-12">
