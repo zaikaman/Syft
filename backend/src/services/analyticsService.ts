@@ -765,7 +765,8 @@ export async function getPortfolioAllocation(
       const valuePerAsset = vaultTVL / (assets.length || 1);
 
       for (const asset of assets) {
-        const assetCode = asset.code || 'UNKNOWN';
+        // Assets can be either strings (e.g., "XLM") or objects with code property
+        const assetCode = typeof asset === 'string' ? asset : (asset.code || 'UNKNOWN');
         const currentValue = assetMap.get(assetCode) || 0;
         assetMap.set(assetCode, currentValue + valuePerAsset);
       }

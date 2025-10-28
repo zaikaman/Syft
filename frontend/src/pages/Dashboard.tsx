@@ -552,7 +552,8 @@ const Dashboard = () => {
             ) : (
               <div className="space-y-3">
                 {vaults.map((vault, index) => {
-                  const assets = vault.config.assets?.map(a => a.code).join('/') || 'Unknown';
+                  // Assets can be either strings (e.g., "XLM") or objects with code property
+                  const assets = vault.config.assets?.map(a => typeof a === 'string' ? a : a.code).join('/') || 'Unknown';
                   
                   // Use performance data from API if available, otherwise calculate
                   const vaultTVL = vault.performance?.tvl 

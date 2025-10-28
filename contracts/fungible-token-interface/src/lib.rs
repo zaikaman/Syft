@@ -1,5 +1,9 @@
 #![no_std]
-#![allow(dead_code)]
 
-mod contract;
+// Use USDC contract as the main export
+mod usdc;
+pub use usdc::*;
+
+// Keep other modules for reference but don't export
+#[cfg(test)]
 mod test;

@@ -37,12 +37,27 @@ function getAssetAddress(asset: string, network?: string): string {
     'public': 'CAS3J7GYLGXMF6TDJBBYYSE3HQ6BBSMLNUQ34T6TZMYMW2EVH34XOWMA',
   };
   
-  // Map of common asset symbols to their Stellar contract addresses
-  const assetMap: { [key: string]: string } = {
-    'XLM': nativeXLMAddresses[normalizedNetwork] || nativeXLMAddresses['testnet'],
-    'USDC': process.env.TESTNET_USDC_ADDRESS || 'CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA',
-    'EURC': 'CAQCFVLOBK5GIULPNZRGATJJMIZL5BSP7X5YJVMGCPTUEPFM4AVSRCJU',
-    'AQUA': 'CCRRYUTYU3UJQME6ZKBDZMZS6P4ZXVFWRXLQGVL7TWVCXHWMLQOAAQUA',
+  // Network-specific token addresses
+  const tokenAddresses: { [key: string]: { [key: string]: string } } = {
+    'XLM': nativeXLMAddresses,
+    'USDC': {
+      'testnet': 'CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA',
+      'futurenet': process.env.FUTURENET_USDC_ADDRESS || nativeXLMAddresses['futurenet'], // Use env var if set, otherwise fallback to XLM
+      'mainnet': '', // TODO: Add mainnet USDC address when available
+      'public': '',
+    },
+    'EURC': {
+      'testnet': 'CAQCFVLOBK5GIULPNZRGATJJMIZL5BSP7X5YJVMGCPTUEPFM4AVSRCJU',
+      'futurenet': nativeXLMAddresses['futurenet'], // Fallback to XLM
+      'mainnet': '',
+      'public': '',
+    },
+    'AQUA': {
+      'testnet': 'CCRRYUTYU3UJQME6ZKBDZMZS6P4ZXVFWRXLQGVL7TWVCXHWMLQOAAQUA',
+      'futurenet': nativeXLMAddresses['futurenet'], // Fallback to XLM
+      'mainnet': '',
+      'public': '',
+    },
   };
 
   // If it's already a valid contract address (starts with C and is the right length), return it
@@ -50,10 +65,20 @@ function getAssetAddress(asset: string, network?: string): string {
     return asset;
   }
 
-  // Otherwise, look it up in the map
-  const address = assetMap[asset.toUpperCase()];
+  // Look up asset in network-specific map
+  const assetSymbol = asset.toUpperCase();
+  const networkAddresses = tokenAddresses[assetSymbol];
+  
+  if (!networkAddresses) {
+    throw new Error(`Unknown asset symbol: ${asset}. Please provide a valid Stellar contract address or use XLM.`);
+  }
+
+  const address = networkAddresses[normalizedNetwork];
+  
   if (!address) {
-    throw new Error(`Unknown asset symbol: ${asset}. Please provide a valid Stellar contract address.`);
+    // Fallback to XLM for unsupported network/asset combinations
+    console.warn(`⚠️  ${asset} not available on ${network}, using Native XLM instead`);
+    return nativeXLMAddresses[normalizedNetwork] || nativeXLMAddresses['testnet'];
   }
 
   return address;
@@ -73,6 +98,7 @@ export async function deployVault(
       'CCMAPXWVZD4USEKDWRYS7DA4Y3D7E2SDMGBFJUCEXTC7VN6CUBGWPFUS';
 
     console.log(`[Vault Deployment] Starting deployment for ${config.name}`);
+    console.log(`[Vault Deployment] Network: ${network || 'testnet'}`);
     console.log(`[Vault Deployment] Owner: ${config.owner}`);
     console.log(`[Vault Deployment] Assets: ${config.assets.join(', ')}`);
 
@@ -82,6 +108,16 @@ export async function deployVault(
       console.log(`[Vault Deployment] ${asset} -> ${address}`);
       return address;
     });
+    
+    // Warn if non-XLM tokens are being used on futurenet
+    if ((network || 'testnet').toLowerCase() === 'futurenet') {
+      const nonXLMAssets = config.assets.filter(a => a.toUpperCase() !== 'XLM');
+      if (nonXLMAssets.length > 0) {
+        console.warn(`⚠️  WARNING: Non-XLM tokens on futurenet may not be available.`);
+        console.warn(`⚠️  Requested: ${nonXLMAssets.join(', ')}`);
+        console.warn(`⚠️  These will be converted to Native XLM automatically.`);
+      }
+    }
 
     // Get network-specific servers
     const servers = getNetworkServers(network);

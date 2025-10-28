@@ -176,13 +176,29 @@ export async function executeDeposit(
     // 1. Transfer tokens from user to vault
     // 2. Calculate shares based on current vault value
     // 3. Mint shares to user's position
-    const result = await invokeVaultMethod(
-      vault.contract_address,
-      'deposit',
-      [userAddress, amount],
-      sourceKeypair,
-      network
-    );
+    let result;
+    try {
+      result = await invokeVaultMethod(
+        vault.contract_address,
+        'deposit',
+        [userAddress, amount],
+        sourceKeypair,
+        network
+      );
+    } catch (contractError) {
+      // Parse contract error for helpful message
+      const errorMsg = contractError instanceof Error ? contractError.message : String(contractError);
+      
+      if (errorMsg.includes('Error(Storage, MissingValue)') && errorMsg.includes('trying to get non-existing value for contract instance')) {
+        throw new Error(
+          `Token contract not initialized on ${network || 'testnet'}. ` +
+          `The vault's base token contract doesn't exist or hasn't been properly initialized on this network. ` +
+          `Please redeploy the vault on ${network || 'testnet'} or switch to a network where the token is available.`
+        );
+      }
+      
+      throw contractError;
+    }
 
     // Extract the returned shares from contract
     let shares = '0';
