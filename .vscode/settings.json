@@ -7,5 +7,6 @@
     "javascript": "javascript",
     "html": "html",
     "plaintext": "html"
-  }
+  },
+  "codium.codeCompletion.enable": false
 }

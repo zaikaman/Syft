@@ -164,7 +164,7 @@ router.get('/:vaultId', async (req: Request, res: Response) => {
 
 /**
  * GET /api/vaults/:vaultId/position/:userAddress
- * Get user's position in a vault (shares and balance)
+ * Get user's position in a vault (shares, investment amount, and current value)
  */
 router.get('/:vaultId/position/:userAddress', async (req: Request, res: Response) => {
   try {
@@ -198,6 +198,32 @@ router.get('/:vaultId/position/:userAddress', async (req: Request, res: Response
       });
     }
 
+    // Get user's investment record from database
+    const { data: userPosition } = await supabase
+      .from('user_vault_positions')
+      .select('shares, initial_deposit, current_value, deposited_at')
+      .eq('user_wallet', userAddress)
+      .eq('vault_id', vault.id)
+      .single();
+
+    // Get vault state to calculate share price
+    const vaultState = await monitorVaultState(vault.contract_address, vault.network);
+    
+    // Calculate current value of user's shares
+    let currentValue = 0;
+    let sharePrice = 1;
+    
+    if (vaultState && vaultState.totalShares && vaultState.totalValue) {
+      const totalSharesNum = parseFloat(vaultState.totalShares) / 10_000_000; // Convert from stroops
+      const totalValueNum = parseFloat(vaultState.totalValue) / 10_000_000; // Convert from stroops
+      
+      if (totalSharesNum > 0) {
+        sharePrice = totalValueNum / totalSharesNum;
+        const userSharesNum = parseFloat(position.shares) / 10_000_000; // Convert from stroops
+        currentValue = userSharesNum * sharePrice;
+      }
+    }
+
     return res.json({
       success: true,
       data: {
@@ -205,6 +231,11 @@ router.get('/:vaultId/position/:userAddress', async (req: Request, res: Response
         userAddress,
         shares: position.shares,
         lastDeposit: position.lastDeposit,
+        investmentAmount: userPosition?.initial_deposit ? parseFloat(userPosition.initial_deposit.toString()) : 0,
+        currentValue: currentValue,
+        sharePrice: sharePrice,
+        depositedAt: userPosition?.deposited_at,
+        unrealizedGainLoss: currentValue - (userPosition?.initial_deposit ? parseFloat(userPosition.initial_deposit.toString()) : 0),
       },
     });
   } catch (error) {

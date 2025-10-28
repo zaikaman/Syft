@@ -255,8 +255,8 @@ export const VaultActions: React.FC<VaultActionsProps> = ({
 
   if (!address) {
     return (
-      <div className="glass rounded-lg p-6 border border-[rgba(255,255,255,0.06)]">
-        <p className="text-[var(--color-text-secondary)] text-center">
+      <div className="bg-card border border-default rounded-lg p-6">
+        <p className="text-neutral-400 text-center">
           Please connect your wallet to interact with the vault
         </p>
       </div>
@@ -264,16 +264,16 @@ export const VaultActions: React.FC<VaultActionsProps> = ({
   }
 
   return (
-    <div className="glass rounded-lg p-6 border border-[rgba(255,255,255,0.06)]">
-      <h2 className="text-2xl font-bold mb-6 text-[var(--color-text-primary)]">Vault Actions</h2>
+    <div className="bg-card border border-default rounded-lg p-6">
+      <h2 className="text-xl font-bold mb-6 text-neutral-50">Vault Actions</h2>
 
       {/* Message Display */}
       {message && (
         <div
           className={`mb-4 p-4 rounded-lg border ${
             message.type === 'success'
-              ? 'bg-[rgba(116,185,127,0.1)] border-[var(--color-success)] text-[var(--color-success)]'
-              : 'bg-[rgba(224,108,110,0.1)] border-[var(--color-error)] text-[var(--color-error)]'
+              ? 'bg-success-400/10 border-success-400 text-success-400'
+              : 'bg-error-400/10 border-error-400 text-error-400'
           }`}
         >
           {message.text}
@@ -283,14 +283,14 @@ export const VaultActions: React.FC<VaultActionsProps> = ({
       <div className="space-y-6">
         {/* Deposit Section */}
         <div>
-          <h3 className="text-lg font-semibold mb-3 text-[var(--color-text-primary)]">Deposit Assets</h3>
+          <h3 className="text-base font-semibold mb-3 text-neutral-50">Deposit Assets</h3>
           <div className="flex gap-3">
             <input
               type="number"
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
               placeholder="Enter amount"
-              className="flex-1 px-4 py-3 bg-[var(--color-bg-input)] border border-[rgba(255,255,255,0.06)] rounded-lg text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)] focus:outline-none focus:border-[var(--color-primary)] transition-colors"
+              className="flex-1 px-4 py-3 bg-input border border-default rounded-lg text-neutral-50 placeholder:text-neutral-500 focus:outline-none focus:border-primary-500 transition-colors"
               disabled={isProcessing}
             />
             <button
@@ -298,31 +298,31 @@ export const VaultActions: React.FC<VaultActionsProps> = ({
               disabled={isProcessing || !amount}
               className={`px-6 py-3 rounded-lg font-semibold transition-all ${
                 isProcessing || !amount
-                  ? 'bg-[var(--color-neutral-700)] text-[var(--color-text-muted)] cursor-not-allowed'
-                  : 'bg-[var(--color-primary)] text-[var(--color-bg-primary)] hover:bg-[var(--color-primary-hover)] hover:shadow-lg'
+                  ? 'bg-neutral-700 text-neutral-500 cursor-not-allowed'
+                  : 'bg-primary-500 text-dark-950 hover:bg-primary-600 hover:shadow-lg'
               }`}
             >
               Deposit
             </button>
           </div>
-          <p className="text-sm text-[var(--color-text-tertiary)] mt-2">
+          <p className="text-sm text-neutral-400 mt-2">
             Deposit assets to receive vault shares
           </p>
         </div>
 
         {/* Divider */}
-        <div className="border-t border-[rgba(255,255,255,0.06)]"></div>
+        <div className="border-t border-default"></div>
 
         {/* Withdraw Section */}
         <div>
-          <h3 className="text-lg font-semibold mb-3 text-[var(--color-text-primary)]">Withdraw Assets</h3>
+          <h3 className="text-base font-semibold mb-3 text-neutral-50">Withdraw Assets</h3>
           <div className="flex gap-3">
             <input
               type="number"
               value={shares}
               onChange={(e) => setShares(e.target.value)}
               placeholder="Enter shares"
-              className="flex-1 px-4 py-3 bg-[var(--color-bg-input)] border border-[rgba(255,255,255,0.06)] rounded-lg text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)] focus:outline-none focus:border-[var(--color-primary)] transition-colors"
+              className="flex-1 px-4 py-3 bg-input border border-default rounded-lg text-neutral-50 placeholder:text-neutral-500 focus:outline-none focus:border-primary-500 transition-colors"
               disabled={isProcessing}
             />
             <button
@@ -330,14 +330,14 @@ export const VaultActions: React.FC<VaultActionsProps> = ({
               disabled={isProcessing || !shares}
               className={`px-6 py-3 rounded-lg font-semibold transition-all ${
                 isProcessing || !shares
-                  ? 'bg-[var(--color-neutral-700)] text-[var(--color-text-muted)] cursor-not-allowed'
-                  : 'bg-[var(--color-error)] text-white hover:opacity-90 hover:shadow-lg'
+                  ? 'bg-neutral-700 text-neutral-500 cursor-not-allowed'
+                  : 'bg-error-400 text-white hover:bg-error-500 hover:shadow-lg'
               }`}
             >
               Withdraw
             </button>
           </div>
-          <p className="text-sm text-[var(--color-text-tertiary)] mt-2">
+          <p className="text-sm text-neutral-400 mt-2">
             Burn vault shares to withdraw your assets
           </p>
         </div>
@@ -345,8 +345,8 @@ export const VaultActions: React.FC<VaultActionsProps> = ({
 
       {isProcessing && (
         <div className="mt-6 text-center">
-          <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-[var(--color-primary)]"></div>
-          <p className="text-[var(--color-text-secondary)] mt-2">Processing transaction...</p>
+          <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-primary-500"></div>
+          <p className="text-neutral-400 mt-2">Processing transaction...</p>
         </div>
       )}
     </div>

@@ -43,6 +43,7 @@ const Dashboard = () => {
   const [performanceData, setPerformanceData] = useState<any[]>([]); // Portfolio performance history
   const [allocationData, setAllocationData] = useState<any[]>([]); // Asset allocation data
   const [vaultAnalytics, setVaultAnalytics] = useState<Record<string, any>>({});
+  const [userPositions, setUserPositions] = useState<Record<string, any>>({}); // User positions in each vault
   const { address, network, networkPassphrase } = useWallet();
 
   useEffect(() => {
@@ -81,6 +82,7 @@ const Dashboard = () => {
       fetchVaultAnalytics();
       fetchPortfolioPerformanceHistory();
       fetchPortfolioAllocation();
+      fetchUserPositions();
     }
   }, [vaults, selectedPeriod]);
 
@@ -196,6 +198,36 @@ const Dashboard = () => {
       console.log('[Dashboard] Vault Analytics:', analyticsMap);
     } catch (err) {
       console.error('[Dashboard] Failed to fetch vault analytics:', err);
+    }
+  };
+
+  const fetchUserPositions = async () => {
+    if (!address || vaults.length === 0) return;
+    
+    try {
+      const backendUrl = import.meta.env.PUBLIC_BACKEND_URL || 'http://localhost:3001';
+      const positionsMap: Record<string, any> = {};
+      
+      await Promise.all(
+        vaults.map(async (vault) => {
+          try {
+            const response = await fetch(`${backendUrl}/api/vaults/${vault.vault_id}/position/${address}`);
+            if (response.ok) {
+              const data = await response.json();
+              if (data.success) {
+                positionsMap[vault.vault_id] = data.data;
+              }
+            }
+          } catch (err) {
+            console.error(`[Dashboard] Failed to fetch position for vault ${vault.vault_id}:`, err);
+          }
+        })
+      );
+      
+      setUserPositions(positionsMap);
+      console.log('[Dashboard] User Positions:', positionsMap);
+    } catch (err) {
+      console.error('[Dashboard] Failed to fetch user positions:', err);
     }
   };
 
@@ -589,6 +621,11 @@ const Dashboard = () => {
                           <div className="md:col-span-2">
                             <h3 className="text-base font-semibold text-neutral-50 mb-1">{vault.config.name || 'Unnamed Vault'}</h3>
                             <p className="text-sm text-neutral-400">{assets}</p>
+                            {userPositions[vault.vault_id]?.shares && userPositions[vault.vault_id]?.shares !== '0' && (
+                              <p className="text-xs text-primary-400 mt-1">
+                                Shares: {(parseFloat(userPositions[vault.vault_id].shares) / 10_000_000).toFixed(7)}
+                              </p>
+                            )}
                             <p className="text-xs text-neutral-500 mt-0.5">ID: {vault.vault_id.slice(0, 8)}...</p>
                           </div>
                           <div>
@@ -596,6 +633,14 @@ const Dashboard = () => {
                             <div className="text-base font-semibold text-neutral-50">
                               {vaultTVL > 0 
                                 ? `$${vaultTVL.toFixed(2)}` 
+                                : '$0.00'}
+                            </div>
+                          </div>
+                          <div>
+                            <div className="text-xs text-neutral-500 mb-0.5">Your Value</div>
+                            <div className="text-base font-semibold text-primary-400">
+                              {userPositions[vault.vault_id]?.currentValue
+                                ? `$${(userPositions[vault.vault_id].currentValue * xlmPrice).toFixed(2)}`
                                 : '$0.00'}
                             </div>
                           </div>
