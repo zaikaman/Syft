@@ -69,9 +69,9 @@ router.get('/validate/:address', async (req: Request, res: Response) => {
       ]);
       
       // Check if all simulations succeeded
-      const nameSuccess = StellarSdk.SorobanRpc.Api.isSimulationSuccess(nameResult);
-      const symbolSuccess = StellarSdk.SorobanRpc.Api.isSimulationSuccess(symbolResult);
-      const decimalsSuccess = StellarSdk.SorobanRpc.Api.isSimulationSuccess(decimalsResult);
+      const nameSuccess = StellarSdk.rpc.Api.isSimulationSuccess(nameResult);
+      const symbolSuccess = StellarSdk.rpc.Api.isSimulationSuccess(symbolResult);
+      const decimalsSuccess = StellarSdk.rpc.Api.isSimulationSuccess(decimalsResult);
       
       if (!nameSuccess || !symbolSuccess || !decimalsSuccess) {
         return res.json({
@@ -214,3 +214,5 @@ router.get('/popular', async (req: Request, res: Response) => {
 });
 
 export default router;
+
+

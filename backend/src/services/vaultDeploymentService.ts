@@ -58,7 +58,7 @@ async function validateTokenContract(
       // Simulate the transaction (read-only, no submission)
       const simResult = await servers.sorobanServer.simulateTransaction(tx);
       
-      if (StellarSdk.SorobanRpc.Api.isSimulationSuccess(simResult)) {
+      if (StellarSdk.rpc.Api.isSimulationSuccess(simResult)) {
         // Token exists and is callable
         console.log(`✅ Token contract ${contractAddress} validated on ${network}`);
         return { valid: true };
@@ -173,7 +173,17 @@ export async function buildDeploymentTransaction(
   config: VaultDeploymentConfig,
   sourceAddress: string,
   network?: string
-): Promise<{ xdr: string; vaultId: string }> {
+): Promise<{ 
+  xdr: string; 
+  vaultId: string;
+  requiresClientSimulation?: boolean;
+  simulationData?: {
+    minResourceFee: string;
+    transactionData: string;
+    results?: any[];
+    events?: any[];
+  };
+}> {
   try {
     const vaultId = generateVaultId();
 
@@ -254,17 +264,211 @@ export async function buildDeploymentTransaction(
     console.log(`[Build Deploy TX] Simulating transaction...`);
 
     // Simulate transaction to get resource footprint
-    const simulationResponse = await servers.sorobanServer.simulateTransaction(transaction);
+    // WORKAROUND: The SDK's simulateTransaction has XDR parsing bugs in v11.2.0
+    // We'll make the raw RPC call and manually parse only what we need
+    let simulationResponse;
+    try {
+      // Try the normal SDK method first
+      simulationResponse = await servers.sorobanServer.simulateTransaction(transaction);
+    } catch (simError) {
+      const errorMsg = simError instanceof Error ? simError.message : String(simError);
+      
+      // Check if it's the XDR parsing error
+      if (errorMsg.includes('Bad union switch') || errorMsg.includes('XDR')) {
+        console.warn(`[Build Deploy TX] SDK XDR parsing failed, attempting raw RPC call...`);
+        
+        try {
+          // Make raw RPC call to bypass SDK's XDR parsing
+          const rawResponse = await fetch(servers.sorobanServer.serverURL.toString(), {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              jsonrpc: '2.0',
+              id: Date.now(),
+              method: 'simulateTransaction',
+              params: {
+                transaction: transaction.toXDR(),
+              },
+            }),
+          });
+          
+          const rawResult: any = await rawResponse.json();
+          
+          if (rawResult.error) {
+            throw new Error(`RPC error: ${rawResult.error.message || JSON.stringify(rawResult.error)}`);
+          }
+          
+          const result: any = rawResult.result;
+          console.log(`[Build Deploy TX] Raw RPC simulation result:`, JSON.stringify(result, null, 2));
+          
+          // Check if simulation failed
+          if (result.error) {
+            throw new Error(`Simulation failed: ${result.error}`);
+          }
+          
+          // Check if we have the necessary data
+          if (!result.transactionData) {
+            throw new Error('Simulation response missing transactionData');
+          }
+          
+          // Manually construct the minimum response needed for assembleTransaction
+          // We'll build the transaction manually since the SDK can't parse the response
+          const minResourceFee = result.minResourceFee || result.cost?.cpuInsns || '100000';
+          const transactionDataXdr = result.transactionData;
+          
+          console.log(`[Build Deploy TX] ✅ Raw RPC call successful`);
+          console.log(`[Build Deploy TX] Min resource fee: ${minResourceFee}`);
+          
+          try {
+            // Try to parse transactionData XDR to get the SorobanTransactionData
+            const sorobanData = StellarSdk.xdr.SorobanTransactionData.fromXDR(transactionDataXdr, 'base64');
+            
+            // Rebuild transaction with the soroban data
+            const ops = transaction.operations;
+            const sourceOp = ops[0] as StellarSdk.Operation.InvokeHostFunction;
+            
+            transaction = new StellarSdk.TransactionBuilder(sourceAccount, {
+              fee: (Number(minResourceFee) + Number(StellarSdk.BASE_FEE) * 10).toString(), // Add buffer
+              networkPassphrase: servers.network === 'futurenet' 
+                ? StellarSdk.Networks.FUTURENET
+                : servers.network === 'mainnet' || servers.network === 'public'
+                ? StellarSdk.Networks.PUBLIC
+                : StellarSdk.Networks.TESTNET,
+            })
+              .setSorobanData(sorobanData)
+              .addOperation(
+                StellarSdk.Operation.invokeHostFunction({
+                  func: sourceOp.func,
+                  auth: result.results?.[0]?.auth || sourceOp.auth || [],
+                })
+              )
+              .setTimeout(300)
+              .build();
+            
+            console.log(`[Build Deploy TX] ✅ Transaction rebuilt with raw RPC data`);
+            
+            // Return early with XDR - skip the rest of the simulation parsing
+            return {
+              xdr: transaction.toXDR(),
+              vaultId,
+            };
+          } catch (xdrParseError) {
+            console.error(`[Build Deploy TX] XDR parsing failed, returning unsigned transaction:`, xdrParseError);
+            
+            // If XDR parsing fails completely, return the original transaction
+            // The client will need to handle simulation themselves
+            console.log(`[Build Deploy TX] ⚠️ Returning base transaction without resource footprint`);
+            console.log(`[Build Deploy TX] Client must simulate and assemble transaction before signing`);
+            
+            return {
+              xdr: transaction.toXDR(),
+              vaultId,
+              requiresClientSimulation: true, // Flag to indicate client needs to simulate
+              simulationData: {
+                minResourceFee,
+                transactionData: transactionDataXdr,
+                results: result.results,
+                events: result.events,
+              },
+            };
+          }
+        } catch (rawError) {
+          console.error(`[Build Deploy TX] Raw RPC call also failed:`, rawError);
+          throw new Error(
+            `XDR parsing error: The Stellar SDK cannot parse the Soroban RPC response from ${normalizedNetwork}. ` +
+            `This is likely a version incompatibility issue. ` +
+            `Raw RPC call also failed: ${rawError instanceof Error ? rawError.message : 'Unknown error'}. ` +
+            `Please check: 1) Factory contract ${factoryAddress} is deployed on ${normalizedNetwork}, ` +
+            `2) Contract is properly initialized, 3) The network protocol version is compatible with the SDK.`
+          );
+        }
+      }
+      
+      // If it's not an XDR error, rethrow
+      throw new Error(`Failed to simulate transaction: ${errorMsg}`);
+    }
     
-    if (StellarSdk.SorobanRpc.Api.isSimulationError(simulationResponse)) {
+    // Check for simulation error first
+    if (StellarSdk.rpc.Api.isSimulationError(simulationResponse)) {
+      console.error(`[Build Deploy TX] Simulation error details:`, simulationResponse);
       throw new Error(`Simulation failed: ${simulationResponse.error}`);
     }
 
+    // Check if simulation was successful
+    if (!StellarSdk.rpc.Api.isSimulationSuccess(simulationResponse)) {
+      console.error(`[Build Deploy TX] Unexpected simulation response:`, simulationResponse);
+      throw new Error(`Simulation did not return success status. Check if factory contract is deployed and initialized.`);
+    }
+
+    console.log(`[Build Deploy TX] Simulation successful`);
+
     // Prepare the transaction with simulation results
-    transaction = StellarSdk.SorobanRpc.assembleTransaction(
-      transaction,
-      simulationResponse
-    ).build();
+    try {
+      // Use the assembleTransaction helper which handles XDR parsing
+      const preparedTx = StellarSdk.rpc.assembleTransaction(
+        transaction,
+        simulationResponse
+      );
+      
+      transaction = preparedTx.build();
+    } catch (assembleError) {
+      console.error(`[Build Deploy TX] Error assembling transaction:`, assembleError);
+      
+      // Check if it's the XDR parsing error
+      const errorMsg = assembleError instanceof Error ? assembleError.message : String(assembleError);
+      if (errorMsg.includes('Bad union switch') || errorMsg.includes('XDR')) {
+        // Try manual assembly as a fallback
+        console.warn(`[Build Deploy TX] XDR parsing failed, attempting manual assembly...`);
+        
+        try {
+          // Manually add auth and resource footprint from simulation
+          if (simulationResponse.transactionData) {
+            // transactionData is already a SorobanDataBuilder, convert to XDR string first
+            const txDataXdr = simulationResponse.transactionData.build().toXDR('base64');
+            const txData = StellarSdk.xdr.SorobanTransactionData.fromXDR(txDataXdr, 'base64');
+            
+            // Rebuild transaction with proper soroban data
+            const ops = transaction.operations;
+            const sourceOp = ops[0] as StellarSdk.Operation.InvokeHostFunction;
+            
+            transaction = new StellarSdk.TransactionBuilder(sourceAccount, {
+              fee: (Number(simulationResponse.minResourceFee) + Number(StellarSdk.BASE_FEE)).toString(),
+              networkPassphrase: servers.network === 'futurenet' 
+                ? StellarSdk.Networks.FUTURENET
+                : servers.network === 'mainnet' || servers.network === 'public'
+                ? StellarSdk.Networks.PUBLIC
+                : StellarSdk.Networks.TESTNET,
+            })
+              .setSorobanData(txData)
+              .addOperation(
+                StellarSdk.Operation.invokeHostFunction({
+                  func: sourceOp.func,
+                  auth: sourceOp.auth || [],
+                })
+              )
+              .setTimeout(300)
+              .build();
+              
+            console.log(`[Build Deploy TX] ✅ Manual assembly successful`);
+          } else {
+            throw new Error('No transactionData in simulation response');
+          }
+        } catch (manualError) {
+          console.error(`[Build Deploy TX] Manual assembly also failed:`, manualError);
+          throw new Error(
+            `XDR parsing error: The Soroban RPC server returned an incompatible response. ` +
+            `This usually means: 1) The factory contract (${factoryAddress}) is not properly deployed on ${normalizedNetwork}, ` +
+            `2) The contract WASM is outdated/incompatible with the current RPC version, or ` +
+            `3) There's a version mismatch between stellar-sdk and the RPC server. ` +
+            `Please verify the factory contract is deployed and try again. Original error: ${errorMsg}`
+          );
+        }
+      } else {
+        throw new Error(`Failed to assemble transaction: ${errorMsg}`);
+      }
+    }
 
     console.log(`[Build Deploy TX] Transaction built successfully, returning XDR for signing`);
 
@@ -400,17 +604,93 @@ export async function deployVault(
     console.log(`[Vault Deployment] Simulating transaction...`);
 
     // Simulate transaction to get resource footprint and auth
-    const simulationResponse = await servers.sorobanServer.simulateTransaction(transaction);
+    let simulationResponse;
+    try {
+      simulationResponse = await servers.sorobanServer.simulateTransaction(transaction);
+    } catch (simError) {
+      console.error(`[Vault Deployment] Simulation request failed:`, simError);
+      throw new Error(`Failed to simulate transaction: ${simError instanceof Error ? simError.message : 'Unknown error'}`);
+    }
     
-    if (StellarSdk.SorobanRpc.Api.isSimulationError(simulationResponse)) {
+    // Check for simulation error first
+    if (StellarSdk.rpc.Api.isSimulationError(simulationResponse)) {
+      console.error(`[Vault Deployment] Simulation error details:`, simulationResponse);
       throw new Error(`Simulation failed: ${simulationResponse.error}`);
     }
 
+    // Check if simulation was successful
+    if (!StellarSdk.rpc.Api.isSimulationSuccess(simulationResponse)) {
+      console.error(`[Vault Deployment] Unexpected simulation response:`, simulationResponse);
+      throw new Error(`Simulation did not return success status. Check if factory contract is deployed and initialized.`);
+    }
+
+    console.log(`[Vault Deployment] Simulation successful`);
+
     // Prepare the transaction with simulation results
-    transaction = StellarSdk.SorobanRpc.assembleTransaction(
-      transaction,
-      simulationResponse
-    ).build();
+    try {
+      // Use the assembleTransaction helper which handles XDR parsing
+      const preparedTx = StellarSdk.rpc.assembleTransaction(
+        transaction,
+        simulationResponse
+      );
+      
+      transaction = preparedTx.build();
+    } catch (assembleError) {
+      console.error(`[Vault Deployment] Error assembling transaction:`, assembleError);
+      
+      // Check if it's the XDR parsing error
+      const errorMsg = assembleError instanceof Error ? assembleError.message : String(assembleError);
+      if (errorMsg.includes('Bad union switch') || errorMsg.includes('XDR')) {
+        // Try manual assembly as a fallback
+        console.warn(`[Vault Deployment] XDR parsing failed, attempting manual assembly...`);
+        
+        try {
+          // Manually add auth and resource footprint from simulation
+          if (simulationResponse.transactionData) {
+            // transactionData is already a SorobanDataBuilder, convert to XDR string first
+            const txDataXdr = simulationResponse.transactionData.build().toXDR('base64');
+            const txData = StellarSdk.xdr.SorobanTransactionData.fromXDR(txDataXdr, 'base64');
+            
+            // Rebuild transaction with proper soroban data
+            const ops = transaction.operations;
+            const sourceOp = ops[0] as StellarSdk.Operation.InvokeHostFunction;
+            
+            transaction = new StellarSdk.TransactionBuilder(sourceAccount, {
+              fee: (Number(simulationResponse.minResourceFee) + Number(StellarSdk.BASE_FEE)).toString(),
+              networkPassphrase: servers.network === 'futurenet' 
+                ? StellarSdk.Networks.FUTURENET
+                : servers.network === 'mainnet' || servers.network === 'public'
+                ? StellarSdk.Networks.PUBLIC
+                : StellarSdk.Networks.TESTNET,
+            })
+              .setSorobanData(txData)
+              .addOperation(
+                StellarSdk.Operation.invokeHostFunction({
+                  func: sourceOp.func,
+                  auth: sourceOp.auth || [],
+                })
+              )
+              .setTimeout(300)
+              .build();
+              
+            console.log(`[Vault Deployment] ✅ Manual assembly successful`);
+          } else {
+            throw new Error('No transactionData in simulation response');
+          }
+        } catch (manualError) {
+          console.error(`[Vault Deployment] Manual assembly also failed:`, manualError);
+          throw new Error(
+            `XDR parsing error: The Soroban RPC server returned an incompatible response. ` +
+            `This usually means: 1) The factory contract (${factoryAddress}) is not properly deployed on ${normalizedNetwork}, ` +
+            `2) The contract WASM is outdated/incompatible with the current RPC version, or ` +
+            `3) There's a version mismatch between stellar-sdk and the RPC server. ` +
+            `Please verify the factory contract is deployed and try again. Original error: ${errorMsg}`
+          );
+        }
+      } else {
+        throw new Error(`Failed to assemble transaction: ${errorMsg}`);
+      }
+    }
 
     transaction.sign(sourceKeypair);
 
@@ -755,7 +1035,7 @@ export async function invokeVaultMethod(
     // Simulate transaction to get resource footprint and auth
     const simulationResponse = await servers.sorobanServer.simulateTransaction(transaction);
     
-    if (StellarSdk.SorobanRpc.Api.isSimulationError(simulationResponse)) {
+    if (StellarSdk.rpc.Api.isSimulationError(simulationResponse)) {
       console.error(`[Contract Invocation] Simulation failed:`, simulationResponse.error);
       throw new Error(`Simulation failed: ${simulationResponse.error}`);
     }
@@ -801,7 +1081,7 @@ export async function invokeVaultMethod(
     console.log(`✍️  Write method detected - submitting transaction...`);
     
     // Assemble the transaction with simulation results (adds footprint and auth)
-    transaction = StellarSdk.SorobanRpc.assembleTransaction(
+    transaction = StellarSdk.rpc.assembleTransaction(
       transaction,
       simulationResponse
     ).build();
@@ -873,3 +1153,5 @@ export async function invokeVaultMethod(
 function generateVaultId(): string {
   return `vault_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 }
+
+

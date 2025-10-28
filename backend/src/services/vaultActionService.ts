@@ -59,12 +59,12 @@ export async function buildDepositTransaction(
     // Simulate transaction to get resource footprint
     const simulationResponse = await servers.sorobanServer.simulateTransaction(transaction);
     
-    if (StellarSdk.SorobanRpc.Api.isSimulationError(simulationResponse)) {
+    if (StellarSdk.rpc.Api.isSimulationError(simulationResponse)) {
       throw new Error(`Simulation failed: ${simulationResponse.error}`);
     }
 
     // Assemble transaction with simulation results
-    transaction = StellarSdk.SorobanRpc.assembleTransaction(
+    transaction = StellarSdk.rpc.assembleTransaction(
       transaction,
       simulationResponse
     ).build();
@@ -136,12 +136,12 @@ export async function buildWithdrawalTransaction(
     // Simulate transaction to get resource footprint
     const simulationResponse = await servers.sorobanServer.simulateTransaction(transaction);
     
-    if (StellarSdk.SorobanRpc.Api.isSimulationError(simulationResponse)) {
+    if (StellarSdk.rpc.Api.isSimulationError(simulationResponse)) {
       throw new Error(`Simulation failed: ${simulationResponse.error}`);
     }
 
     // Assemble transaction with simulation results
-    transaction = StellarSdk.SorobanRpc.assembleTransaction(
+    transaction = StellarSdk.rpc.assembleTransaction(
       transaction,
       simulationResponse
     ).build();
@@ -698,3 +698,5 @@ export async function estimateActionCost(
     };
   }
 }
+
+

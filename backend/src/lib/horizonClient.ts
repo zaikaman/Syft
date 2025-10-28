@@ -10,7 +10,7 @@ const sorobanRpcUrl = process.env.STELLAR_RPC_URL || process.env.SOROBAN_RPC_URL
 export const horizonServer = new StellarSdk.Horizon.Server(horizonUrl);
 
 // Create Soroban RPC server instance for contract interactions
-export const sorobanServer = new StellarSdk.SorobanRpc.Server(sorobanRpcUrl);
+export const sorobanServer = new StellarSdk.rpc.Server(sorobanRpcUrl);
 
 /**
  * Get network-specific servers based on user's connected network
@@ -48,7 +48,7 @@ export function getNetworkServers(network?: string) {
   
   return {
     horizonServer: new StellarSdk.Horizon.Server(horizonUrl),
-    sorobanServer: new StellarSdk.SorobanRpc.Server(sorobanUrl),
+    sorobanServer: new StellarSdk.rpc.Server(sorobanUrl),
     network: userNetwork,
     networkPassphrase,
   };
@@ -110,3 +110,5 @@ export function streamPayments(
 }
 
 export default horizonServer;
+
+

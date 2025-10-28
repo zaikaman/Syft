@@ -283,7 +283,7 @@ router.post('/submit-deployment', async (req: Request, res: Response) => {
     // Simulate the signed transaction to get the return value BEFORE submitting
     const simulationResult = await servers.sorobanServer.simulateTransaction(transaction);
     
-    if (StellarSdk.SorobanRpc.Api.isSimulationError(simulationResult)) {
+    if (StellarSdk.rpc.Api.isSimulationError(simulationResult)) {
       console.error(`[Submit Deploy] Simulation failed:`, simulationResult);
       return res.status(500).json({
         success: false,
@@ -507,12 +507,12 @@ router.post('/build-initialize', async (req: Request, res: Response) => {
     // Simulate transaction
     const simulationResponse = await servers.sorobanServer.simulateTransaction(transaction);
 
-    if (StellarSdk.SorobanRpc.Api.isSimulationError(simulationResponse)) {
+    if (StellarSdk.rpc.Api.isSimulationError(simulationResponse)) {
       throw new Error(`Simulation failed: ${simulationResponse.error}`);
     }
 
     // Prepare transaction with simulation results
-    transaction = StellarSdk.SorobanRpc.assembleTransaction(
+    transaction = StellarSdk.rpc.assembleTransaction(
       transaction,
       simulationResponse
     ).build();
@@ -1398,3 +1398,5 @@ router.get('/user/:walletAddress', async (req: Request, res: Response) => {
 });
 
 export default router;
+
+
