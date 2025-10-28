@@ -1,5 +1,5 @@
 import * as StellarSdk from '@stellar/stellar-sdk';
-import { horizonServer, sorobanServer } from '../lib/horizonClient.js';
+import { horizonServer, getNetworkServers } from '../lib/horizonClient.js';
 import { supabase } from '../lib/supabase.js';
 
 export interface VaultDeploymentConfig {
@@ -26,10 +26,20 @@ export interface DeploymentResult {
 /**
  * Convert asset symbol to Stellar contract address
  */
-function getAssetAddress(asset: string): string {
+function getAssetAddress(asset: string, network?: string): string {
+  const normalizedNetwork = (network || 'testnet').toLowerCase();
+  
+  // Network-specific Native XLM SAC addresses
+  const nativeXLMAddresses: { [key: string]: string } = {
+    'testnet': 'CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC',
+    'futurenet': 'CB64D3G7SM2RTH6JSGG34DDTFTQ5CFDKVDZJZSODMCX4NJ2HV2KN7OHT',
+    'mainnet': 'CAS3J7GYLGXMF6TDJBBYYSE3HQ6BBSMLNUQ34T6TZMYMW2EVH34XOWMA', // Mainnet Native XLM
+    'public': 'CAS3J7GYLGXMF6TDJBBYYSE3HQ6BBSMLNUQ34T6TZMYMW2EVH34XOWMA',
+  };
+  
   // Map of common asset symbols to their Stellar contract addresses
   const assetMap: { [key: string]: string } = {
-    'XLM': process.env.TESTNET_XLM_ADDRESS || 'CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC',
+    'XLM': nativeXLMAddresses[normalizedNetwork] || nativeXLMAddresses['testnet'],
     'USDC': process.env.TESTNET_USDC_ADDRESS || 'CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA',
     'EURC': 'CAQCFVLOBK5GIULPNZRGATJJMIZL5BSP7X5YJVMGCPTUEPFM4AVSRCJU',
     'AQUA': 'CCRRYUTYU3UJQME6ZKBDZMZS6P4ZXVFWRXLQGVL7TWVCXHWMLQOAAQUA',
@@ -54,7 +64,8 @@ function getAssetAddress(asset: string): string {
  */
 export async function deployVault(
   config: VaultDeploymentConfig,
-  sourceKeypair: StellarSdk.Keypair
+  sourceKeypair: StellarSdk.Keypair,
+  network?: string
 ): Promise<DeploymentResult> {
   try {
     const vaultId = generateVaultId();
@@ -65,20 +76,33 @@ export async function deployVault(
     console.log(`[Vault Deployment] Owner: ${config.owner}`);
     console.log(`[Vault Deployment] Assets: ${config.assets.join(', ')}`);
 
-    // Convert asset symbols to contract addresses
+    // Convert asset symbols to contract addresses (network-aware)
     const assetAddressStrings = config.assets.map(asset => {
-      const address = getAssetAddress(asset);
+      const address = getAssetAddress(asset, network);
       console.log(`[Vault Deployment] ${asset} -> ${address}`);
       return address;
     });
 
+    // Get network-specific servers
+    const servers = getNetworkServers(network);
+    
     // Load source account
-    const sourceAccount = await horizonServer.loadAccount(sourceKeypair.publicKey());
+    const sourceAccount = await servers.horizonServer.loadAccount(sourceKeypair.publicKey());
 
-    // Get vault factory contract address from environment
-    const factoryAddress = process.env.VAULT_FACTORY_CONTRACT_ID;
+    // Get vault factory contract address based on network
+    let factoryAddress: string;
+    const normalizedNetwork = (network || 'testnet').toLowerCase();
+    
+    if (normalizedNetwork === 'futurenet') {
+      factoryAddress = process.env.VAULT_FACTORY_CONTRACT_ID_FUTURENET || '';
+    } else if (normalizedNetwork === 'mainnet' || normalizedNetwork === 'public') {
+      factoryAddress = process.env.VAULT_FACTORY_CONTRACT_ID_MAINNET || '';
+    } else {
+      factoryAddress = process.env.VAULT_FACTORY_CONTRACT_ID || '';
+    }
+    
     if (!factoryAddress) {
-      throw new Error('VAULT_FACTORY_CONTRACT_ID not set in environment');
+      throw new Error(`VAULT_FACTORY_CONTRACT_ID not set for network: ${normalizedNetwork}. Please deploy the factory contract to ${normalizedNetwork} first.`);
     }
 
     console.log(`[Vault Deployment] Using factory: ${factoryAddress}`);
@@ -113,7 +137,11 @@ export async function deployVault(
 
     let transaction = new StellarSdk.TransactionBuilder(sourceAccount, {
       fee: StellarSdk.BASE_FEE,
-      networkPassphrase: process.env.STELLAR_NETWORK_PASSPHRASE || StellarSdk.Networks.TESTNET,
+      networkPassphrase: servers.network === 'futurenet' 
+        ? StellarSdk.Networks.FUTURENET
+        : servers.network === 'mainnet' || servers.network === 'public'
+        ? StellarSdk.Networks.PUBLIC
+        : StellarSdk.Networks.TESTNET,
     })
       .addOperation(operation)
       .setTimeout(300)
@@ -122,7 +150,7 @@ export async function deployVault(
     console.log(`[Vault Deployment] Simulating transaction...`);
 
     // Simulate transaction to get resource footprint and auth
-    const simulationResponse = await sorobanServer.simulateTransaction(transaction);
+    const simulationResponse = await servers.sorobanServer.simulateTransaction(transaction);
     
     if (StellarSdk.SorobanRpc.Api.isSimulationError(simulationResponse)) {
       throw new Error(`Simulation failed: ${simulationResponse.error}`);
@@ -139,7 +167,7 @@ export async function deployVault(
     console.log(`[Vault Deployment] Submitting transaction to factory...`);
 
     // Submit transaction
-    const result = await horizonServer.submitTransaction(transaction);
+    const result = await servers.horizonServer.submitTransaction(transaction);
     
     console.log(`[Vault Deployment] ✓ Transaction successful: ${result.hash}`);
 
@@ -245,7 +273,8 @@ export async function deployVault(
         contractAddress,
         'initialize',
         [vaultConfigStruct],
-        sourceKeypair
+        sourceKeypair,
+        network // Pass network to initialization
       );
       
       if (initResult.success) {
@@ -270,6 +299,7 @@ export async function deployVault(
         router_address: routerAddress,
       },
       status: 'active',
+      network: network || 'testnet', // Store the network
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
       deployed_at: new Date().toISOString(),
@@ -388,19 +418,62 @@ export async function getVaultDeploymentStatus(
 }
 
 /**
+ * Helper function to retry async operations with exponential backoff
+ */
+async function retryWithBackoff<T>(
+  operation: () => Promise<T>,
+  maxRetries: number = 2,
+  initialDelay: number = 1000
+): Promise<T> {
+  let lastError: any;
+  
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      return await operation();
+    } catch (error: any) {
+      lastError = error;
+      
+      // Don't retry if it's a 4xx error (client error)
+      if (error.status && error.status >= 400 && error.status < 500 && error.status !== 504) {
+        throw error;
+      }
+      
+      // Don't retry on the last attempt
+      if (attempt === maxRetries - 1) {
+        break;
+      }
+      
+      // Calculate delay with exponential backoff
+      const delay = initialDelay * Math.pow(2, attempt);
+      console.log(`[Retry] Attempt ${attempt + 1} failed, retrying in ${delay}ms...`);
+      
+      // Wait before retrying
+      await new Promise(resolve => setTimeout(resolve, delay));
+    }
+  }
+  
+  throw lastError;
+}
+
+/**
  * Invoke a vault contract method
  */
 export async function invokeVaultMethod(
   contractAddress: string,
   method: string,
   params: any[],
-  sourceKeypair: StellarSdk.Keypair
+  sourceKeypair: StellarSdk.Keypair,
+  network?: string
 ): Promise<any> {
   try {
     console.log(`[Contract Invocation] Invoking ${method} on ${contractAddress}`);
     
+    // Get network-specific servers
+    const servers = getNetworkServers(network);
+    console.log(`[Contract Invocation] Using network: ${servers.network}`);
+    
     // Load source account
-    const sourceAccount = await horizonServer.loadAccount(sourceKeypair.publicKey());
+    const sourceAccount = await servers.horizonServer.loadAccount(sourceKeypair.publicKey());
     
     // Create contract instance
     const contract = new StellarSdk.Contract(contractAddress);
@@ -448,9 +521,16 @@ export async function invokeVaultMethod(
     const operation = contract.call(method, ...scParams);
     
     // Build initial transaction
+    // Build initial transaction
+    const networkPassphrase = servers.network === 'futurenet' 
+      ? StellarSdk.Networks.FUTURENET 
+      : servers.network === 'mainnet' || servers.network === 'public'
+      ? StellarSdk.Networks.PUBLIC
+      : StellarSdk.Networks.TESTNET;
+      
     let transaction = new StellarSdk.TransactionBuilder(sourceAccount, {
       fee: StellarSdk.BASE_FEE,
-      networkPassphrase: process.env.STELLAR_NETWORK_PASSPHRASE || StellarSdk.Networks.TESTNET,
+      networkPassphrase,
     })
       .addOperation(operation)
       .setTimeout(300)
@@ -459,7 +539,7 @@ export async function invokeVaultMethod(
     console.log(`[Contract Invocation] Simulating transaction...`);
     
     // Simulate transaction to get resource footprint and auth
-    const simulationResponse = await sorobanServer.simulateTransaction(transaction);
+    const simulationResponse = await servers.sorobanServer.simulateTransaction(transaction);
     
     if (StellarSdk.SorobanRpc.Api.isSimulationError(simulationResponse)) {
       console.error(`[Contract Invocation] Simulation failed:`, simulationResponse.error);
@@ -480,16 +560,24 @@ export async function invokeVaultMethod(
     console.log(`[Contract Invocation] Submitting transaction...`);
     
     // Submit transaction
-    const response = await horizonServer.submitTransaction(transaction);
+    const response = await servers.horizonServer.submitTransaction(transaction);
     
     console.log(`✅ Successfully invoked ${method} on ${contractAddress}`);
     console.log(`📡 Transaction hash: ${response.hash}`);
-    console.log(`🔗 View on explorer: https://stellar.expert/explorer/${process.env.STELLAR_NETWORK}/tx/${response.hash}`);
+    console.log(`🔗 View on explorer: https://stellar.expert/explorer/${servers.network}/tx/${response.hash}`);
+    
+    // Extract the actual contract return value from simulation
+    let contractResult = null;
+    if (simulationResponse.result && 'retval' in simulationResponse.result) {
+      contractResult = simulationResponse.result.retval;
+      console.log(`📦 Contract return value:`, contractResult);
+    }
     
     return {
       success: true,
       hash: response.hash,
-      result: response,
+      result: contractResult,
+      transactionResponse: response,
     };
   } catch (error) {
     console.error(`❌ Error invoking vault method ${method}:`, error);

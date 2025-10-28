@@ -3,7 +3,7 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
-const horizonUrl = process.env.STELLAR_HORIZON_URL || 'https://horizon-futurenet.stellar.org';
+const horizonUrl = process.env.STELLAR_HORIZON_URL || 'https://horizon-testnet.stellar.org';
 const sorobanRpcUrl = process.env.STELLAR_RPC_URL || process.env.SOROBAN_RPC_URL || 'https://soroban-testnet.stellar.org';
 
 // Create Horizon server instance
@@ -11,6 +11,42 @@ export const horizonServer = new StellarSdk.Horizon.Server(horizonUrl);
 
 // Create Soroban RPC server instance for contract interactions
 export const sorobanServer = new StellarSdk.SorobanRpc.Server(sorobanRpcUrl);
+
+/**
+ * Get network-specific servers based on user's connected network
+ * This allows deposits/withdrawals to work on the user's connected network
+ */
+export function getNetworkServers(network?: string) {
+  const userNetwork = network || process.env.STELLAR_NETWORK || 'testnet';
+  
+  let horizonUrl: string;
+  let sorobanUrl: string;
+  
+  switch (userNetwork.toLowerCase()) {
+    case 'futurenet':
+      horizonUrl = 'https://horizon-futurenet.stellar.org';
+      sorobanUrl = 'https://rpc-futurenet.stellar.org';
+      break;
+    case 'testnet':
+      horizonUrl = 'https://horizon-testnet.stellar.org';
+      sorobanUrl = 'https://soroban-testnet.stellar.org';
+      break;
+    case 'mainnet':
+    case 'public':
+      horizonUrl = 'https://horizon.stellar.org';
+      sorobanUrl = 'https://soroban-rpc.stellar.org';
+      break;
+    default:
+      horizonUrl = 'https://horizon-testnet.stellar.org';
+      sorobanUrl = 'https://soroban-testnet.stellar.org';
+  }
+  
+  return {
+    horizonServer: new StellarSdk.Horizon.Server(horizonUrl),
+    sorobanServer: new StellarSdk.SorobanRpc.Server(sorobanUrl),
+    network: userNetwork,
+  };
+}
 
 // Helper to get account details
 export async function getAccount(accountId: string) {

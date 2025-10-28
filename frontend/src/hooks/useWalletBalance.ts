@@ -18,7 +18,7 @@ type WalletBalance = {
 };
 
 export const useWalletBalance = () => {
-  const { address } = useWallet();
+  const { address, network } = useWallet();
   const [state, setState] = useState<WalletBalance>({
     balances: [],
     xlm: "-",
@@ -34,9 +34,10 @@ export const useWalletBalance = () => {
     }
     
     console.log("[useWalletBalance] Fetching balance for address:", address);
+    console.log("[useWalletBalance] Network:", network);
     try {
       setState((prev) => ({ ...prev, isLoading: true }));
-      const balances = await fetchBalance(address);
+      const balances = await fetchBalance(address, network);
       console.log("[useWalletBalance] Fetched balances:", balances);
       
       const isFunded = checkFunding(balances);
@@ -73,7 +74,7 @@ export const useWalletBalance = () => {
         });
       }
     }
-  }, [address]);
+  }, [address, network]); // Refetch when address or network changes
 
   useEffect(() => {
     void updateBalance();

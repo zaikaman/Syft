@@ -17,8 +17,16 @@ if (Test-Path .env) {
 }
 
 $DEPLOYER_SECRET = $env:DEPLOYER_SECRET_KEY
-$EXISTING_FACTORY = $env:VAULT_FACTORY_CONTRACT_ID
-$NETWORK = "testnet"
+$NETWORK = "futurenet"
+
+# Get network-specific factory address
+if ($NETWORK -eq "futurenet") {
+    $EXISTING_FACTORY = $env:VAULT_FACTORY_CONTRACT_ID_FUTURENET
+} elseif ($NETWORK -eq "mainnet" -or $NETWORK -eq "public") {
+    $EXISTING_FACTORY = $env:VAULT_FACTORY_CONTRACT_ID_MAINNET
+} else {
+    $EXISTING_FACTORY = $env:VAULT_FACTORY_CONTRACT_ID
+}
 
 if (-not $DEPLOYER_SECRET) {
     Write-Host "❌ DEPLOYER_SECRET_KEY not found in .env" -ForegroundColor Red
@@ -131,25 +139,35 @@ Write-Host "💾 Step 3: Updating .env..." -ForegroundColor Yellow
 $envContent = Get-Content .env
 $updated = $false
 
-# Update VAULT_FACTORY_CONTRACT_ID
-if ($envContent -match "VAULT_FACTORY_CONTRACT_ID=") {
-    $envContent = $envContent -replace "VAULT_FACTORY_CONTRACT_ID=.*", "VAULT_FACTORY_CONTRACT_ID=$FACTORY_ADDRESS"
+# Determine which env variable to update based on network
+$envVarName = if ($NETWORK -eq "futurenet") {
+    "VAULT_FACTORY_CONTRACT_ID_FUTURENET"
+} elseif ($NETWORK -eq "mainnet" -or $NETWORK -eq "public") {
+    "VAULT_FACTORY_CONTRACT_ID_MAINNET"
 } else {
-    $envContent += "`nVAULT_FACTORY_CONTRACT_ID=$FACTORY_ADDRESS"
+    "VAULT_FACTORY_CONTRACT_ID"
+}
+
+# Update the appropriate factory contract ID
+if ($envContent -match "$envVarName=") {
+    $envContent = $envContent -replace "$envVarName=.*", "$envVarName=$FACTORY_ADDRESS"
+} else {
+    $envContent += "`n$envVarName=$FACTORY_ADDRESS"
 }
 
 Set-Content .env $envContent
-Write-Host "✅ .env updated`n" -ForegroundColor Green
+Write-Host "✅ .env updated ($envVarName)`n" -ForegroundColor Green
 
 # Summary
 Write-Host "═══════════════════════════════════" -ForegroundColor Cyan
 Write-Host "🎉 Deployment Complete!" -ForegroundColor Green
 Write-Host "═══════════════════════════════════" -ForegroundColor Cyan
+Write-Host "Network:          $NETWORK" -ForegroundColor White
 Write-Host "Vault WASM Hash:  $vaultWasmHash" -ForegroundColor White
 Write-Host "Factory Address:  $FACTORY_ADDRESS" -ForegroundColor White
 Write-Host "`n📝 Next Steps:" -ForegroundColor Cyan
 Write-Host "   1. Restart your backend server" -ForegroundColor White
 Write-Host "   2. Create a new vault to test deposit/withdraw" -ForegroundColor White
 Write-Host "`n🔗 View factory on explorer:" -ForegroundColor Cyan
-$explorerUrl = "https://stellar.expert/explorer/testnet/contract/$FACTORY_ADDRESS"
+$explorerUrl = "https://stellar.expert/explorer/$NETWORK/contract/$FACTORY_ADDRESS"
 Write-Host "   $explorerUrl" -ForegroundColor Blue

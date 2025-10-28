@@ -90,7 +90,8 @@ export async function executeRebalance(
           vault.contract_address,
           'trigger_rebalance',
           [],
-          rebalancerKeypair
+          rebalancerKeypair,
+          vault.network // Pass the vault's network
         );
         
         if (result.success && result.hash) {
@@ -144,7 +145,8 @@ export async function executeDeposit(
   vaultId: string,
   userAddress: string,
   amount: string,
-  sourceKeypair: StellarSdk.Keypair
+  sourceKeypair: StellarSdk.Keypair,
+  network?: string
 ): Promise<{ success: boolean; shares?: string; error?: string }> {
   try {
     // Get vault from database
@@ -161,21 +163,40 @@ export async function executeDeposit(
       };
     }
 
-    // In production, this would:
-    // 1. Build deposit transaction
-    // 2. Call vault contract's deposit function
-    // 3. Transfer assets to vault
-    // 4. Receive shares
-
-    await invokeVaultMethod(
+    // Call vault contract's deposit function
+    // This will:
+    // 1. Transfer tokens from user to vault
+    // 2. Calculate shares based on current vault value
+    // 3. Mint shares to user's position
+    const result = await invokeVaultMethod(
       vault.contract_address,
       'deposit',
       [userAddress, amount],
-      sourceKeypair
+      sourceKeypair,
+      network
     );
 
-    // Mock shares calculation (in production, returned from contract)
-    const shares = amount; // 1:1 for simplicity
+    // Extract the returned shares from contract
+    let shares = '0';
+    if (result.result) {
+      try {
+        // Import stellar-sdk for decoding
+        const StellarSdk = await import('@stellar/stellar-sdk');
+        
+        // Decode the i128 value
+        const decodedShares = StellarSdk.scValToNative(result.result);
+        shares = decodedShares.toString();
+        
+        console.log(`[Deposit] Contract returned shares:`, shares);
+      } catch (decodeError) {
+        console.error('[Deposit] Error decoding shares:', decodeError);
+        // Fallback to amount as shares (1:1)
+        shares = amount;
+      }
+    } else {
+      // Fallback if no result
+      shares = amount;
+    }
 
     return {
       success: true,
@@ -197,7 +218,8 @@ export async function executeWithdrawal(
   vaultId: string,
   userAddress: string,
   shares: string,
-  sourceKeypair: StellarSdk.Keypair
+  sourceKeypair: StellarSdk.Keypair,
+  network?: string
 ): Promise<{ success: boolean; amount?: string; error?: string }> {
   try {
     // Get vault from database
@@ -214,21 +236,41 @@ export async function executeWithdrawal(
       };
     }
 
-    // In production, this would:
-    // 1. Build withdrawal transaction
-    // 2. Call vault contract's withdraw function
-    // 3. Burn shares
-    // 4. Transfer assets to user
-
-    await invokeVaultMethod(
+    // Call vault contract's withdraw function
+    // This will:
+    // 1. Burn shares from user's position
+    // 2. Calculate amount based on shares/totalShares ratio
+    // 3. Transfer tokens back to user
+    const result = await invokeVaultMethod(
       vault.contract_address,
       'withdraw',
       [userAddress, shares],
-      sourceKeypair
+      sourceKeypair,
+      network
     );
 
-    // Mock amount calculation (in production, returned from contract)
-    const amount = shares; // 1:1 for simplicity
+    // Extract the returned amount from contract
+    let amount = '0';
+    if (result.result) {
+      try {
+        // Import stellar-sdk for decoding
+        const StellarSdk = await import('@stellar/stellar-sdk');
+        
+        // Decode the i128 value
+        const decodedAmount = StellarSdk.scValToNative(result.result);
+        amount = decodedAmount.toString();
+        
+        console.log(`[Withdrawal] Contract returned amount:`, amount, 'stroops');
+        console.log(`[Withdrawal] Amount in XLM:`, (Number(amount) / 10_000_000).toFixed(7));
+      } catch (decodeError) {
+        console.error('[Withdrawal] Error decoding amount:', decodeError);
+        // Fallback to shares as amount
+        amount = shares;
+      }
+    } else {
+      // Fallback if no result
+      amount = shares;
+    }
 
     return {
       success: true,
@@ -236,9 +278,25 @@ export async function executeWithdrawal(
     };
   } catch (error) {
     console.error('Error executing withdrawal:', error);
+    
+    // Parse contract error for user-friendly message
+    let errorMessage = 'Withdrawal failed';
+    if (error instanceof Error) {
+      const errorStr = error.message;
+      if (errorStr.includes('Error(Contract, #5)')) {
+        errorMessage = 'Insufficient shares. You do not have enough shares to withdraw this amount.';
+      } else if (errorStr.includes('Error(Contract, #3)')) {
+        errorMessage = 'Unauthorized. You must authorize this transaction with your wallet.';
+      } else if (errorStr.includes('Error(Contract, #6)')) {
+        errorMessage = 'Invalid amount. Please enter a valid withdrawal amount.';
+      } else {
+        errorMessage = error.message;
+      }
+    }
+    
     return {
       success: false,
-      error: error instanceof Error ? error.message : 'Unknown error',
+      error: errorMessage,
     };
   }
 }

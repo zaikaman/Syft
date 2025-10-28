@@ -11,6 +11,7 @@ import {
   getVaultPerformance,
   getPerformanceHistory,
   getVaultTransactionHistory,
+  getUserPosition,
 } from '../services/vaultMonitorService.js';
 import {
   executeDeposit,
@@ -27,8 +28,9 @@ const router = Router();
  */
 router.post('/', async (req: Request, res: Response) => {
   try {
-    const { config } = req.body as {
+    const { config, network } = req.body as {
       config: VaultDeploymentConfig;
+      network?: string;
     };
 
     if (!config) {
@@ -56,9 +58,13 @@ router.post('/', async (req: Request, res: Response) => {
     }
 
     const keypair = StellarSdk.Keypair.fromSecret(deployerSecret);
+    
+    // Normalize network
+    const userNetwork = network || process.env.STELLAR_NETWORK || 'testnet';
+    console.log(`[Vault Creation] Using network: ${userNetwork}`);
 
-    // Deploy vault
-    const result = await deployVault(config, keypair);
+    // Deploy vault on the user's network
+    const result = await deployVault(config, keypair, userNetwork);
 
     if (result.status === 'failed') {
       return res.status(500).json({
@@ -107,7 +113,7 @@ router.get('/:vaultId', async (req: Request, res: Response) => {
     }
 
     // Get current state from blockchain
-    const state = await monitorVaultState(vault.contract_address);
+    const state = await monitorVaultState(vault.contract_address, vault.network);
 
     // Get performance metrics
     const performance = await getVaultPerformance(vaultId);
@@ -136,13 +142,67 @@ router.get('/:vaultId', async (req: Request, res: Response) => {
 });
 
 /**
+ * GET /api/vaults/:vaultId/position/:userAddress
+ * Get user's position in a vault (shares and balance)
+ */
+router.get('/:vaultId/position/:userAddress', async (req: Request, res: Response) => {
+  try {
+    const { vaultId, userAddress } = req.params;
+
+    // Get vault from database
+    const { data: vault, error } = await supabase
+      .from('vaults')
+      .select('*')
+      .eq('vault_id', vaultId)
+      .single();
+
+    if (error || !vault) {
+      return res.status(404).json({
+        success: false,
+        error: 'Vault not found',
+      });
+    }
+
+    // Get user position from contract
+    const position = await getUserPosition(
+      vault.contract_address,
+      userAddress,
+      vault.network
+    );
+
+    if (!position) {
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to fetch user position',
+      });
+    }
+
+    return res.json({
+      success: true,
+      data: {
+        vaultId,
+        userAddress,
+        shares: position.shares,
+        lastDeposit: position.lastDeposit,
+      },
+    });
+  } catch (error) {
+    console.error('Error in GET /api/vaults/:vaultId/position/:userAddress:', error);
+    return res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Internal server error',
+    });
+  }
+});
+
+/**
  * POST /api/vaults/:vaultId/deposit
  * Deposit assets into vault
  */
 router.post('/:vaultId/deposit', async (req: Request, res: Response) => {
   try {
     const { vaultId } = req.params;
-    const { userAddress, amount } = req.body;
+    const { userAddress, amount, network } = req.body;
 
     if (!userAddress || !amount) {
       return res.status(400).json({
@@ -150,6 +210,10 @@ router.post('/:vaultId/deposit', async (req: Request, res: Response) => {
         error: 'Missing required fields: userAddress, amount',
       });
     }
+
+    // Validate and use the user's network
+    const userNetwork = network || process.env.STELLAR_NETWORK || 'testnet';
+    console.log(`[Deposit] Using network: ${userNetwork} for user ${userAddress}`);
 
     // Use service account for transaction submission
     const deployerSecret = process.env.DEPLOYER_SECRET_KEY;
@@ -161,7 +225,7 @@ router.post('/:vaultId/deposit', async (req: Request, res: Response) => {
     }
 
     const keypair = StellarSdk.Keypair.fromSecret(deployerSecret);
-    const result = await executeDeposit(vaultId, userAddress, amount, keypair);
+    const result = await executeDeposit(vaultId, userAddress, amount, keypair, userNetwork);
 
     if (!result.success) {
       return res.status(500).json({
@@ -196,12 +260,60 @@ router.post('/:vaultId/deposit', async (req: Request, res: Response) => {
 router.post('/:vaultId/withdraw', async (req: Request, res: Response) => {
   try {
     const { vaultId } = req.params;
-    const { userAddress, shares } = req.body;
+    const { userAddress, shares, network } = req.body;
 
     if (!userAddress || !shares) {
       return res.status(400).json({
         success: false,
         error: 'Missing required fields: userAddress, shares',
+      });
+    }
+
+    // Normalize network
+    const userNetwork = network || process.env.STELLAR_NETWORK || 'testnet';
+    console.log(`[Withdraw] Using network: ${userNetwork} for user ${userAddress}`);
+
+    // Get vault from database to check contract address
+    const { data: vault, error: vaultError } = await supabase
+      .from('vaults')
+      .select('*')
+      .eq('vault_id', vaultId)
+      .single();
+
+    if (vaultError || !vault) {
+      return res.status(404).json({
+        success: false,
+        error: 'Vault not found',
+      });
+    }
+
+    // Check user's position before withdrawal
+    console.log(`[Withdraw] Checking user position for ${userAddress}`);
+    const userPosition = await getUserPosition(
+      vault.contract_address,
+      userAddress,
+      userNetwork
+    );
+
+    if (!userPosition) {
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to fetch user position',
+      });
+    }
+
+    const userShares = BigInt(userPosition.shares);
+    const requestedShares = BigInt(shares);
+
+    console.log(`[Withdraw] User has ${userShares} shares, requesting ${requestedShares} shares`);
+
+    if (userShares < requestedShares) {
+      const userSharesInXLM = (Number(userShares) / 10_000_000).toFixed(7);
+      const requestedInXLM = (Number(requestedShares) / 10_000_000).toFixed(7);
+      
+      return res.status(400).json({
+        success: false,
+        error: `Insufficient shares. You have ${userSharesInXLM} shares but tried to withdraw ${requestedInXLM} shares.`,
       });
     }
 
@@ -215,7 +327,7 @@ router.post('/:vaultId/withdraw', async (req: Request, res: Response) => {
     }
 
     const keypair = StellarSdk.Keypair.fromSecret(deployerSecret);
-    const result = await executeWithdrawal(vaultId, userAddress, shares, keypair);
+    const result = await executeWithdrawal(vaultId, userAddress, shares, keypair, userNetwork);
 
     if (!result.success) {
       return res.status(500).json({
@@ -469,7 +581,7 @@ router.get('/', async (req: Request, res: Response) => {
  */
 router.post('/drafts', async (req: Request, res: Response) => {
   try {
-    const { owner, config, name } = req.body;
+    const { owner, config, name, network } = req.body;
 
     if (!owner || !config) {
       return res.status(400).json({
@@ -477,6 +589,10 @@ router.post('/drafts', async (req: Request, res: Response) => {
         error: 'Missing required fields: owner and config',
       });
     }
+
+    // Normalize network
+    const vaultNetwork = network || 'testnet';
+    console.log(`[Save Draft] Saving draft for network: ${vaultNetwork}`);
 
     // Ensure user exists in database (upsert)
     const { error: userError } = await supabase
@@ -515,6 +631,7 @@ router.post('/drafts', async (req: Request, res: Response) => {
         description: 'Vault draft created from visual builder',
         config,
         status: 'draft',
+        network: vaultNetwork, // Store network
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       })
@@ -548,7 +665,7 @@ router.post('/drafts', async (req: Request, res: Response) => {
 router.get('/user/:walletAddress', async (req: Request, res: Response) => {
   try {
     const { walletAddress } = req.params;
-    const { status } = req.query; // Optional filter by status
+    const { status, network } = req.query; // Optional filter by status and network
 
     if (!walletAddress) {
       return res.status(400).json({
@@ -567,6 +684,12 @@ router.get('/user/:walletAddress', async (req: Request, res: Response) => {
     // Apply status filter if provided
     if (status) {
       query = query.eq('status', status);
+    }
+
+    // Apply network filter if provided
+    if (network) {
+      query = query.eq('network', network);
+      console.log(`[Get User Vaults] Filtering by network: ${network}`);
     }
 
     const { data: vaults, error } = await query;

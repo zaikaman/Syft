@@ -12,6 +12,15 @@ export interface VaultState {
   }>;
 }
 
+// Simple in-memory cache for vault states to reduce contract calls
+interface CachedVaultState {
+  state: VaultState;
+  timestamp: number;
+}
+
+const vaultStateCache = new Map<string, CachedVaultState>();
+const CACHE_TTL = 30000; // 30 seconds cache
+
 export interface VaultPerformanceMetrics {
   currentValue: number;
   totalDeposits: number;
@@ -22,38 +31,247 @@ export interface VaultPerformanceMetrics {
 }
 
 /**
- * Monitor vault state from blockchain
+ * Get user's position in a vault
  */
-export async function monitorVaultState(
-  contractAddress: string
-): Promise<VaultState | null> {
+export async function getUserPosition(
+  contractAddress: string,
+  userAddress: string,
+  network?: string
+): Promise<{ shares: string; lastDeposit: number } | null> {
   try {
-    // In production, this would query the Soroban contract state
-    // For MVP, we'll return mock data or query from our database
-
-    const { data, error } = await supabase
+    // Get vault from database to determine network
+    const { data: vaultData } = await supabase
       .from('vaults')
-      .select('*')
+      .select('network')
       .eq('contract_address', contractAddress)
       .single();
 
-    if (error || !data) {
-      console.error('Vault not found:', error);
+    const vaultNetwork = network || vaultData?.network || 'testnet';
+
+    // Import the invokeVaultMethod to query contract state
+    const { invokeVaultMethod } = await import('./vaultDeploymentService.js');
+    const { Keypair } = await import('@stellar/stellar-sdk');
+    
+    // Use deployer keypair for read-only operations
+    const deployerSecret = process.env.DEPLOYER_SECRET_KEY;
+    if (!deployerSecret) {
+      console.error('[getUserPosition] No deployer secret key available');
       return null;
     }
+    
+    const sourceKeypair = Keypair.fromSecret(deployerSecret);
 
-    // Mock vault state for MVP
-    return {
-      totalShares: '1000000',
-      totalValue: '1000000',
-      lastRebalance: Date.now(),
-      assetBalances: [
-        { asset: 'XLM', balance: '500000', value: '500000' },
-        { asset: 'USDC', balance: '500000', value: '500000' },
-      ],
-    };
+    try {
+      // Query user position from contract using get_position method
+      const positionResult = await invokeVaultMethod(
+        contractAddress,
+        'get_position',
+        [userAddress],
+        sourceKeypair,
+        vaultNetwork
+      );
+
+      if (!positionResult.success || !positionResult.result) {
+        console.error('[getUserPosition] Failed to get position from contract');
+        return {
+          shares: '0',
+          lastDeposit: 0,
+        };
+      }
+
+      // Parse the XDR result
+      const contractResult = positionResult.result;
+      
+      console.log('[getUserPosition] Raw contract result:', contractResult);
+
+      // Import stellar-sdk for XDR parsing
+      const StellarSdk = await import('@stellar/stellar-sdk');
+      
+      let shares = '0';
+      let lastDeposit = 0;
+      
+      try {
+        if (contractResult && typeof contractResult === 'object') {
+          // Try to access the values directly if they're already parsed
+          if ('shares' in contractResult) {
+            shares = contractResult.shares?.toString() || '0';
+          }
+          if ('last_deposit' in contractResult) {
+            const lastDepositValue = contractResult.last_deposit;
+            lastDeposit = typeof lastDepositValue === 'bigint' 
+              ? Number(lastDepositValue) 
+              : (lastDepositValue || 0);
+          }
+          
+          // If it's an ScVal, decode it
+          if (contractResult._switch) {
+            const decoded = StellarSdk.scValToNative(contractResult);
+            console.log('[getUserPosition] Decoded position:', decoded);
+            
+            if (decoded && typeof decoded === 'object') {
+              shares = decoded.shares?.toString() || '0';
+              const lastDepositValue = decoded.last_deposit;
+              lastDeposit = typeof lastDepositValue === 'bigint' 
+                ? Number(lastDepositValue) 
+                : (lastDepositValue || 0);
+            }
+          }
+        }
+        
+        console.log('[getUserPosition] Parsed position - shares:', shares, 'lastDeposit:', lastDeposit);
+      } catch (parseError) {
+        console.error('[getUserPosition] Error parsing contract result:', parseError);
+      }
+
+      return {
+        shares,
+        lastDeposit,
+      };
+    } catch (contractError) {
+      console.error('[getUserPosition] Error querying contract:', contractError);
+      return {
+        shares: '0',
+        lastDeposit: 0,
+      };
+    }
   } catch (error) {
-    console.error('Error monitoring vault state:', error);
+    console.error('[getUserPosition] Error:', error);
+    return null;
+  }
+}
+
+/**
+ * Monitor vault state from blockchain
+ */
+export async function monitorVaultState(
+  contractAddress: string,
+  network?: string
+): Promise<VaultState | null> {
+  try {
+    // Check cache first
+    const cached = vaultStateCache.get(contractAddress);
+    if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
+      console.log(`[monitorVaultState] Returning cached state for ${contractAddress}`);
+      return cached.state;
+    }
+
+    // Get vault from database to determine network
+    const { data: vaultData } = await supabase
+      .from('vaults')
+      .select('network')
+      .eq('contract_address', contractAddress)
+      .single();
+
+    const vaultNetwork = network || vaultData?.network || 'testnet';
+
+    // Import the invokeVaultMethod to query contract state
+    const { invokeVaultMethod } = await import('./vaultDeploymentService.js');
+    const { Keypair } = await import('@stellar/stellar-sdk');
+    
+    // Use deployer keypair for read-only operations
+    const deployerSecret = process.env.DEPLOYER_SECRET_KEY;
+    if (!deployerSecret) {
+      console.error('[monitorVaultState] No deployer secret key available');
+      // Return cached state if available, even if expired
+      return cached?.state || null;
+    }
+    
+    const sourceKeypair = Keypair.fromSecret(deployerSecret);
+
+    try {
+      // Query vault state from contract using get_state method
+      const stateResult = await invokeVaultMethod(
+        contractAddress,
+        'get_state',
+        [],
+        sourceKeypair,
+        vaultNetwork
+      );
+
+      if (!stateResult.success || !stateResult.result) {
+        console.error('[monitorVaultState] Failed to get state from contract');
+        return {
+          totalShares: '0',
+          totalValue: '0',
+          lastRebalance: Date.now(),
+          assetBalances: [],
+        };
+      }
+
+      // Parse the XDR result - it should be a VaultState struct
+      const contractResult = stateResult.result;
+      
+      console.log('[monitorVaultState] Raw contract result:', contractResult);
+
+      // Import stellar-sdk for XDR parsing
+      const StellarSdk = await import('@stellar/stellar-sdk');
+      
+      // Try to parse the ScVal structure
+      let totalShares = '0';
+      let totalValue = '0';
+      
+      try {
+        // The result is an ScVal that needs to be decoded
+        // For a struct, it should be an ScMap or similar
+        if (contractResult && typeof contractResult === 'object') {
+          // Try to access the values directly if they're already parsed
+          if ('total_shares' in contractResult) {
+            totalShares = contractResult.total_shares?.toString() || '0';
+          }
+          if ('total_value' in contractResult) {
+            totalValue = contractResult.total_value?.toString() || '0';
+          }
+          
+          // If it's an ScVal, decode it
+          if (contractResult._switch) {
+            const decoded = StellarSdk.scValToNative(contractResult);
+            console.log('[monitorVaultState] Decoded contract state:', decoded);
+            
+            if (decoded && typeof decoded === 'object') {
+              totalShares = decoded.total_shares?.toString() || '0';
+              totalValue = decoded.total_value?.toString() || '0';
+            }
+          }
+        }
+        
+        console.log('[monitorVaultState] Parsed state - shares:', totalShares, 'value:', totalValue);
+      } catch (parseError) {
+        console.error('[monitorVaultState] Error parsing contract result:', parseError);
+      }
+
+      const vaultState: VaultState = {
+        totalShares,
+        totalValue,
+        lastRebalance: Date.now(),
+        assetBalances: [],
+      };
+
+      // Cache the result
+      vaultStateCache.set(contractAddress, {
+        state: vaultState,
+        timestamp: Date.now(),
+      });
+
+      return vaultState;
+    } catch (contractError) {
+      console.error('[monitorVaultState] Error querying contract:', contractError);
+      
+      // Return cached state if available, even if expired
+      if (cached) {
+        console.log('[monitorVaultState] Returning expired cached state due to error');
+        return cached.state;
+      }
+      
+      // Return zero values instead of mock data
+      return {
+        totalShares: '0',
+        totalValue: '0',
+        lastRebalance: Date.now(),
+        assetBalances: [],
+      };
+    }
+  } catch (error) {
+    console.error('[monitorVaultState] Error:', error);
     return null;
   }
 }

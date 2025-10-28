@@ -180,7 +180,7 @@ export function startRuleMonitoring(
     } catch (error) {
       console.error('Error in rule monitoring loop:', error);
     }
-  }, 60000); // Check every 60 seconds
+  }, 120000); // Check every 2 minutes (reduced from 60 seconds to avoid overwhelming Horizon)
 
   return interval;
 }

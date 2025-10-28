@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useWallet } from '../../hooks/useWallet';
+import { useWalletBalance } from '../../hooks/useWalletBalance';
 import { useModal } from '../ui';
 
 interface VaultActionsProps {
@@ -12,7 +13,8 @@ export const VaultActions: React.FC<VaultActionsProps> = ({
   vaultId,
   onActionComplete,
 }) => {
-  const { address } = useWallet();
+  const { address, network, networkPassphrase } = useWallet();
+  const { updateBalance } = useWalletBalance();
   const modal = useModal();
   const [amount, setAmount] = useState('');
   const [shares, setShares] = useState('');
@@ -21,6 +23,26 @@ export const VaultActions: React.FC<VaultActionsProps> = ({
     type: 'success' | 'error';
     text: string;
   } | null>(null);
+
+  // Map Freighter network names to our backend format
+  const normalizeNetwork = (net?: string, passphrase?: string): string => {
+    if (!net) return 'testnet';
+    
+    // Check network passphrase for accurate detection
+    if (passphrase) {
+      if (passphrase.includes('Test SDF Future')) return 'futurenet';
+      if (passphrase.includes('Test SDF Network')) return 'testnet';
+      if (passphrase.includes('Public Global')) return 'mainnet';
+    }
+    
+    // Fallback to network name mapping
+    const normalized = net.toLowerCase();
+    if (normalized === 'standalone' || normalized === 'futurenet') return 'futurenet';
+    if (normalized === 'testnet') return 'testnet';
+    if (normalized === 'mainnet' || normalized === 'public') return 'mainnet';
+    
+    return 'testnet'; // Default fallback
+  };
 
   const handleDeposit = async () => {
     if (!address || !amount) {
@@ -35,6 +57,10 @@ export const VaultActions: React.FC<VaultActionsProps> = ({
       // Convert XLM to stroops (1 XLM = 10,000,000 stroops)
       const amountInStroops = Math.floor(parseFloat(amount) * 10_000_000).toString();
       
+      // Normalize the network name for backend
+      const normalizedNetwork = normalizeNetwork(network, networkPassphrase);
+      console.log(`[VaultActions] Using network: ${normalizedNetwork} (raw: ${network}, passphrase: ${networkPassphrase})`);
+      
       // Use connected wallet to sign transaction - no private key needed
       const response = await fetch(
         `http://localhost:3001/api/vaults/${vaultId}/deposit`,
@@ -46,6 +72,7 @@ export const VaultActions: React.FC<VaultActionsProps> = ({
           body: JSON.stringify({
             userAddress: address,
             amount: amountInStroops,
+            network: normalizedNetwork, // Pass the normalized network
           }),
         }
       );
@@ -56,16 +83,26 @@ export const VaultActions: React.FC<VaultActionsProps> = ({
         throw new Error(data.error || 'Deposit failed');
       }
 
+      // Format shares for display (shares are in stroops, same as amount)
+      const sharesReceived = (Number(data.data.shares) / 10_000_000).toFixed(7);
+
       setMessage({
         type: 'success',
-        text: `Successfully deposited ${amount} XLM! Received ${data.data.shares} shares.`,
+        text: `Successfully deposited ${amount} XLM! Received ${sharesReceived} shares.`,
       });
       modal.message(
-        `Successfully deposited ${amount} XLM!\n\nReceived ${data.data.shares} shares.`,
+        `Successfully deposited ${amount} XLM!\n\nReceived ${sharesReceived} shares.`,
         'Deposit Complete',
         'success'
       );
       setAmount('');
+      
+      // Wait a moment for the transaction to be processed on-chain
+      // then refresh wallet balance in header
+      setTimeout(async () => {
+        await updateBalance();
+      }, 2000); // Wait 2 seconds before refreshing
+      
       onActionComplete?.('deposit', data.data);
     } catch (error) {
       const errorText = error instanceof Error ? error.message : 'Deposit failed';
@@ -89,6 +126,14 @@ export const VaultActions: React.FC<VaultActionsProps> = ({
     setMessage(null);
 
     try {
+      // Convert shares to stroops (1 share = 10,000,000 stroops, same as XLM)
+      const sharesInStroops = Math.floor(parseFloat(shares) * 10_000_000).toString();
+      
+      // Normalize the network name for backend
+      const normalizedNetwork = normalizeNetwork(network, networkPassphrase);
+      console.log(`[VaultActions] Withdraw using network: ${normalizedNetwork}`);
+      console.log(`[VaultActions] Withdrawing ${shares} shares (${sharesInStroops} stroops)`);
+      
       // Use connected wallet to sign transaction - no private key needed
       const response = await fetch(
         `http://localhost:3001/api/vaults/${vaultId}/withdraw`,
@@ -99,7 +144,8 @@ export const VaultActions: React.FC<VaultActionsProps> = ({
           },
           body: JSON.stringify({
             userAddress: address,
-            shares,
+            shares: sharesInStroops,
+            network: normalizedNetwork, // Include network
           }),
         }
       );
@@ -110,16 +156,26 @@ export const VaultActions: React.FC<VaultActionsProps> = ({
         throw new Error(data.error || 'Withdrawal failed');
       }
 
+      // Convert stroops to XLM for display (1 XLM = 10,000,000 stroops)
+      const amountInXLM = (Number(data.data.amount) / 10_000_000).toFixed(7);
+
       setMessage({
         type: 'success',
-        text: `Successfully withdrawn! Received ${data.data.amount} tokens for ${shares} shares.`,
+        text: `Successfully withdrawn! Received ${amountInXLM} XLM for ${shares} shares.`,
       });
       modal.message(
-        `Successfully withdrawn!\n\nReceived ${data.data.amount} tokens for ${shares} shares.`,
+        `Successfully withdrawn!\n\nReceived ${amountInXLM} XLM for ${shares} shares.`,
         'Withdrawal Complete',
         'success'
       );
       setShares('');
+      
+      // Wait a moment for the transaction to be processed on-chain
+      // then refresh wallet balance in header
+      setTimeout(async () => {
+        await updateBalance();
+      }, 2000); // Wait 2 seconds before refreshing
+      
       onActionComplete?.('withdraw', data.data);
     } catch (error) {
       const errorText = error instanceof Error ? error.message : 'Withdrawal failed';

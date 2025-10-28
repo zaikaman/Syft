@@ -41,7 +41,7 @@ const VaultBuilder = () => {
   const [savedVaults, setSavedVaults] = useState<SavedVault[]>([]);
   const [loadingVaults, setLoadingVaults] = useState(false);
 
-  const { address } = useWallet();
+  const { address, network, networkPassphrase } = useWallet();
   const navigate = useNavigate();
   const modal = useModal();
   const { canUndo, canRedo, undo, redo, pushState } = useBuilderHistory(nodes, edges);
@@ -51,7 +51,27 @@ const VaultBuilder = () => {
     if (address) {
       loadSavedVaults();
     }
-  }, [address]);
+  }, [address, network]); // Reload when network changes
+
+  // Map Freighter network names to our backend format
+  const normalizeNetwork = (net?: string, passphrase?: string): string => {
+    if (!net) return 'testnet';
+    
+    // Check network passphrase for accurate detection
+    if (passphrase) {
+      if (passphrase.includes('Test SDF Future')) return 'futurenet';
+      if (passphrase.includes('Test SDF Network')) return 'testnet';
+      if (passphrase.includes('Public Global')) return 'mainnet';
+    }
+    
+    // Fallback to network name mapping
+    const normalized = net.toLowerCase();
+    if (normalized === 'standalone' || normalized === 'futurenet') return 'futurenet';
+    if (normalized === 'testnet') return 'testnet';
+    if (normalized === 'mainnet' || normalized === 'public') return 'mainnet';
+    
+    return 'testnet'; // Default fallback
+  };
 
   // Load saved vaults from backend
   const loadSavedVaults = async () => {
@@ -59,8 +79,9 @@ const VaultBuilder = () => {
 
     try {
       setLoadingVaults(true);
+      const normalizedNetwork = normalizeNetwork(network, networkPassphrase);
       const backendUrl = import.meta.env.PUBLIC_BACKEND_URL || 'http://localhost:3001';
-      const response = await fetch(`${backendUrl}/api/vaults/user/${address}?status=draft`);
+      const response = await fetch(`${backendUrl}/api/vaults/user/${address}?status=draft&network=${normalizedNetwork}`);
       const data = await response.json();
 
       if (data.success) {
@@ -148,6 +169,7 @@ const VaultBuilder = () => {
       localStorage.setItem('vault_draft', JSON.stringify(config));
       
       // Save to backend
+      const normalizedNetwork = normalizeNetwork(network, networkPassphrase);
       const backendUrl = import.meta.env.PUBLIC_BACKEND_URL || 'http://localhost:3001';
       const response = await fetch(`${backendUrl}/api/vaults/drafts`, {
         method: 'POST',
@@ -157,6 +179,7 @@ const VaultBuilder = () => {
         body: JSON.stringify({
           owner: address,
           config,
+          network: normalizedNetwork, // Include network when saving draft
         }),
       });
 
@@ -217,6 +240,30 @@ const VaultBuilder = () => {
 
       // Deploy vault using connected wallet (no private key needed)
       const backendUrl = import.meta.env.PUBLIC_BACKEND_URL || 'http://localhost:3001';
+      
+      // Map Freighter network names to our backend format
+      const normalizeNetwork = (net?: string, passphrase?: string): string => {
+        if (!net) return 'testnet';
+        
+        // Check network passphrase for accurate detection
+        if (passphrase) {
+          if (passphrase.includes('Test SDF Future')) return 'futurenet';
+          if (passphrase.includes('Test SDF Network')) return 'testnet';
+          if (passphrase.includes('Public Global')) return 'mainnet';
+        }
+        
+        // Fallback to network name mapping
+        const normalized = net.toLowerCase();
+        if (normalized === 'standalone' || normalized === 'futurenet') return 'futurenet';
+        if (normalized === 'testnet') return 'testnet';
+        if (normalized === 'mainnet' || normalized === 'public') return 'mainnet';
+        
+        return 'testnet'; // Default fallback
+      };
+      
+      const normalizedNetwork = normalizeNetwork(network, networkPassphrase);
+      console.log(`[VaultBuilder] Deploying vault on network: ${normalizedNetwork}`);
+      
       const response = await fetch(`${backendUrl}/api/vaults`, {
         method: 'POST',
         headers: {
@@ -224,6 +271,7 @@ const VaultBuilder = () => {
         },
         body: JSON.stringify({
           config: backendConfig,
+          network: normalizedNetwork, // Include network in deployment
         }),
       });
 

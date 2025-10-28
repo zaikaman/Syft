@@ -24,7 +24,7 @@ const Dashboard = () => {
   const [vaults, setVaults] = useState<Vault[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const { address } = useWallet();
+  const { address, network, networkPassphrase } = useWallet();
 
   useEffect(() => {
     if (address) {
@@ -32,15 +32,38 @@ const Dashboard = () => {
     } else {
       setLoading(false);
     }
-  }, [address]);
+  }, [address, network]); // Refetch when network changes
+
+  // Map Freighter network names to our backend format
+  const normalizeNetwork = (net?: string, passphrase?: string): string => {
+    if (!net) return 'testnet';
+    
+    // Check network passphrase for accurate detection
+    if (passphrase) {
+      if (passphrase.includes('Test SDF Future')) return 'futurenet';
+      if (passphrase.includes('Test SDF Network')) return 'testnet';
+      if (passphrase.includes('Public Global')) return 'mainnet';
+    }
+    
+    // Fallback to network name mapping
+    const normalized = net.toLowerCase();
+    if (normalized === 'standalone' || normalized === 'futurenet') return 'futurenet';
+    if (normalized === 'testnet') return 'testnet';
+    if (normalized === 'mainnet' || normalized === 'public') return 'mainnet';
+    
+    return 'testnet'; // Default fallback
+  };
 
   const fetchVaults = async () => {
     try {
       setLoading(true);
       setError(null);
 
+      const normalizedNetwork = normalizeNetwork(network, networkPassphrase);
+      console.log(`[Dashboard] Fetching vaults for network: ${normalizedNetwork}`);
+
       const backendUrl = import.meta.env.PUBLIC_BACKEND_URL || 'http://localhost:3001';
-      const response = await fetch(`${backendUrl}/api/vaults/user/${address}`);
+      const response = await fetch(`${backendUrl}/api/vaults/user/${address}?network=${normalizedNetwork}`);
       
       if (!response.ok) {
         throw new Error('Failed to fetch vaults');

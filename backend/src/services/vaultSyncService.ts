@@ -100,19 +100,19 @@ export async function syncAllVaults(): Promise<{
 }
 
 /**
- * Start continuous vault sync (runs every 5 minutes)
+ * Start continuous vault sync (runs every 2 minutes instead of 5 to reduce load)
  */
 export function startVaultSync(): NodeJS.Timeout {
-  console.log('Starting vault sync service (every 5 minutes)...');
+  console.log('Starting vault sync service (every 2 minutes)...');
 
   // Initial sync
   syncAllVaults();
 
-  // Periodic sync
+  // Periodic sync - reduced frequency to avoid overwhelming Horizon
   const interval = setInterval(async () => {
     console.log('Running periodic vault sync...');
     await syncAllVaults();
-  }, 300000); // Every 5 minutes
+  }, 120000); // Every 2 minutes (reduced from 5 to be less aggressive)
 
   return interval;
 }

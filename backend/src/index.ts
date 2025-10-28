@@ -11,6 +11,12 @@ import { executeRebalance } from './services/vaultActionService.js';
 // Load environment variables
 dotenv.config();
 
+// Add BigInt serialization support for JSON
+// This allows BigInt values to be serialized as strings in JSON responses
+(BigInt.prototype as any).toJSON = function () {
+  return this.toString();
+};
+
 const app: Express = express();
 const port = process.env.PORT || 3001;
 
@@ -76,11 +82,11 @@ app.listen(port, () => {
   // Start background services
   console.log('\n🔄 Starting background services...');
   
-  // Start vault sync service (syncs vault state every 5 minutes)
+  // Start vault sync service (syncs vault state every 2 minutes)
   const syncInterval = startVaultSync();
-  console.log('✅ Vault sync service started');
+  console.log('✅ Vault sync service started (every 2 minutes)');
   
-  // Start rule monitoring service (checks rules every 60 seconds)
+  // Start rule monitoring service (checks rules every 2 minutes)
   const ruleInterval = startRuleMonitoring((trigger) => {
     console.log(`🎯 Rule triggered for vault ${trigger.vaultId}, executing rebalance...`);
     executeRebalance(trigger.vaultId, trigger.ruleIndex).then((result) => {

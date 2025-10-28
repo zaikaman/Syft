@@ -53,13 +53,27 @@ export const disconnectWallet = async () => {
   storage.removeItem("walletId");
 };
 
-export const fetchBalance = async (address: string) => {
-  console.log("[fetchBalance] Fetching balance for:", address);
-  console.log("[fetchBalance] Using Horizon URL:", horizonUrl);
-  console.log("[fetchBalance] Network:", stellarNetwork);
+export const fetchBalance = async (address: string, network?: string) => {
+  // Determine Horizon URL based on network
+  let networkHorizonUrl = horizonUrl;
   
-  const horizon = new Horizon.Server(horizonUrl, {
-    allowHttp: stellarNetwork === "LOCAL" || horizonUrl.startsWith("http://"),
+  if (network) {
+    const normalizedNetwork = network.toLowerCase();
+    if (normalizedNetwork === 'futurenet' || normalizedNetwork === 'standalone') {
+      networkHorizonUrl = 'https://horizon-futurenet.stellar.org';
+    } else if (normalizedNetwork === 'testnet') {
+      networkHorizonUrl = 'https://horizon-testnet.stellar.org';
+    } else if (normalizedNetwork === 'mainnet' || normalizedNetwork === 'public') {
+      networkHorizonUrl = 'https://horizon.stellar.org';
+    }
+  }
+  
+  console.log("[fetchBalance] Fetching balance for:", address);
+  console.log("[fetchBalance] Using Horizon URL:", networkHorizonUrl);
+  console.log("[fetchBalance] Network:", network || stellarNetwork);
+  
+  const horizon = new Horizon.Server(networkHorizonUrl, {
+    allowHttp: (network || stellarNetwork) === "LOCAL" || networkHorizonUrl.startsWith("http://"),
   });
 
   try {
