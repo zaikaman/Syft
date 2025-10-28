@@ -6,24 +6,22 @@ const VaultDetail = () => {
 
   if (!vaultId) {
     return (
-      <div className="min-h-screen pt-16 pb-12 bg-app">
-        <div className="container mx-auto px-4 max-w-6xl">
-          <div className="text-center py-20">
-            <h2 className="text-2xl font-bold mb-2 text-neutral-50">
-              Vault Not Found
-            </h2>
-            <p className="text-neutral-400">
-              The requested vault could not be found.
-            </p>
-          </div>
+      <div className="h-full bg-app flex items-center justify-center">
+        <div className="text-center">
+          <h2 className="text-2xl font-bold mb-2 text-neutral-50">
+            Vault Not Found
+          </h2>
+          <p className="text-neutral-400">
+            The requested vault could not be found.
+          </p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen pt-16 pb-12 bg-app">
-      <div className="container mx-auto px-4 max-w-6xl">
+    <div className="h-full bg-app overflow-auto">
+      <div className="container mx-auto px-4 py-8 max-w-6xl">
         <VaultDetailComponent vaultId={vaultId} />
       </div>
     </div>

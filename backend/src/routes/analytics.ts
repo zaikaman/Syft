@@ -81,6 +81,59 @@ router.get('/portfolio/:userAddress', async (req: Request, res: Response) => {
 });
 
 /**
+ * GET /api/analytics/portfolio/:userAddress/history
+ * Get portfolio-wide performance history for charts
+ * Query params: network (default: testnet), days (default: 30)
+ */
+router.get('/portfolio/:userAddress/history', async (req: Request, res: Response) => {
+  try {
+    const { userAddress } = req.params;
+    const network = (req.query.network as string) || 'testnet';
+    const days = parseInt(req.query.days as string) || 30;
+
+    const { getPortfolioPerformanceHistory } = await import('../services/analyticsService.js');
+    const history = await getPortfolioPerformanceHistory(userAddress, network, days);
+
+    return res.json({
+      success: true,
+      data: history,
+    });
+  } catch (error) {
+    console.error('Error in GET /api/analytics/portfolio/:userAddress/history:', error);
+    return res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Internal server error',
+    });
+  }
+});
+
+/**
+ * GET /api/analytics/portfolio/:userAddress/allocation
+ * Get portfolio asset allocation
+ * Query params: network (default: testnet)
+ */
+router.get('/portfolio/:userAddress/allocation', async (req: Request, res: Response) => {
+  try {
+    const { userAddress } = req.params;
+    const network = (req.query.network as string) || 'testnet';
+
+    const { getPortfolioAllocation } = await import('../services/analyticsService.js');
+    const allocation = await getPortfolioAllocation(userAddress, network);
+
+    return res.json({
+      success: true,
+      data: allocation,
+    });
+  } catch (error) {
+    console.error('Error in GET /api/analytics/portfolio/:userAddress/allocation:', error);
+    return res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Internal server error',
+    });
+  }
+});
+
+/**
  * GET /api/analytics/debug/vault/:vaultId/snapshots
  * Debug endpoint to view raw vault performance snapshots
  */

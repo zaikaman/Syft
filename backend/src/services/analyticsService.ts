@@ -646,3 +646,153 @@ export async function getHistoricalPerformance(
     return [];
   }
 }
+
+/**
+ * Get portfolio-wide performance history for charts
+ */
+export async function getPortfolioPerformanceHistory(
+  userAddress: string,
+  network: string = 'testnet',
+  days: number = 30
+): Promise<Array<{ date: string; value: number; apy: number }>> {
+  try {
+    // Get all user vaults
+    const { data: vaults } = await supabase
+      .from('vaults')
+      .select('id, vault_id')
+      .eq('owner_wallet_address', userAddress)
+      .eq('network', network);
+
+    if (!vaults || vaults.length === 0) return [];
+
+    const startDate = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+
+    // Get all snapshots for all vaults
+    const vaultIds = vaults.map(v => v.id);
+    const { data: snapshots } = await supabase
+      .from('vault_performance')
+      .select('*')
+      .in('vault_id', vaultIds)
+      .gte('timestamp', startDate)
+      .order('timestamp', { ascending: true });
+
+    if (!snapshots || snapshots.length === 0) return [];
+
+    // Group snapshots by timestamp (hour-level grouping)
+    const groupedByHour = snapshots.reduce((acc, snapshot) => {
+      const hourKey = new Date(snapshot.timestamp).toISOString().slice(0, 13); // YYYY-MM-DDTHH
+      if (!acc[hourKey]) {
+        acc[hourKey] = {
+          timestamp: snapshot.timestamp,
+          totalValue: 0,
+          count: 0,
+        };
+      }
+      acc[hourKey].totalValue += snapshot.total_value;
+      acc[hourKey].count++;
+      return acc;
+    }, {} as Record<string, { timestamp: string; totalValue: number; count: number }>);
+
+    // Convert to array and calculate portfolio value at each point
+    const portfolioHistory = (Object.values(groupedByHour) as Array<{ timestamp: string; totalValue: number; count: number }>)
+      .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+
+    if (portfolioHistory.length === 0) return [];
+
+    const firstValue = portfolioHistory[0].totalValue;
+
+    return portfolioHistory.map((point) => {
+      const currentValue = point.totalValue;
+      const timeDiff = new Date(point.timestamp).getTime() - new Date(portfolioHistory[0].timestamp).getTime();
+      const daysPassed = timeDiff / (1000 * 60 * 60 * 24);
+
+      let apy = 0;
+      if (daysPassed > 0 && firstValue > 0) {
+        const simpleReturn = (currentValue - firstValue) / firstValue;
+        apy = (Math.pow(1 + simpleReturn, 365 / daysPassed) - 1) * 100;
+        apy = Math.max(-100, Math.min(10000, apy));
+      }
+
+      return {
+        date: new Date(point.timestamp).toLocaleDateString(),
+        value: currentValue,
+        apy: apy,
+      };
+    });
+  } catch (error) {
+    console.error('[getPortfolioPerformanceHistory] Error:', error);
+    return [];
+  }
+}
+
+/**
+ * Get portfolio asset allocation
+ */
+export async function getPortfolioAllocation(
+  userAddress: string,
+  network: string = 'testnet'
+): Promise<Array<{ asset: string; value: number; percentage: number; color: string }>> {
+  try {
+    // Get all user vaults with their current state
+    const { data: vaults } = await supabase
+      .from('vaults')
+      .select('*')
+      .eq('owner_wallet_address', userAddress)
+      .eq('network', network);
+
+    if (!vaults || vaults.length === 0) return [];
+
+    // Get analytics for each vault to get TVL
+    const vaultAnalytics = await Promise.all(
+      vaults.map(v => getVaultAnalytics(v.vault_id))
+    );
+
+    const totalTVL = vaultAnalytics.reduce((sum, va) => sum + va.tvl, 0);
+
+    if (totalTVL === 0) return [];
+
+    // Calculate asset allocation based on vault TVL and their asset holdings
+    const assetMap = new Map<string, number>();
+
+    for (let i = 0; i < vaults.length; i++) {
+      const vault = vaults[i];
+      const analytics = vaultAnalytics[i];
+      const vaultTVL = analytics.tvl;
+      const assets = vault.config?.assets || [];
+
+      // For each asset in the vault, distribute TVL equally (simplified approach)
+      // In a more sophisticated version, we would query actual asset balances
+      const valuePerAsset = vaultTVL / (assets.length || 1);
+
+      for (const asset of assets) {
+        const assetCode = asset.code || 'UNKNOWN';
+        const currentValue = assetMap.get(assetCode) || 0;
+        assetMap.set(assetCode, currentValue + valuePerAsset);
+      }
+    }
+
+    // Convert to array and calculate percentages
+    const colors = ['#dce85d', '#74b97f', '#60a5fa', '#e06c6e', '#dca204', '#9b87f5', '#f97316', '#22d3ee'];
+    let colorIndex = 0;
+
+    const allocation = Array.from(assetMap.entries())
+      .map(([asset, value]) => ({
+        asset,
+        value,
+        percentage: (value / totalTVL) * 100,
+        color: colors[colorIndex++ % colors.length],
+      }))
+      .sort((a, b) => b.value - a.value); // Sort by value descending
+
+    console.log('[getPortfolioAllocation] Asset Allocation:', {
+      totalTVL: `$${totalTVL.toFixed(2)}`,
+      assets: allocation.map(a => `${a.asset}: $${a.value.toFixed(2)} (${a.percentage.toFixed(1)}%)`),
+    });
+
+    return allocation;
+  } catch (error) {
+    console.error('[getPortfolioAllocation] Error:', error);
+    return [];
+  }
+}
+

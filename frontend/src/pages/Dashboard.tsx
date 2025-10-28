@@ -39,7 +39,8 @@ const Dashboard = () => {
   const [error, setError] = useState<string | null>(null);
   const [xlmPrice, setXlmPrice] = useState<number>(0.10); // Default fallback
   const [portfolioAnalytics, setPortfolioAnalytics] = useState<any>(null);
-  const [performanceData] = useState<any[]>([]); // Placeholder for future use
+  const [performanceData, setPerformanceData] = useState<any[]>([]); // Portfolio performance history
+  const [allocationData, setAllocationData] = useState<any[]>([]); // Asset allocation data
   const [vaultAnalytics, setVaultAnalytics] = useState<Record<string, any>>({});
   const { address, network, networkPassphrase } = useWallet();
 
@@ -76,8 +77,10 @@ const Dashboard = () => {
   useEffect(() => {
     if (vaults.length > 0) {
       fetchVaultAnalytics();
+      fetchPortfolioPerformanceHistory();
+      fetchPortfolioAllocation();
     }
-  }, [vaults]);
+  }, [vaults, selectedPeriod]);
 
   const fetchXLMPrice = async () => {
     try {
@@ -113,6 +116,56 @@ const Dashboard = () => {
       }
     } catch (err) {
       console.error('[Dashboard] Failed to fetch portfolio analytics:', err);
+    }
+  };
+
+  const fetchPortfolioPerformanceHistory = async () => {
+    try {
+      const normalizedNetwork = normalizeNetwork(network, networkPassphrase);
+      const backendUrl = import.meta.env.PUBLIC_BACKEND_URL || 'http://localhost:3001';
+      
+      // Map selected period to days
+      const daysMap: Record<string, number> = {
+        '24h': 1,
+        '7d': 7,
+        '30d': 30,
+        '1y': 365,
+      };
+      const days = daysMap[selectedPeriod] || 7;
+      
+      const response = await fetch(
+        `${backendUrl}/api/analytics/portfolio/${address}/history?network=${normalizedNetwork}&days=${days}`
+      );
+      
+      if (response.ok) {
+        const data = await response.json();
+        if (data.success && data.data.length > 0) {
+          setPerformanceData(data.data);
+          console.log('[Dashboard] Portfolio Performance History:', data.data.length, 'data points');
+        }
+      }
+    } catch (err) {
+      console.error('[Dashboard] Failed to fetch portfolio performance history:', err);
+    }
+  };
+
+  const fetchPortfolioAllocation = async () => {
+    try {
+      const normalizedNetwork = normalizeNetwork(network, networkPassphrase);
+      const backendUrl = import.meta.env.PUBLIC_BACKEND_URL || 'http://localhost:3001';
+      const response = await fetch(
+        `${backendUrl}/api/analytics/portfolio/${address}/allocation?network=${normalizedNetwork}`
+      );
+      
+      if (response.ok) {
+        const data = await response.json();
+        if (data.success) {
+          setAllocationData(data.data);
+          console.log('[Dashboard] Portfolio Allocation:', data.data);
+        }
+      }
+    } catch (err) {
+      console.error('[Dashboard] Failed to fetch portfolio allocation:', err);
     }
   };
 
@@ -265,50 +318,30 @@ const Dashboard = () => {
         { date: 'Day 7', value: 0, apy: 0 },
       ];
 
-  // Calculate allocation from vaults
-  const allocationData = vaults.length > 0
-    ? vaults.flatMap(v => v.config.assets || [])
-        .reduce((acc, asset) => {
-          const existing = acc.find(a => a.name === asset.code);
-          if (existing) {
-            existing.value += 1;
-          } else {
-            acc.push({
-              name: asset.code,
-              value: 1,
-              color: ['#dce85d', '#74b97f', '#60a5fa', '#e06c6e', '#dca204'][acc.length % 5]
-            });
-          }
-          return acc;
-        }, [] as Array<{ name: string; value: number; color: string }>)
-    : [];
-
   // Show wallet connection prompt if not connected
   if (!address) {
     return (
-      <div className="min-h-screen pt-16 pb-12 bg-app">
-        <div className="container mx-auto px-4 max-w-6xl">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="text-center py-20"
-          >
-            <AlertCircle className="w-16 h-16 text-primary-500 mx-auto mb-4" />
-            <h2 className="text-2xl font-bold mb-2 text-neutral-50">
-              Connect Your Wallet
-            </h2>
-            <p className="text-neutral-400 mb-8">
-              Please connect your wallet to view your dashboard
-            </p>
-          </motion.div>
-        </div>
+      <div className="h-full bg-app flex items-center justify-center">
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="text-center"
+        >
+          <AlertCircle className="w-16 h-16 text-primary-500 mx-auto mb-4" />
+          <h2 className="text-2xl font-bold mb-2 text-neutral-50">
+            Connect Your Wallet
+          </h2>
+          <p className="text-neutral-400 mb-8">
+            Please connect your wallet to view your dashboard
+          </p>
+        </motion.div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen pt-16 pb-12 bg-app">
-      <div className="container mx-auto px-4 max-w-6xl">
+    <div className="h-full bg-app overflow-auto">
+      <div className="container mx-auto px-4 py-8 max-w-6xl">
         {/* Header */}
         <motion.div
           initial={{ opacity: 0, y: 10 }}
@@ -444,17 +477,24 @@ const Dashboard = () => {
                           borderRadius: '6px',
                           fontSize: '12px',
                         }}
+                        formatter={(value: number, _name: string, props: any) => [
+                          `$${value.toFixed(2)} (${props.payload.percentage.toFixed(1)}%)`,
+                          props.payload.asset
+                        ]}
                       />
                     </PieChart>
                   </ResponsiveContainer>
                   <div className="mt-3 space-y-2">
                     {allocationData.map((asset, idx) => (
-                      <div key={`${asset.name}-${idx}`} className="flex items-center justify-between">
+                      <div key={`${asset.asset}-${idx}`} className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
                           <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: asset.color }} />
-                          <span className="text-sm text-neutral-300">{asset.name}</span>
+                          <span className="text-sm text-neutral-300">{asset.asset}</span>
                         </div>
-                        <span className="text-sm font-medium text-neutral-50">{asset.value}</span>
+                        <div className="text-right">
+                          <span className="text-sm font-medium text-neutral-50">${asset.value.toFixed(2)}</span>
+                          <span className="text-xs text-neutral-400 ml-2">({asset.percentage.toFixed(1)}%)</span>
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -481,7 +521,7 @@ const Dashboard = () => {
                 <Activity className="w-5 h-5 text-primary-500" />
                 Active Vaults
               </h2>
-              <Link to="/builder">
+              <Link to="/app/builder">
                 <Button variant="primary" size="md">Create New Vault</Button>
               </Link>
             </div>
@@ -505,7 +545,7 @@ const Dashboard = () => {
                 <p className="text-neutral-500 text-sm mb-6">
                   Create your first vault to start earning yield
                 </p>
-                <Link to="/builder">
+                <Link to="/app/builder">
                   <Button variant="primary">Create Vault</Button>
                 </Link>
               </div>
@@ -582,7 +622,7 @@ const Dashboard = () => {
                               <div className={`w-1.5 h-1.5 rounded-full ${vault.status === 'active' ? 'bg-success-400' : 'bg-neutral-400'}`} />
                               <span className="text-xs text-neutral-400 capitalize">{vault.status}</span>
                             </div>
-                            <Link to={`/vaults/${vault.vault_id}`}>
+                            <Link to={`/app/vaults/${vault.vault_id}`}>
                               <Button size="sm" variant="outline">View</Button>
                             </Link>
                           </div>

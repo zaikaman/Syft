@@ -98,16 +98,9 @@ const Home = () => {
                 size="lg"
                 variant="primary"
                 rightIcon={<ArrowRight size={18} />}
-                onClick={() => navigate('/builder')}
+                onClick={() => navigate('/app/builder')}
               >
                 Start Building
-              </Button>
-              <Button
-                size="lg"
-                variant="outline"
-                onClick={() => navigate('/dashboard')}
-              >
-                View Dashboard
               </Button>
             </motion.div>
 
@@ -242,7 +235,7 @@ const Home = () => {
               size="lg"
               variant="primary"
               rightIcon={<ArrowRight size={18} />}
-              onClick={() => navigate('/builder')}
+              onClick={() => navigate('/app/builder')}
             >
               Create Your First Vault
             </Button>
@@ -269,7 +262,7 @@ const Home = () => {
                 size="lg"
                 variant="primary"
                 rightIcon={<ArrowRight size={18} />}
-                onClick={() => navigate('/builder')}
+                onClick={() => navigate('/app/builder')}
               >
                 Launch App
               </Button>

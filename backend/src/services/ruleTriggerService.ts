@@ -93,38 +93,66 @@ async function checkIfRebalanceNeeded(rule: any, vault: any): Promise<boolean> {
       return false;
     }
 
-    // Import necessary functions
-    const { fetchAssetBalances } = await import('./assetService.js');
+    // Determine if this is a contract address (C...) or a regular wallet (G...)
+    const isContractAddress = contractAddress.startsWith('C');
     
-    // Get current balances from the vault's wallet
-    const walletAssets = await fetchAssetBalances(contractAddress);
-    
-    // Calculate total value
     let totalValue = 0;
     const assetValues: number[] = [];
     
-    for (const asset of assets) {
-      const assetCode = asset.code || 'XLM';
+    if (isContractAddress) {
+      // For contract addresses, query the contract state directly
+      const vaultState = await monitorVaultState(contractAddress);
       
-      // Find balance for this asset
-      let balance = 0;
-      const assetBalance = walletAssets.balances.find(b => {
-        if (assetCode === 'XLM' && b.asset_type === 'native') {
-          return true;
-        }
-        return b.asset_code === assetCode;
-      });
-      
-      if (assetBalance) {
-        balance = parseFloat(assetBalance.balance);
+      if (!vaultState || !vaultState.totalValue) {
+        console.log(`⏭️  Could not fetch contract state for vault ${vault.vault_id}`);
+        return false;
       }
       
-      // Get price in USD (for now use mock prices, in production use real prices)
-      const priceUSD = assetCode === 'XLM' ? 0.12 : 1.0; // Mock: XLM=$0.12, USDC=$1
-      const value = balance * priceUSD;
+      // Parse total value from contract (it's in stroops for XLM)
+      totalValue = Number(vaultState.totalValue) / 10_000_000; // Convert stroops to XLM
       
-      assetValues.push(value);
-      totalValue += value;
+      // NOTE: For contract-based vaults, we currently distribute the total value among assets
+      // based on the target allocation proportions (since the contract only returns total value).
+      // This is a limitation - ideally the contract should expose individual asset balances
+      // or allocation percentages. For now, we assume the contract is managing allocations
+      // and only check if there's sufficient value for rebalancing to be worthwhile.
+      // In this simplified check, we'll assume the vault is already at target allocation.
+      console.log(`  Contract vault total value: ${totalValue.toFixed(2)} XLM`);
+      console.log(`  ⚠️  Note: Contract-based vault - cannot verify individual asset allocations`);
+      console.log(`  ✓ Assuming contract is managing allocations correctly`);
+      
+      // For contract vaults, we can't verify actual drift, so we'll allow rebalancing
+      // if the total value is significant enough (> 10 XLM)
+      // The contract's rebalance function will handle the actual allocation logic
+      return totalValue > 10;
+    } else {
+      // For regular wallet addresses, use fetchAssetBalances
+      const { fetchAssetBalances } = await import('./assetService.js');
+      const walletAssets = await fetchAssetBalances(contractAddress);
+      
+      for (const asset of assets) {
+        const assetCode = asset.code || 'XLM';
+        
+        // Find balance for this asset
+        let balance = 0;
+        const assetBalance = walletAssets.balances.find(b => {
+          if (assetCode === 'XLM' && b.asset_type === 'native') {
+            return true;
+          }
+          return b.asset_code === assetCode;
+        });
+        
+        if (assetBalance) {
+          balance = parseFloat(assetBalance.balance);
+        }
+        
+        // Get price in USD (for now use mock prices, in production use real prices)
+        const priceUSD = assetCode === 'XLM' ? 0.12 : 1.0; // Mock: XLM=$0.12, USDC=$1
+        const value = balance * priceUSD;
+        
+        assetValues.push(value);
+        totalValue += value;
+      }
     }
 
     if (totalValue === 0) {

@@ -284,7 +284,7 @@ const VaultBuilder = () => {
           'success'
         );
         // Navigate to dashboard
-        navigate('/dashboard');
+        navigate('/app/dashboard');
       } else {
         throw new Error(data.error || 'Failed to deploy vault');
       }
@@ -311,27 +311,14 @@ const VaultBuilder = () => {
   }, [pushState]);
 
   return (
-    <div className="fixed inset-0 bg-app">
-      <div className="h-full flex flex-col">
+    <div className="h-full bg-app flex flex-col">
+      <div className="flex-1 flex flex-col overflow-hidden">
         {/* Clean Minimal Header */}
         <div className="flex-shrink-0 border-b border-default bg-secondary">
           <div className="px-4 py-2.5">
             <div className="flex items-center justify-between">
-              {/* Left: Logo + Title */}
+              {/* Left: Title */}
               <div className="flex items-center gap-3">
-                <button
-                  onClick={() => navigate('/')}
-                  className="flex items-center gap-2 hover:opacity-80 transition-opacity"
-                  title="Back to Home"
-                >
-                  <img
-                    src="/logo.png"
-                    alt="Syft Logo"
-                    className="w-7 h-7 object-contain"
-                  />
-                  <span className="text-base font-semibold text-neutral-50">Syft</span>
-                </button>
-                <div className="w-px h-5 bg-default"></div>
                 <h1 className="text-sm font-medium text-neutral-400">Visual Vault Builder</h1>
               </div>
 
