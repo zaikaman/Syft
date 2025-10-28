@@ -50,7 +50,9 @@ export const WalletButton = () => {
         size="md" 
         onClick={() => void connectWallet()}
         isLoading={isPending}
+        className="inline-flex items-center gap-2 bg-[#dce85d] hover:bg-[#e8f06d] text-[#090a0a] px-4 py-2 rounded-lg text-sm font-medium transition"
       >
+        <Wallet size={16} />
         {buttonLabel}
       </Button>
     );

@@ -148,6 +148,47 @@ body {
   }
 }
 
+@keyframes marquee {
+  0% {
+    transform: translateX(0);
+  }
+  100% {
+    transform: translateX(-50%);
+  }
+}
+
+@keyframes marquee-ltr {
+  0% {
+    transform: translateX(0);
+  }
+  100% {
+    transform: translateX(-50%);
+  }
+}
+
+@keyframes marquee-rtl {
+  0% {
+    transform: translateX(-50%);
+  }
+  100% {
+    transform: translateX(0);
+  }
+}
+
+.animate-marquee {
+  animation: marquee 40s linear infinite;
+}
+
+.animate-marquee-ltr {
+  animation: marquee-ltr 45s linear infinite;
+  width: calc(200%);
+}
+
+.animate-marquee-rtl {
+  animation: marquee-rtl 45s linear infinite;
+  width: calc(200%);
+}
+
 /* Utility Classes */
 .gradient-text {
   color: var(--color-primary);
