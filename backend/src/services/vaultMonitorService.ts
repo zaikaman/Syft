@@ -390,10 +390,20 @@ async function calculateCurrentAPY(_vaultId: string, vaultUUID: string): Promise
       const firstDeposit = deposits[0];
       const daysInvested = (new Date(latestSnapshot.timestamp).getTime() - new Date(firstDeposit.timestamp).getTime()) / (1000 * 60 * 60 * 24);
 
-      if (daysInvested < 0.01) return 0;
+      if (daysInvested < 0.01) return 0; // Less than 15 minutes
 
       const currentValue = latestSnapshot.total_value;
       const totalReturn = (currentValue - netInvested) / netInvested;
+      
+      // For very new vaults (< 1 day), don't annualize - just show the actual return percentage
+      // Annualizing tiny time periods creates unrealistic extrapolations
+      if (daysInvested < 1) {
+        console.log(`[calculateCurrentAPY] Vault is very new (${(daysInvested * 24).toFixed(1)} hours), showing actual return instead of annualized`);
+        // Return actual percentage return (not annualized)
+        return totalReturn * 100;
+      }
+      
+      // For vaults older than 1 day, annualize the return
       const apy = (Math.pow(1 + totalReturn, 365 / daysInvested) - 1) * 100;
 
       return Math.max(-100, Math.min(100000, apy));
@@ -428,6 +438,13 @@ async function calculateCurrentAPY(_vaultId: string, vaultUUID: string): Promise
     if (days <= 0) return 0;
 
     const simpleReturn = (currentValue - initialValue) / initialValue;
+    
+    // For very new vaults (< 1 day), don't annualize - just show the actual return
+    if (days < 1) {
+      console.log(`[calculateCurrentAPY] Vault is very new (${(days * 24).toFixed(1)} hours), showing actual return instead of annualized`);
+      return simpleReturn * 100;
+    }
+    
     const apy = (Math.pow(1 + simpleReturn, 365 / days) - 1) * 100;
 
     return Math.max(-100, Math.min(10000, apy));
@@ -442,8 +459,7 @@ async function calculateCurrentAPY(_vaultId: string, vaultUUID: string): Promise
  */
 export async function recordPerformanceSnapshot(
   vaultId: string,
-  value: number,
-  returns: number
+  value: number
 ): Promise<void> {
   try {
     // First get the vault UUID from vault_id
@@ -501,6 +517,45 @@ export async function recordPerformanceSnapshot(
     const returns7d = calculateReturn(snapshot7d?.total_value || null, value);
     const returns30d = calculateReturn(snapshot30d?.total_value || null, value);
 
+    // Calculate ALL-TIME return using transaction data (accurate method)
+    let returnsAllTime: number | null = null;
+    
+    // Try to get transaction data for accurate all-time return
+    const { data: transactions } = await supabase
+      .from('vault_transactions')
+      .select('*')
+      .eq('vault_id', vault.id)
+      .order('timestamp', { ascending: true });
+
+    if (transactions && transactions.length > 0) {
+      // Calculate net deposits
+      const deposits = transactions.filter(tx => tx.type === 'deposit');
+      const withdrawals = transactions.filter(tx => tx.type === 'withdrawal');
+      
+      const totalDeposited = deposits.reduce((sum, tx) => sum + tx.amount_usd, 0);
+      const totalWithdrawn = withdrawals.reduce((sum, tx) => sum + tx.amount_usd, 0);
+      const netInvested = totalDeposited - totalWithdrawn;
+
+      if (netInvested > 0) {
+        // All-time return = (Current Value - Net Invested) / Net Invested
+        returnsAllTime = ((value - netInvested) / netInvested) * 100;
+        console.log(`[recordPerformanceSnapshot] All-time return: Current=$${value.toFixed(2)}, Invested=$${netInvested.toFixed(2)}, Return=${returnsAllTime.toFixed(2)}%`);
+      }
+    } else {
+      // Fallback: Compare to first snapshot
+      const { data: firstSnapshot } = await supabase
+        .from('vault_performance')
+        .select('total_value')
+        .eq('vault_id', vault.id)
+        .order('timestamp', { ascending: true })
+        .limit(1)
+        .single();
+
+      if (firstSnapshot && firstSnapshot.total_value > 0) {
+        returnsAllTime = ((value - firstSnapshot.total_value) / firstSnapshot.total_value) * 100;
+      }
+    }
+
     // Calculate current APY
     const apyCurrent = await calculateCurrentAPY(vaultId, vault.id);
 
@@ -515,7 +570,7 @@ export async function recordPerformanceSnapshot(
       returns_24h: returns24h,
       returns_7d: returns7d,
       returns_30d: returns30d,
-      returns_all_time: returns,
+      returns_all_time: returnsAllTime,
       apy_current: apyCurrent,
     });
 
@@ -523,7 +578,7 @@ export async function recordPerformanceSnapshot(
       throw error;
     }
 
-    console.log(`[recordPerformanceSnapshot] ${vaultId} - Recorded snapshot: TVL=$${value.toFixed(2)}, 24h=${returns24h?.toFixed(2) || 'N/A'}%, 7d=${returns7d?.toFixed(2) || 'N/A'}%, 30d=${returns30d?.toFixed(2) || 'N/A'}%, APY=${apyCurrent.toFixed(2)}%`);
+    console.log(`[recordPerformanceSnapshot] ${vaultId} - Recorded snapshot: TVL=$${value.toFixed(2)}, 24h=${returns24h?.toFixed(2) || 'N/A'}%, 7d=${returns7d?.toFixed(2) || 'N/A'}%, 30d=${returns30d?.toFixed(2) || 'N/A'}%, All-Time=${returnsAllTime?.toFixed(2) || 'N/A'}%, APY=${apyCurrent.toFixed(2)}%`);
   } catch (error) {
     console.error('Error recording performance snapshot:', error);
     throw error;

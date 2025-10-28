@@ -99,7 +99,18 @@ async function calculateAPY(vaultId: string): Promise<number> {
       const totalReturn = (currentValue - netInvested) / netInvested;
 
       // Annualize: APY = (1 + return)^(365/days) - 1
-      const apy = (Math.pow(1 + totalReturn, 365 / daysInvested) - 1) * 100;
+      // BUT: For very new vaults (< 1 day), don't annualize to avoid unrealistic extrapolations
+      let apy: number;
+      
+      if (daysInvested < 1) {
+        // For vaults less than 1 day old, show actual return percentage
+        // This prevents -100% APY from a -0.27% loss over 10 minutes
+        console.warn(`[calculateAPY] ${vaultId} - Vault is very new (${(daysInvested * 24).toFixed(1)} hours), showing actual return instead of annualized`);
+        apy = totalReturn * 100;
+      } else {
+        // For vaults 1 day or older, annualize the return
+        apy = (Math.pow(1 + totalReturn, 365 / daysInvested) - 1) * 100;
+      }
 
       console.log(`[calculateAPY] ${vaultId} - COST-BASIS METHOD:`, {
         netInvested: `$${netInvested.toFixed(2)}`,
@@ -108,11 +119,12 @@ async function calculateAPY(vaultId: string): Promise<number> {
         return: `${(totalReturn * 100).toFixed(2)}%`,
         daysInvested: daysInvested.toFixed(2),
         apy: `${apy.toFixed(2)}%`,
+        annualized: daysInvested >= 1,
       });
 
       // For very new vaults (< 1 day), show a warning that APY is extrapolated
       if (daysInvested < 1) {
-        console.warn(`[calculateAPY] ${vaultId} - Vault is very new (${(daysInvested * 24).toFixed(1)} hours), APY is highly extrapolated`);
+        console.warn(`[calculateAPY] ${vaultId} - Vault is very new (${(daysInvested * 24).toFixed(1)} hours), showing actual return (not annualized)`);
       }
 
       // Cap APY at reasonable bounds (-100% to 100,000%)
@@ -179,9 +191,18 @@ async function calculateAPY(vaultId: string): Promise<number> {
     const simpleReturn = (currentValue - initialValue) / initialValue;
 
     // Annualize the return (APY = (1 + return) ^ (365 / days) - 1)
-    const apy = (Math.pow(1 + simpleReturn, 365 / days) - 1) * 100;
-
-    console.log(`[calculateAPY] ${vaultId} - SNAPSHOT METHOD: Initial: $${initialValue.toFixed(2)}, Current: $${currentValue.toFixed(2)}, Days: ${days.toFixed(1)}, APY: ${apy.toFixed(2)}%`);
+    // BUT: For very new vaults (< 1 day), don't annualize to avoid unrealistic extrapolations
+    let apy: number;
+    
+    if (days < 1) {
+      // For vaults less than 1 day old, show actual return percentage
+      console.log(`[calculateAPY] ${vaultId} - SNAPSHOT METHOD (${(days * 24).toFixed(1)} hours): Initial: $${initialValue.toFixed(2)}, Current: $${currentValue.toFixed(2)}, Return: ${(simpleReturn * 100).toFixed(2)}% (not annualized)`);
+      apy = simpleReturn * 100;
+    } else {
+      // For vaults 1 day or older, annualize the return
+      apy = (Math.pow(1 + simpleReturn, 365 / days) - 1) * 100;
+      console.log(`[calculateAPY] ${vaultId} - SNAPSHOT METHOD: Initial: $${initialValue.toFixed(2)}, Current: $${currentValue.toFixed(2)}, Days: ${days.toFixed(1)}, APY: ${apy.toFixed(2)}%`);
+    }
 
     // Cap APY at reasonable bounds (-100% to 10000%)
     return Math.max(-100, Math.min(10000, apy));

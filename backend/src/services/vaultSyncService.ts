@@ -51,7 +51,7 @@ export async function syncVaultState(vaultId: string): Promise<boolean> {
     
     console.log(`[syncVaultState] TVL - Stroops: ${totalValueInStroops}, USD: $${totalValueInUSD.toFixed(2)}`);
     
-    await recordPerformanceSnapshot(vaultId, totalValueInUSD, 0);
+    await recordPerformanceSnapshot(vaultId, totalValueInUSD);
 
     return true;
   } catch (error) {
