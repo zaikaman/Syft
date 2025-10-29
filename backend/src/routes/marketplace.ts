@@ -51,7 +51,7 @@ router.post('/listings', async (req: Request, res: Response) => {
       });
     }
 
-    if (nft.holder_address !== sellerAddress) {
+    if (nft.current_holder !== sellerAddress) {
       return res.status(403).json({
         success: false,
         error: 'Not authorized to list this NFT',
@@ -208,8 +208,8 @@ router.get('/listings/:listingId', async (req: Request, res: Response) => {
         *,
         vault_nfts (
           nft_id,
-          ownership_pct,
-          holder_address,
+          ownership_percentage,
+          current_holder,
           metadata,
           minted_at,
           vaults (
@@ -217,8 +217,7 @@ router.get('/listings/:listingId', async (req: Request, res: Response) => {
             name,
             description,
             contract_address,
-            total_value,
-            performance,
+            total_value_locked,
             created_at
           )
         )
@@ -300,8 +299,8 @@ router.post('/purchase', async (req: Request, res: Response) => {
     const { error: nftUpdateError } = await supabase
       .from('vault_nfts')
       .update({
-        holder_address: buyerAddress,
-        updated_at: new Date().toISOString(),
+        current_holder: buyerAddress,
+        last_transfer_at: new Date().toISOString(),
       })
       .eq('nft_id', listing.nft_id);
 
@@ -331,7 +330,7 @@ router.post('/purchase', async (req: Request, res: Response) => {
       await supabase
         .from('vault_nfts')
         .update({
-          holder_address: listing.seller_address,
+          current_holder: listing.seller_address,
         })
         .eq('nft_id', listing.nft_id);
 

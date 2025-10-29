@@ -55,21 +55,25 @@ router.post('/:vaultId/nft', async (req: Request, res: Response) => {
       });
     }
 
-    // Check total ownership doesn't exceed 100%
+    // Check total ownership doesn't exceed 100%.
+    // Note: incoming ownershipPercentage is expected in basis points (100 = 1%).
     const { data: existingNFTs } = await supabase
       .from('vault_nfts')
-      .select('ownership_pct')
+      .select('ownership_percentage')
       .eq('vault_id', vaultId);
 
     const totalExistingOwnership = existingNFTs?.reduce(
-      (sum, nft) => sum + nft.ownership_pct, 
+      (sum, nft) => sum + (nft.ownership_percentage || 0),
       0
     ) || 0;
 
-    if (totalExistingOwnership + ownershipPercentage > 10000) {
+    // convert incoming basis points to percent
+    const ownershipPctPercent = ownershipPercentage / 100;
+
+    if (totalExistingOwnership + ownershipPctPercent > 100) {
       return res.status(400).json({
         success: false,
-        error: `Cannot mint NFT: would exceed 100% ownership. Current: ${totalExistingOwnership / 100}%, Requested: ${ownershipPercentage / 100}%`,
+        error: `Cannot mint NFT: would exceed 100% ownership. Current: ${totalExistingOwnership}%, Requested: ${ownershipPctPercent}%`,
       });
     }
 
@@ -82,11 +86,12 @@ router.post('/:vaultId/nft', async (req: Request, res: Response) => {
       .insert({
         nft_id: nftId,
         vault_id: vaultId,
-        ownership_pct: ownershipPercentage,
-        holder_address: walletAddress,
+        // store as percentage (0-100) in DB
+        ownership_percentage: ownershipPctPercent,
+        // schema uses `current_holder` for the holder address
+        current_holder: walletAddress,
         metadata: metadata,
         minted_at: new Date().toISOString(),
-        status: 'active',
       })
       .select()
       .single();
@@ -104,8 +109,9 @@ router.post('/:vaultId/nft', async (req: Request, res: Response) => {
       data: {
         nftId: nft.nft_id,
         vaultId: vault.vault_id,
-        ownershipPercentage: nft.ownership_pct,
-        holder: nft.holder_address,
+        // return ownership in basis points for compatibility
+        ownershipPercentage: (nft.ownership_percentage ?? ownershipPctPercent) * 100,
+        holder: nft.current_holder,
         metadata: nft.metadata,
         mintedAt: nft.minted_at,
       },
@@ -131,7 +137,6 @@ router.get('/:vaultId/nfts', async (req: Request, res: Response) => {
       .from('vault_nfts')
       .select('*')
       .eq('vault_id', vaultId)
-      .eq('status', 'active')
       .order('minted_at', { ascending: false });
 
     if (error) {
@@ -173,8 +178,8 @@ router.get('/:nftId', async (req: Request, res: Response) => {
           description,
           contract_address,
           status,
-          total_value,
-          performance
+          total_value_locked,
+          created_at
         )
       `)
       .eq('nft_id', nftId)
@@ -185,6 +190,16 @@ router.get('/:nftId', async (req: Request, res: Response) => {
         success: false,
         error: 'NFT not found',
       });
+    }
+
+    // Normalize vault fields for frontend
+    if (nft && nft.vaults) {
+      if (nft.vaults.total_value === undefined && nft.vaults.total_value_locked !== undefined) {
+        nft.vaults.total_value = nft.vaults.total_value_locked;
+      }
+      if (nft.vaults.performance === undefined) {
+        nft.vaults.performance = 0;
+      }
     }
 
     return res.json({
@@ -230,8 +245,8 @@ router.post('/:nftId/transfer', async (req: Request, res: Response) => {
       });
     }
 
-    // Verify ownership
-    if (nft.holder_address !== fromAddress) {
+    // Verify ownership (schema uses `current_holder`)
+    if (nft.current_holder !== fromAddress) {
       return res.status(403).json({
         success: false,
         error: 'Not authorized to transfer this NFT',
@@ -242,8 +257,8 @@ router.post('/:nftId/transfer', async (req: Request, res: Response) => {
     const { data: updatedNFT, error: updateError } = await supabase
       .from('vault_nfts')
       .update({
-        holder_address: toAddress,
-        updated_at: new Date().toISOString(),
+        current_holder: toAddress,
+        last_transfer_at: new Date().toISOString(),
       })
       .eq('nft_id', nftId)
       .select()
@@ -263,6 +278,67 @@ router.post('/:nftId/transfer', async (req: Request, res: Response) => {
     });
   } catch (error) {
     console.error('Error transferring NFT:', error);
+    return res.status(500).json({
+      success: false,
+      error: 'Internal server error',
+    });
+  }
+});
+
+/**
+ * GET /api/nfts/owner/:address
+ * Get all NFTs held by a wallet address
+ */
+router.get('/owner/:address', async (req: Request, res: Response) => {
+  try {
+    const { address } = req.params;
+
+    const { data: nfts, error } = await supabase
+      .from('vault_nfts')
+      .select(`*, vaults (vault_id, name, description, contract_address, status, total_value_locked, created_at)`)
+      .eq('current_holder', address)
+      .order('minted_at', { ascending: false });
+
+    if (error) {
+      console.error('Error fetching holder NFTs:', error);
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to fetch holder NFTs',
+      });
+    }
+
+    // Normalize vaulted and nft fields for frontend compatibility
+    const normalized = (nfts || []).map((nft: any) => {
+      const vault = nft.vaults || null;
+      if (vault) {
+        // Provide legacy keys if missing
+        if (vault.total_value === undefined && vault.total_value_locked !== undefined) {
+          vault.total_value = vault.total_value_locked;
+        }
+        if (vault.performance === undefined) {
+          // performance may be calculated elsewhere; default to 0 to avoid UI issues
+          vault.performance = 0;
+        }
+      }
+
+      // Map schema fields to legacy frontend expectations
+      if (nft.current_holder && !nft.holder_address) {
+        nft.holder_address = nft.current_holder;
+      }
+      if (nft.ownership_percentage !== undefined) {
+        // frontend sometimes expects basis points or `ownership_pct`; provide both
+        nft.ownership_pct = Math.round(nft.ownership_percentage * 100);
+      }
+
+      return nft;
+    });
+
+    return res.json({
+      success: true,
+      data: normalized,
+    });
+  } catch (error) {
+    console.error('Error fetching holder NFTs:', error);
     return res.status(500).json({
       success: false,
       error: 'Internal server error',

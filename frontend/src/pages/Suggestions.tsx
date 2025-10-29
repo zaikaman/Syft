@@ -2,14 +2,17 @@ import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { Card, Button } from '../components/ui';
 import { AISuggestions } from '../components/ai/AISuggestions';
-import { Lightbulb, Sparkles, TrendingUp, AlertCircle, RefreshCw } from 'lucide-react';
+import { Lightbulb, Sparkles, AlertCircle, RefreshCw } from 'lucide-react';
 import { useWallet } from '../providers/WalletProvider';
 
 interface Vault {
   vault_id: string;
   name: string;
-  performance: number;
-  total_value: number;
+  // `performance` historically was a number but newer APIs return an object with
+  // fields like `returns30d`, `apyCurrent`, etc. Accept either and normalize
+  // at render time.
+  performance?: number | any;
+  total_value?: number;
 }
 
 const Suggestions = () => {
@@ -123,7 +126,7 @@ const Suggestions = () => {
 
   return (
     <div className="h-full bg-app overflow-auto">
-      <div className="container mx-auto px-4 py-8 max-w-7xl">
+      <div className="container mx-auto px-4 py-8 max-w-6xl">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -131,10 +134,10 @@ const Suggestions = () => {
           className="space-y-6"
         >
           {/* Header */}
-          <div className="mb-8">
+          <div className="mb-6">
             <div className="flex items-center gap-3 mb-2">
               <Sparkles className="w-8 h-8 text-primary-500" />
-              <h1 className="text-3xl font-bold text-neutral-50">AI Optimization Suggestions</h1>
+              <h1 className="text-3xl md:text-4xl font-bold text-neutral-50">AI Optimization Suggestions</h1>
             </div>
             <p className="text-neutral-400">
               Get intelligent recommendations to improve your vault's performance and maximize returns
@@ -155,37 +158,43 @@ const Suggestions = () => {
                 Refresh
               </Button>
             </div>
-            
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-              {vaults.map((vault) => (
-                <button
-                  key={vault.vault_id}
-                  onClick={() => setSelectedVault(vault.vault_id)}
-                  className={`p-4 rounded-lg border-2 transition-all text-left ${
-                    selectedVault === vault.vault_id
-                      ? 'border-primary-500 bg-primary-500/10'
-                      : 'border-default hover:border-primary-500/50 bg-neutral-900'
-                  }`}
-                >
-                  <div className="flex items-start justify-between mb-2">
-                    <h4 className="font-semibold text-neutral-50">{vault.name}</h4>
-                    {selectedVault === vault.vault_id && (
-                      <Sparkles className="w-4 h-4 text-primary-500 flex-shrink-0" />
-                    )}
-                  </div>
-                  <div className="flex items-center gap-4 text-sm">
-                    <div className="flex items-center gap-1">
-                      <TrendingUp className="w-3.5 h-3.5 text-success-400" />
-                      <span className={vault.performance >= 0 ? 'text-success-400' : 'text-error-400'}>
-                        {vault.performance >= 0 ? '+' : ''}{vault.performance.toFixed(2)}%
-                      </span>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {vaults.map((vault) => {
+                const perfValue = typeof vault.performance === 'number'
+                  ? vault.performance
+                  : (vault.performance?.returns30d ?? vault.performance?.apyCurrent ?? vault.performance?.returns7d ?? 0);
+
+                const totalValueNum = typeof vault.total_value === 'number' ? vault.total_value : (vault.total_value ? Number(vault.total_value) : 0);
+
+                return (
+                  <Card
+                    key={vault.vault_id}
+                    hover
+                    className={`p-4 bg-neutral-900 cursor-pointer ${selectedVault === vault.vault_id ? 'border-2 border-primary-500' : ''}`}
+                    onClick={() => setSelectedVault(vault.vault_id)}
+                  >
+                    <div className="grid grid-cols-1 md:grid-cols-6 gap-2 items-center">
+                      <div className="md:col-span-3">
+                        <h4 className="font-semibold text-neutral-50">{vault.name}</h4>
+                        <p className="text-xs text-neutral-400 mt-1">ID: {vault.vault_id.slice(0, 8)}...</p>
+                      </div>
+                      <div className="md:col-span-1 text-sm">
+                        <div className="text-xs text-neutral-400">Performance</div>
+                        <div className={`font-semibold ${perfValue >= 0 ? 'text-success-400' : 'text-error-400'}`}>
+                          {perfValue >= 0 ? '+' : ''}{Number(perfValue).toFixed(2)}%
+                        </div>
+                      </div>
+                      <div className="md:col-span-2 text-right">
+                        <div className="text-xs text-neutral-400">Total Value</div>
+                        <div className="font-semibold text-neutral-50">
+                          ${totalValueNum.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </div>
+                      </div>
                     </div>
-                    <div className="text-neutral-400">
-                      ${vault.total_value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                    </div>
-                  </div>
-                </button>
-              ))}
+                  </Card>
+                );
+              })}
             </div>
           </Card>
 

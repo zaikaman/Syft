@@ -129,14 +129,19 @@ router.get('/:backtestId', async (req: Request, res: Response) => {
 router.get('/vault/:vaultId', async (req: Request, res: Response) => {
   try {
     const { vaultId } = req.params;
-    const { limit = 10, offset = 0 } = req.query;
+    // Sanitize pagination params to avoid passing NaN into Supabase.range
+    const limit = parseInt(req.query.limit as string, 10) || 10;
+    const offset = parseInt(req.query.offset as string, 10) || 0;
+
+    const start = Math.max(0, offset);
+    const end = start + Math.max(1, limit) - 1;
 
     const { data: backtests, error } = await supabase
       .from('backtest_results')
       .select('*')
       .eq('vault_id', vaultId)
       .order('created_at', { ascending: false })
-      .range(Number(offset), Number(offset) + Number(limit) - 1);
+      .range(start, end);
 
     if (error) {
       throw error;

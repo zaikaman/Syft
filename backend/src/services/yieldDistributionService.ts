@@ -26,12 +26,11 @@ export async function calculateDistribution(
     throw new Error('Total profit must be greater than 0');
   }
 
-  // Get all active NFTs for the vault
+  // Get all NFTs for the vault
   const { data: nfts, error: nftsError } = await supabase
     .from('vault_nfts')
     .select('*')
-    .eq('vault_id', vaultId)
-    .eq('status', 'active');
+    .eq('vault_id', vaultId);
 
   if (nftsError) {
     throw new Error(`Failed to fetch vault NFTs: ${nftsError.message}`);
@@ -41,21 +40,21 @@ export async function calculateDistribution(
     throw new Error('No NFT holders found for this vault');
   }
 
-  // Calculate total ownership percentage
-  const totalOwnership = nfts.reduce((sum, nft) => sum + nft.ownership_pct, 0);
+  // Calculate total ownership percentage (stored as percent in DB)
+  const totalOwnership = nfts.reduce((sum, nft) => sum + (nft.ownership_percentage || 0), 0);
 
-  if (totalOwnership > 10000) {
+  if (totalOwnership > 100) {
     throw new Error('Total ownership exceeds 100%');
   }
 
   // Calculate distribution for each holder
   const distributions = nfts.map((nft) => {
     // Calculate holder's share based on their ownership percentage
-    const share = (totalProfit * nft.ownership_pct) / 10000;
+    const share = (totalProfit * (nft.ownership_percentage || 0)) / 100;
 
     return {
-      holderAddress: nft.holder_address,
-      ownershipPct: nft.ownership_pct / 100, // Convert basis points to percentage
+      holderAddress: nft.current_holder,
+      ownershipPct: nft.ownership_percentage || 0,
       share,
       nftId: nft.nft_id,
     };
@@ -134,8 +133,7 @@ export async function getHolderEarnings(holderAddress: string): Promise<{
   const { data: nfts, error: nftsError } = await supabase
     .from('vault_nfts')
     .select('*, vaults(*)')
-    .eq('holder_address', holderAddress)
-    .eq('status', 'active');
+    .eq('current_holder', holderAddress);
 
   if (nftsError) {
     throw new Error(`Failed to fetch holder NFTs: ${nftsError.message}`);
@@ -179,7 +177,7 @@ export async function getHolderEarnings(holderAddress: string): Promise<{
     if (!vaultEarnings[nft.vault_id]) {
       vaultEarnings[nft.vault_id] = {
         earnings: vaultTotal,
-        ownershipPct: nft.ownership_pct / 100,
+        ownershipPct: (nft.ownership_percentage || 0),
       };
     }
 
@@ -204,27 +202,28 @@ export async function validateOwnershipLimit(
 ): Promise<{ valid: boolean; currentTotal: number; message?: string }> {
   const { data: nfts, error } = await supabase
     .from('vault_nfts')
-    .select('ownership_pct')
-    .eq('vault_id', vaultId)
-    .eq('status', 'active');
+    .select('ownership_percentage')
+    .eq('vault_id', vaultId);
 
   if (error) {
     throw new Error(`Failed to validate ownership: ${error.message}`);
   }
 
-  const currentTotal = nfts?.reduce((sum, nft) => sum + nft.ownership_pct, 0) || 0;
-  const newTotal = currentTotal + newOwnershipPct;
+  const currentTotal = nfts?.reduce((sum, nft) => sum + (nft.ownership_percentage || 0), 0) || 0;
+  // Accept newOwnershipPct as either percent (0-100) or basis points (>100)
+  const newOwnershipPctPercent = newOwnershipPct > 100 ? newOwnershipPct / 100 : newOwnershipPct;
+  const newTotal = currentTotal + newOwnershipPctPercent;
 
-  if (newTotal > 10000) {
+  if (newTotal > 100) {
     return {
       valid: false,
-      currentTotal: currentTotal / 100,
-      message: `Would exceed 100% ownership. Current: ${currentTotal / 100}%, Requested: ${newOwnershipPct / 100}%`,
+      currentTotal: currentTotal,
+      message: `Would exceed 100% ownership. Current: ${currentTotal}%, Requested: ${newOwnershipPctPercent}%`,
     };
   }
 
   return {
     valid: true,
-    currentTotal: currentTotal / 100,
+    currentTotal: currentTotal,
   };
 }
