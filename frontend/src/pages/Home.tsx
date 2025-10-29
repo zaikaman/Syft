@@ -5,7 +5,7 @@ import {
   Activity, ShieldCheck, Layers, Sparkles
 } from 'lucide-react';
 import { Button, Card } from '../components/ui';
-import { useEffect } from 'react';
+import { useEffect, useMemo } from 'react';
 
 const Home = () => {
   const navigate = useNavigate();
@@ -18,32 +18,42 @@ const Home = () => {
       if (UnicornStudio && mounted) {
         try {
           UnicornStudio.init();
-          console.log('UnicornStudio initialized successfully');
         } catch (error) {
           console.error('Error initializing UnicornStudio:', error);
         }
       }
     };
 
-    // Check if script already loaded
+    // Check if UnicornStudio is already available
     if ((window as any).UnicornStudio) {
       initUnicorn();
       return;
     }
 
-    // Load script
+    // Check if script is already being loaded
+    const existingScript = document.querySelector('script[src*="unicornstudio"]');
+    if (existingScript) {
+      // Wait for it to load
+      const checkLoaded = setInterval(() => {
+        if ((window as any).UnicornStudio) {
+          clearInterval(checkLoaded);
+          initUnicorn();
+        }
+      }, 50);
+      
+      return () => {
+        clearInterval(checkLoaded);
+        mounted = false;
+      };
+    }
+
+    // Load the script
     const script = document.createElement('script');
     script.src = 'https://cdn.jsdelivr.net/gh/hiunicornstudio/unicornstudio.js@v1.4.29/dist/unicornStudio.umd.js';
     script.async = true;
     
     script.onload = () => {
-      console.log('UnicornStudio script loaded');
-      // Give the script time to initialize its globals
-      setTimeout(initUnicorn, 300);
-    };
-    
-    script.onerror = (error) => {
-      console.error('Failed to load UnicornStudio script:', error);
+      setTimeout(initUnicorn, 100);
     };
     
     document.head.appendChild(script);
@@ -53,14 +63,14 @@ const Home = () => {
     };
   }, []);
 
-  const stats = [
+  const stats = useMemo(() => [
     { label: 'Total Value Locked', value: '$76M', change: '+12.5%', icon: TrendingUp },
     { label: 'Active Vaults', value: '600+', change: '+23.1%', icon: Box },
     { label: 'Total Users', value: '80K', change: '+8.3%', icon: Users },
     { label: 'Avg APY', value: '15.2%', change: '+2.1%', icon: Zap },
-  ];
+  ], []);
 
-  const features = [
+  const features = useMemo(() => [
     {
       icon: Box,
       title: 'Visual Vault Builder',
@@ -81,29 +91,28 @@ const Home = () => {
       title: 'AI Optimization',
       description: 'Get AI-powered suggestions to optimize your vault performance and maximize yields.',
     },
-  ];
+  ], []);
 
-  const platformFeatures = [
+  const platformFeatures = useMemo(() => [
     { icon: Activity, tag: 'Monitoring', title: 'Live tracking', color: 'text-primary-500' },
     { icon: ShieldCheck, tag: 'Security', title: 'Audited contracts', color: 'text-primary-500' },
     { icon: Layers, tag: 'Strategy', title: 'Multi-protocol', color: 'text-primary-500' },
     { icon: Sparkles, tag: 'AI', title: 'Smart optimization', color: 'text-primary-500' },
-  ];
+  ], []);
 
-  // map platform feature titles to images placed in the public/ folder
-  const featureImageMap: Record<string, string> = {
+  const featureImageMap: Record<string, string> = useMemo(() => ({
     'Live tracking': '/live-tracking.png',
     'Audited contracts': '/audited-contracts.png',
     'Multi-protocol': '/multi-protocol.png',
     'Smart optimization': '/smart-optimization.png',
-  };
+  }), []);
 
-  const trustedBy = [
+  const trustedBy = useMemo(() => [
     'Soroban Labs', 'Stellar Foundation', 'DeFi Alliance', 
     'Meridian Protocol', 'Anchor Platform', 'YieldSpace'
-  ];
+  ], []);
 
-  const testimonials = [
+  const testimonials = useMemo(() => [
     {
       name: 'Alex Kim',
       handle: '@alexk_defi',
@@ -146,9 +155,9 @@ const Home = () => {
       color: 'from-[#74b97f] to-[#5a9268]',
       text: 'Real-time monitoring and automated rebalancing keep my vaults optimized. Best Stellar DeFi tool I\'ve used.',
     },
-  ];
+  ], []);
 
-  const steps = [
+  const steps = useMemo(() => [
     {
       step: '01',
       title: 'Connect Wallet',
@@ -164,7 +173,23 @@ const Home = () => {
       title: 'Deploy & Earn',
       description: 'Deploy your vault and start earning automatically',
     },
-  ];
+  ], []);
+
+  const duplicatedTestimonials = useMemo(() => {
+    const row1 = testimonials.slice(0, 3);
+    const row2 = testimonials.slice(3);
+    return { row1, row2 };
+  }, [testimonials]);
+
+  useEffect(() => {
+    Object.values(featureImageMap).forEach((src) => {
+      const link = document.createElement('link');
+      link.rel = 'preload';
+      link.as = 'image';
+      link.href = src;
+      document.head.appendChild(link);
+    });
+  }, [featureImageMap]);
 
   return (
     <div className="min-h-screen bg-app">
@@ -234,18 +259,13 @@ const Home = () => {
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.4 }}
+              transition={{ delay: 0.4, duration: 0.3 }}
               className="grid grid-cols-2 md:grid-cols-4 gap-3"
             >
-              {stats.map((stat, index) => {
+              {stats.map((stat) => {
                 const Icon = stat.icon;
                 return (
-                  <motion.div
-                    key={stat.label}
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.4 + index * 0.05 }}
-                  >
+                  <div key={stat.label}>
                     <Card className="p-4 text-center bg-card hover:border-primary-500/30 transition-colors">
                       <div className="flex items-center justify-center gap-2 mb-2">
                         <Icon className="w-4 h-4 text-primary-500" />
@@ -258,7 +278,7 @@ const Home = () => {
                         {stat.change}
                       </div>
                     </Card>
-                  </motion.div>
+                  </div>
                 );
               })}
             </motion.div>
@@ -323,16 +343,10 @@ const Home = () => {
           </motion.div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            {features.map((feature, index) => {
+            {features.map((feature) => {
               const Icon = feature.icon;
               return (
-                <motion.div
-                  key={feature.title}
-                  initial={{ opacity: 0, y: 20 }}
-                  whileInView={{ opacity: 1, y: 0 }}
-                  viewport={{ once: true }}
-                  transition={{ delay: index * 0.05 }}
-                >
+                <div key={feature.title}>
                   <Card className="p-5 h-full bg-card hover:border-primary-500/30 transition-colors">
                     <div className="w-10 h-10 rounded-lg bg-primary-500/10 flex items-center justify-center mb-4">
                       <Icon className="w-5 h-5 text-primary-500" />
@@ -340,7 +354,7 @@ const Home = () => {
                     <h3 className="text-lg font-semibold mb-2 text-neutral-50">{feature.title}</h3>
                     <p className="text-sm text-[#a1a1aa] leading-relaxed">{feature.description}</p>
                   </Card>
-                </motion.div>
+                </div>
               );
             })}
           </div>
@@ -416,15 +430,12 @@ const Home = () => {
               <div className="grid grid-cols-2 gap-4 relative">
                 {platformFeatures.map((feature, idx) => {
                   const Icon = feature.icon;
+                  const bgImage = featureImageMap[feature.title];
                   return (
                     <div 
                       key={idx}
                       className={`relative overflow-hidden ${idx >= 2 ? 'aspect-[4/5]' : 'aspect-[4/3]'} bg-gradient-to-br from-neutral-800 to-neutral-900 bg-center bg-cover border border-white/[0.06] rounded-2xl`}
-                      style={
-                        featureImageMap[feature.title]
-                          ? { backgroundImage: `url('${featureImageMap[feature.title]}')`, backgroundSize: 'cover', backgroundPosition: 'center' }
-                          : undefined
-                      }
+                      style={bgImage ? { backgroundImage: `url('${bgImage}')`, backgroundSize: 'cover', backgroundPosition: 'center' } : undefined}
                     >
                       <div className="bg-gradient-to-b from-black/0 via-black/15 to-black/60 absolute top-0 right-0 bottom-0 left-0"></div>
                       <div className="absolute top-3 left-3">
@@ -467,14 +478,8 @@ const Home = () => {
           </motion.div>
 
           <div className="space-y-8">
-            {steps.map((step, index) => (
-              <motion.div
-                key={step.step}
-                initial={{ opacity: 0, x: -20 }}
-                whileInView={{ opacity: 1, x: 0 }}
-                viewport={{ once: true }}
-                transition={{ delay: index * 0.1 }}
-              >
+            {steps.map((step) => (
+              <div key={step.step}>
                 <Card className="p-6 bg-card hover:border-primary-500/30 transition-colors">
                   <div className="flex items-start gap-4">
                     <div className="flex-shrink-0">
@@ -488,7 +493,7 @@ const Home = () => {
                     </div>
                   </div>
                 </Card>
-              </motion.div>
+              </div>
             ))}
           </div>
 
@@ -538,7 +543,7 @@ const Home = () => {
             {/* First Row */}
             <div className="py-6 sm:py-8 relative">
               <div className="flex gap-4 sm:gap-5 animate-marquee-ltr">
-                {testimonials.slice(0, 3).concat(testimonials.slice(0, 3)).map((testimonial, idx) => (
+                {[...duplicatedTestimonials.row1, ...duplicatedTestimonials.row1].map((testimonial, idx) => (
                   <article 
                     key={`row1-${idx}`}
                     className="shrink-0 w-[280px] sm:w-[360px] md:w-[420px] rounded-2xl border border-white/[0.08] bg-[#16181a]/40 p-5"
@@ -571,7 +576,7 @@ const Home = () => {
             {/* Second Row */}
             <div className="py-6 sm:py-8 relative">
               <div className="flex gap-4 sm:gap-5 animate-marquee-rtl">
-                {testimonials.slice(3).concat(testimonials.slice(3)).map((testimonial, idx) => (
+                {[...duplicatedTestimonials.row2, ...duplicatedTestimonials.row2].map((testimonial, idx) => (
                   <article 
                     key={`row2-${idx}`}
                     className="shrink-0 w-[280px] sm:w-[360px] md:w-[420px] rounded-2xl border border-white/[0.08] bg-[#16181a]/40 p-5"
