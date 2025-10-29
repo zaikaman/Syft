@@ -1,5 +1,7 @@
 // T096: Backtest simulation engine that replays vault rules
 // Purpose: Simulate vault performance over historical periods
+// ARCHITECTURE: Uses real mainnet price data for accurate backtesting,
+// regardless of user's execution network (testnet/futurenet/mainnet)
 
 import { fetchHistoricalPrices } from './historicalDataService';
 
@@ -77,6 +79,8 @@ export interface BacktestMetrics {
   totalFees: number;
   finalValue: number;
   buyAndHoldReturn: number; // comparison baseline
+  usingMockData?: boolean; // indicates if synthetic data was used (only when mainnet has no data)
+  dataSourceWarning?: string; // explanation of data source (always mainnet unless no data exists)
 }
 
 export interface BacktestResult {
@@ -109,6 +113,15 @@ export async function runBacktest(request: BacktestRequest): Promise<BacktestRes
     resolution = 24 * 60 * 60 * 1000, // 1 day default
   } = request;
 
+  console.log('[Backtest] Starting backtest with config:', {
+    vaultName: vaultConfig.name,
+    assets: vaultConfig.assets,
+    rules: vaultConfig.rules,
+    startTime,
+    endTime,
+    resolution,
+  });
+
   // Initialize tracking
   const timeline: BacktestTransaction[] = [];
   const portfolioValueHistory: { timestamp: string; value: number }[] = [];
@@ -116,7 +129,7 @@ export async function runBacktest(request: BacktestRequest): Promise<BacktestRes
   const dailyReturns: number[] = [];
 
   // Fetch historical price data for all assets
-  const priceData = await fetchAllAssetPrices(vaultConfig.assets, startTime, endTime, resolution);
+  const { priceData, usedMockData } = await fetchAllAssetPrices(vaultConfig.assets, startTime, endTime, resolution);
 
   // Initialize portfolio with target allocations
   let portfolio = initializePortfolio(initialCapital, vaultConfig.assets);
@@ -139,6 +152,9 @@ export async function runBacktest(request: BacktestRequest): Promise<BacktestRes
   const start = new Date(startTime).getTime();
   const end = new Date(endTime).getTime();
   let currentTime = start;
+  
+  // Track last rebalance time for each rule (for time-based conditions)
+  const lastRebalanceTime = new Map<string, number>();
 
   while (currentTime <= end) {
     const timestamp = new Date(currentTime).toISOString();
@@ -154,7 +170,8 @@ export async function runBacktest(request: BacktestRequest): Promise<BacktestRes
       vaultConfig.rules,
       portfolio,
       currentPrices,
-      timestamp
+      timestamp,
+      lastRebalanceTime
     );
 
     // Execute triggered rules
@@ -168,6 +185,9 @@ export async function runBacktest(request: BacktestRequest): Promise<BacktestRes
 
       totalFees += rebalanceFee;
       numRebalances++;
+
+      // Update last rebalance time for this rule
+      lastRebalanceTime.set(rule.id, currentTime);
 
       timeline.push({
         timestamp,
@@ -249,6 +269,10 @@ export async function runBacktest(request: BacktestRequest): Promise<BacktestRes
     totalFees,
     finalValue: portfolio.totalValue,
     buyAndHoldReturn,
+    usingMockData: usedMockData,
+    dataSourceWarning: usedMockData 
+      ? 'Using synthetic price data as last resort (no data available on mainnet for these assets). Results are simulated and not suitable for production decisions.'
+      : 'Using real mainnet price data - results reflect actual market conditions.',
   };
 
   return {
@@ -262,39 +286,81 @@ export async function runBacktest(request: BacktestRequest): Promise<BacktestRes
 
 /**
  * Fetch price data for all assets in the vault
+ * Returns both price data and a flag indicating if mock data was used
  */
 async function fetchAllAssetPrices(
   assets: AssetAllocation[],
   startTime: string,
   endTime: string,
   resolution: number
-): Promise<Map<string, { timestamp: string; price: number }[]>> {
+): Promise<{ priceData: Map<string, { timestamp: string; price: number }[]>; usedMockData: boolean }> {
   const priceData = new Map<string, { timestamp: string; price: number }[]>();
+  let usedMockData = false;
+
+  // USDC issuer for Stellar (Circle's official issuer - works on both mainnet and testnet)
+  // This is the classic Stellar account address, not the Soroban contract address
+  const USDC_ISSUER = 'GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN';
 
   for (const asset of assets) {
+    // Handle stablecoins - they're always $1.00 USD
+    if (asset.assetCode === 'USDC' || asset.assetCode === 'USDT' || asset.assetCode === 'DAI') {
+      console.log(`[Backtest] ${asset.assetCode} is a stablecoin, using fixed $1.00 price`);
+      const stablecoinPrices = generateStablecoinPrices(startTime, endTime, resolution);
+      priceData.set(asset.assetCode, stablecoinPrices);
+      continue; // Skip fetching - we have the data
+    }
+
     if (asset.assetCode === 'XLM' || asset.assetCode === 'native') {
       const data = await fetchHistoricalPrices({
         assetCode: 'XLM',
         counterAssetCode: 'USDC',
+        counterAssetIssuer: USDC_ISSUER,
         startTime,
         endTime,
         resolution,
       });
       priceData.set('XLM', data.dataPoints.map((p) => ({ timestamp: p.timestamp, price: p.close })));
+      if (data.usingMockData) usedMockData = true;
     } else {
       const data = await fetchHistoricalPrices({
         assetCode: asset.assetCode,
         assetIssuer: asset.assetIssuer,
         counterAssetCode: 'USDC',
+        counterAssetIssuer: USDC_ISSUER,
         startTime,
         endTime,
         resolution,
       });
       priceData.set(asset.assetCode, data.dataPoints.map((p) => ({ timestamp: p.timestamp, price: p.close })));
+      if (data.usingMockData) usedMockData = true;
     }
   }
 
-  return priceData;
+  return { priceData, usedMockData };
+}
+
+/**
+ * Generate fixed $1.00 prices for stablecoins
+ */
+function generateStablecoinPrices(
+  startTime: string,
+  endTime: string,
+  resolution: number
+): { timestamp: string; price: number }[] {
+  const prices: { timestamp: string; price: number }[] = [];
+  const start = new Date(startTime).getTime();
+  const end = new Date(endTime).getTime();
+  let currentTime = start;
+
+  while (currentTime <= end) {
+    prices.push({
+      timestamp: new Date(currentTime).toISOString(),
+      price: 1.0, // Stablecoins are always $1.00
+    });
+    currentTime += resolution;
+  }
+
+  return prices;
 }
 
 /**
@@ -381,18 +447,34 @@ function updatePortfolioValue(portfolio: PortfolioState, prices: AssetPrice): Po
 function checkRuleTriggers(
   rules: RebalanceRule[],
   portfolio: PortfolioState,
-  _prices: AssetPrice,
-  _timestamp: string
+  prices: AssetPrice,
+  timestamp: string,
+  lastRebalanceTime?: Map<string, number>
 ): RebalanceRule[] {
   const triggered: RebalanceRule[] = [];
+  const currentTime = new Date(timestamp).getTime();
 
   for (const rule of rules) {
-    if (!rule.enabled) continue;
+    if (!rule.enabled) {
+      console.log(`[Backtest] Rule ${rule.name} is disabled, skipping`);
+      continue;
+    }
 
     let allConditionsMet = true;
 
     for (const condition of rule.conditions) {
-      if (condition.type === 'allocation' && condition.assetId) {
+      if (condition.type === 'time') {
+        // Time-based condition: check if enough time has passed since last rebalance
+        const lastRebalance = lastRebalanceTime?.get(rule.id) || 0;
+        const timeSinceLastRebalance = currentTime - lastRebalance;
+        const requiredInterval = condition.value; // in milliseconds
+
+        const met = timeSinceLastRebalance >= requiredInterval;
+        if (!met) {
+          allConditionsMet = false;
+          break;
+        }
+      } else if (condition.type === 'allocation' && condition.assetId) {
         const currentAllocation = portfolio.allocations.find(
           (a) => a.assetCode === condition.assetId
         );
@@ -403,8 +485,16 @@ function checkRuleTriggers(
           allConditionsMet = false;
           break;
         }
+      } else if (condition.type === 'price' && condition.assetId) {
+        // Price-based condition
+        const currentPrice = prices[condition.assetId] || 0;
+        const met = evaluateCondition(currentPrice, condition.operator, condition.value);
+        if (!met) {
+          allConditionsMet = false;
+          break;
+        }
       }
-      // Add more condition types as needed
+      // Add more condition types as needed (apy, etc.)
     }
 
     if (allConditionsMet) {

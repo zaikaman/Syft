@@ -45,23 +45,45 @@ router.post('/', async (req: Request, res: Response) => {
     // Run backtest
     const result: BacktestResult = await runBacktest(backtestRequest);
 
+    // Try to find vault UUID if vault_id or contract_address is provided
+    let vaultUUID: string | null = null;
+    const vaultIdentifier = backtestRequest.vaultConfig.owner; // Could be vault_id or contract_address
+    
+    if (vaultIdentifier) {
+      // Try to find vault by vault_id or contract_address
+      const { data: vault } = await supabase
+        .from('vaults')
+        .select('id')
+        .or(`vault_id.eq.${vaultIdentifier},contract_address.eq.${vaultIdentifier}`)
+        .single();
+      
+      vaultUUID = vault?.id || null;
+    }
+
     // Save to Supabase
     const { data: savedBacktest, error: saveError } = await supabase
       .from('backtest_results')
       .insert({
-        vault_id: backtestRequest.vaultConfig.owner, // Use owner as temp ID
+        vault_id: vaultUUID, // Use UUID from vaults table (or null for ad-hoc backtests)
         vault_config: backtestRequest.vaultConfig,
-        timeframe: {
-          start: backtestRequest.startTime,
-          end: backtestRequest.endTime,
-        },
-        initial_capital: backtestRequest.initialCapital,
+        timeframe_start: backtestRequest.startTime,
+        timeframe_end: backtestRequest.endTime,
+        status: 'completed' as const,
+        total_return: result.metrics.totalReturn,
+        annualized_return: result.metrics.annualizedReturn,
+        volatility: result.metrics.volatility,
+        sharpe_ratio: result.metrics.sharpeRatio,
+        max_drawdown: result.metrics.maxDrawdown,
+        win_rate: result.metrics.winRate,
+        benchmark_return: result.metrics.buyAndHoldReturn,
         results: {
+          initialCapital: backtestRequest.initialCapital,
           metrics: result.metrics,
           timeline: result.timeline,
           portfolioValueHistory: result.portfolioValueHistory,
           allocationHistory: result.allocationHistory,
         },
+        completed_at: new Date().toISOString(),
         created_at: new Date().toISOString(),
       })
       .select()
@@ -108,8 +130,11 @@ router.get('/:backtestId', async (req: Request, res: Response) => {
       backtestId: backtest.backtest_id,
       vaultId: backtest.vault_id,
       vaultConfig: backtest.vault_config,
-      timeframe: backtest.timeframe,
-      initialCapital: backtest.initial_capital,
+      timeframe: {
+        start: backtest.timeframe_start,
+        end: backtest.timeframe_end,
+      },
+      initialCapital: backtest.results?.initialCapital || 0,
       results: backtest.results,
       createdAt: backtest.created_at,
     });

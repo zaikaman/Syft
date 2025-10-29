@@ -15,6 +15,7 @@ import {
   ChevronDown,
   ChevronUp,
   AlertCircle,
+  AlertTriangle,
   TrendingDown,
   Award,
   Percent,
@@ -24,7 +25,8 @@ import {
   Eye,
   Filter,
   Search,
-  X
+  X,
+  Box
 } from 'lucide-react';
 import { 
   AreaChart, 
@@ -44,6 +46,23 @@ interface BacktestConfig {
   endTime: string;
   initialCapital: number;
   resolution: 'hour' | 'day' | 'week';
+  selectedVaultId: string | null;
+}
+
+interface UserVault {
+  vault_id: string;
+  name: string;
+  description?: string;
+  config: {
+    name: string;
+    assets: Array<{ assetId?: string; assetCode: string; assetIssuer?: string; percentage: number }>;
+    rules?: any[];
+  };
+  status: string;
+  contract_address?: string;
+  owner_wallet_address: string;
+  network: string;
+  created_at: string;
 }
 
 interface BacktestMetrics {
@@ -89,12 +108,18 @@ const Backtests = () => {
   const { address, network, networkPassphrase } = useWallet();
   const modal = useModal();
 
+  // Vault selection state
+  const [userVaults, setUserVaults] = useState<UserVault[]>([]);
+  const [loadingVaults, setLoadingVaults] = useState(false);
+  const [selectedVault, setSelectedVault] = useState<UserVault | null>(null);
+
   // Configuration state
   const [config, setConfig] = useState<BacktestConfig>({
     startTime: getDefaultStartTime(3),
     endTime: getDefaultEndTime(),
     initialCapital: 1000,
     resolution: 'day',
+    selectedVaultId: null,
   });
 
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -102,6 +127,7 @@ const Backtests = () => {
   useEffect(() => {
     if (address) {
       fetchBacktestHistory();
+      fetchUserVaults();
     }
   }, [address, network]);
 
@@ -117,6 +143,27 @@ const Backtests = () => {
     if (normalized === 'testnet') return 'testnet';
     if (normalized === 'mainnet' || normalized === 'public') return 'mainnet';
     return 'testnet';
+  };
+
+  const fetchUserVaults = async () => {
+    if (!address) return;
+    
+    try {
+      setLoadingVaults(true);
+      const backendUrl = import.meta.env.PUBLIC_BACKEND_URL || 'http://localhost:3001';
+      const normalizedNetwork = normalizeNetwork(network, networkPassphrase);
+      
+      const response = await fetch(`${backendUrl}/api/vaults/user/${address}?status=active&network=${normalizedNetwork}`);
+      
+      if (response.ok) {
+        const data = await response.json();
+        setUserVaults(data.data || []);
+      }
+    } catch (err) {
+      console.error('[Backtests] Failed to fetch user vaults:', err);
+    } finally {
+      setLoadingVaults(false);
+    }
   };
 
   const fetchBacktestHistory = async () => {
@@ -142,6 +189,10 @@ const Backtests = () => {
 
   const validateConfig = useCallback((): boolean => {
     const newErrors: Record<string, string> = {};
+
+    if (!config.selectedVaultId) {
+      newErrors.selectedVaultId = 'Please select a vault to backtest';
+    }
 
     if (!config.startTime) {
       newErrors.startTime = 'Start date is required';
@@ -187,6 +238,17 @@ const Backtests = () => {
       return;
     }
 
+    if (!selectedVault) {
+      modal.message('Please select a vault to backtest', 'Vault Required', 'warning');
+      return;
+    }
+
+    // Validate vault has assets
+    if (!selectedVault.config.assets || selectedVault.config.assets.length === 0) {
+      modal.message('Selected vault has no assets configured', 'Invalid Vault', 'error');
+      return;
+    }
+
     try {
       setIsRunning(true);
       setProgress(0);
@@ -199,39 +261,165 @@ const Backtests = () => {
       const backendUrl = import.meta.env.PUBLIC_BACKEND_URL || 'http://localhost:3001';
       const normalizedNetwork = normalizeNetwork(network, networkPassphrase);
 
-      // Prepare asset allocations with proper issuer information
-      const assets = [
-        {
-          assetId: 'asset_xlm',
-          assetCode: 'XLM',
-          percentage: 50,
+      // Use vault's actual asset allocations
+      console.log('[Backtests] Selected vault config:', selectedVault.config);
+      
+      // Handle both old format (strings) and new format (objects)
+      const normalizeAsset = (asset: any, index: number, total: number) => {
+        // If asset is a string (old format), convert to object
+        if (typeof asset === 'string') {
+          return {
+            assetId: `asset_${asset.toLowerCase()}`,
+            assetCode: asset,
+            assetIssuer: undefined,
+            percentage: total > 0 ? Math.round(100 / total) : 100, // Equal distribution
+          };
+        }
+        
+        // If asset is an object (new format)
+        if (asset && typeof asset === 'object' && asset.assetCode) {
+          return {
+            assetId: asset.assetId || `asset_${asset.assetCode.toLowerCase()}`,
+            assetCode: asset.assetCode,
+            assetIssuer: asset.assetIssuer,
+            percentage: asset.percentage || 0,
+          };
+        }
+        
+        // Invalid asset
+        return null;
+      };
+      
+      const assets = selectedVault.config.assets
+        .map((asset: any, index: number) => normalizeAsset(asset, index, selectedVault.config.assets.length))
+        .filter((asset): asset is NonNullable<typeof asset> => asset !== null);
+
+      console.log('[Backtests] Processed assets for backtest:', assets);
+
+      if (assets.length === 0) {
+        clearInterval(progressInterval);
+        setIsRunning(false);
+        modal.message('No valid assets found in vault configuration', 'Invalid Vault', 'error');
+        return;
+      }
+
+      // Normalize percentages if they don't sum to 100
+      const totalPercentage = assets.reduce((sum, asset) => sum + asset.percentage, 0);
+      if (Math.abs(totalPercentage - 100) > 0.1) {
+        console.warn('[Backtests] Asset percentages do not sum to 100%, normalizing...', totalPercentage);
+        assets.forEach(asset => {
+          asset.percentage = (asset.percentage / totalPercentage) * 100;
+        });
+      }
+
+      // Convert resolution string to milliseconds
+      const resolutionMap: Record<string, number> = {
+        'hour': 3600000,    // 1 hour
+        'day': 86400000,    // 1 day
+        'week': 604800000,  // 1 week
+      };
+      const resolutionMs = resolutionMap[config.resolution] || 86400000; // Default to 1 day
+
+      const backtestPayload = {
+        vaultConfig: {
+          owner: selectedVault.owner_wallet_address,
+          name: selectedVault.name,
+          description: selectedVault.description || `Backtest of ${selectedVault.name}`,
+          assets: assets,
+          rules: selectedVault.config.rules || [],
+          managementFee: (selectedVault.config as any).managementFee || 0,
+          performanceFee: (selectedVault.config as any).performanceFee || 0,
+          isPublic: (selectedVault.config as any).isPublic || false,
         },
-        {
-          assetId: 'asset_usdc',
-          assetCode: 'USDC',
-          assetIssuer: 'GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN', // Circle's USDC issuer
-          percentage: 50,
-        },
-      ];
+        startTime: config.startTime,
+        endTime: config.endTime,
+        initialCapital: config.initialCapital,
+        resolution: resolutionMs,
+        network: normalizedNetwork,
+      };
+
+      console.log('[Backtests] Sending backtest request:', backtestPayload);
+      console.log('[Backtests] Vault rules:', selectedVault.config.rules);
+
+      // Transform database rules format to backtest engine format
+      const transformedRules = (selectedVault.config.rules || []).map((rule: any, index: number) => {
+        console.log(`[Backtests] Processing rule ${index}:`, rule);
+        
+        // Handle old database format
+        if (rule.condition_type || rule.action) {
+          const conditions = [];
+          const params = rule.parameters || rule;
+          
+          // Transform condition
+          if (rule.condition_type === 'time_based') {
+            // Convert interval + unit to milliseconds
+            const interval = params.interval || 1;
+            const unit = params.unit || 'hours';
+            
+            let intervalMs = interval * 60000; // Default to minutes
+            if (unit === 'seconds') intervalMs = interval * 1000;
+            else if (unit === 'minutes') intervalMs = interval * 60000;
+            else if (unit === 'hours') intervalMs = interval * 3600000;
+            else if (unit === 'days') intervalMs = interval * 86400000;
+            
+            conditions.push({
+              type: 'time',
+              operator: 'gte',
+              value: intervalMs,
+            });
+          } else if (rule.condition_type === 'price_based') {
+            conditions.push({
+              type: 'price',
+              operator: rule.operator || 'gte',
+              value: rule.threshold || 0,
+              assetId: rule.assetId,
+            });
+          } else if (rule.condition_type === 'allocation_based') {
+            conditions.push({
+              type: 'allocation',
+              operator: rule.operator || 'gte',
+              value: rule.threshold || 0,
+              assetId: rule.assetId,
+            });
+          }
+
+          // Transform action
+          const actions = [];
+          if (rule.action === 'rebalance' && rule.target_allocation) {
+            actions.push({
+              type: 'rebalance',
+              targetAllocations: rule.target_allocation.map((alloc: any) => ({
+                assetId: alloc.assetId || `asset_${alloc.assetCode?.toLowerCase() || 'unknown'}`,
+                assetCode: alloc.assetCode || alloc.asset || 'UNKNOWN',
+                assetIssuer: alloc.assetIssuer,
+                percentage: alloc.percentage || alloc.allocation || 0,
+              })),
+            });
+          }
+
+          return {
+            id: rule.id || `rule_${index}`,
+            name: rule.name || `Rule ${index + 1}`,
+            description: rule.description,
+            conditions,
+            actions,
+            enabled: rule.enabled !== false, // Default to enabled
+            priority: rule.priority || index,
+          };
+        }
+
+        // Already in correct format
+        return rule;
+      });
+
+      console.log('[Backtests] Transformed rules:', transformedRules);
+
+      backtestPayload.vaultConfig.rules = transformedRules;
 
       const response = await fetch(`${backendUrl}/api/backtests`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          vaultConfig: {
-            owner: address,
-            name: 'Test Vault',
-            description: 'Balanced portfolio backtest',
-            assets: assets,
-            rules: [],
-            isPublic: false,
-          },
-          startTime: config.startTime,
-          endTime: config.endTime,
-          initialCapital: config.initialCapital,
-          resolution: config.resolution,
-          network: normalizedNetwork,
-        }),
+        body: JSON.stringify(backtestPayload),
       });
 
       clearInterval(progressInterval);
@@ -449,6 +637,27 @@ const Backtests = () => {
                 transition={{ duration: 0.3 }}
                 className="space-y-6"
               >
+                {/* Data Source Info Banner */}
+                <Card className="p-4 bg-primary-500/10 border border-primary-500/30">
+                  <div className="flex items-start gap-3">
+                    <div className="p-2 rounded-lg bg-primary-500/20 mt-0.5">
+                      <AlertCircle className="w-5 h-5 text-primary-400" />
+                    </div>
+                    <div className="flex-1">
+                      <h3 className="text-sm font-bold text-primary-400 mb-1">Data Source Priority</h3>
+                      <p className="text-xs text-neutral-300 mb-2">
+                        Backtests attempt to use <strong>real market data</strong> with the following priority: 
+                        <strong> 1) Current network</strong>, 
+                        <strong> 2) Mainnet fallback</strong>, 
+                        <strong> 3) Synthetic data (last resort)</strong>
+                      </p>
+                      <p className="text-xs text-neutral-400">
+                        💡 <strong>Note:</strong> Testnet undergoes quarterly resets. For production-grade backtesting, use <code className="px-1 py-0.5 bg-neutral-800 rounded text-primary-400">stellar snapshot create</code> with mainnet data
+                      </p>
+                    </div>
+                  </div>
+                </Card>
+
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                   {/* Configuration Form */}
                   <div className="lg:col-span-2">
@@ -464,6 +673,90 @@ const Backtests = () => {
                       </div>
 
                       <div className="space-y-6">
+                        {/* Vault Selector */}
+                        <div>
+                          <label className="block text-sm font-medium mb-3 text-neutral-300">
+                            Select Vault to Backtest *
+                          </label>
+                          {loadingVaults ? (
+                            <div className="flex items-center justify-center py-8 bg-neutral-900 rounded-lg border border-default">
+                              <RefreshCw className="w-5 h-5 animate-spin text-primary-500 mr-2" />
+                              <span className="text-neutral-400">Loading your vaults...</span>
+                            </div>
+                          ) : userVaults.length === 0 ? (
+                            <Card className="p-6 text-center bg-neutral-900 border border-default">
+                              <Box className="w-12 h-12 text-neutral-600 mx-auto mb-3" />
+                              <p className="text-neutral-400 mb-4">No active vaults found on {network}</p>
+                              <Link to="/app/builder">
+                                <Button variant="primary" size="sm">Create a Vault</Button>
+                              </Link>
+                            </Card>
+                          ) : (
+                            <div className="grid grid-cols-1 gap-3">
+                              {userVaults.map((vault) => (
+                                <button
+                                  key={vault.vault_id}
+                                  type="button"
+                                  onClick={() => {
+                                    setSelectedVault(vault);
+                                    setConfig({ ...config, selectedVaultId: vault.vault_id });
+                                    setErrors({ ...errors, selectedVaultId: '' });
+                                  }}
+                                  disabled={isRunning}
+                                  className={`p-4 rounded-lg border-2 transition-all text-left disabled:opacity-50 disabled:cursor-not-allowed ${
+                                    config.selectedVaultId === vault.vault_id
+                                      ? 'border-primary-500 bg-primary-500/10'
+                                      : 'border-default bg-neutral-900 hover:border-primary-500/50 hover:bg-neutral-800'
+                                  }`}
+                                >
+                                  <div className="flex items-start justify-between mb-2">
+                                    <div className="flex-1">
+                                      <h4 className="font-semibold text-neutral-50 mb-1">{vault.name}</h4>
+                                      <p className="text-xs text-neutral-500">ID: {vault.vault_id.slice(0, 12)}...</p>
+                                    </div>
+                                    {config.selectedVaultId === vault.vault_id && (
+                                      <div className="w-6 h-6 rounded-full bg-primary-500 flex items-center justify-center flex-shrink-0">
+                                        <svg className="w-4 h-4 text-dark-950" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                        </svg>
+                                      </div>
+                                    )}
+                                  </div>
+                                  <div className="flex flex-wrap gap-2">
+                                    {vault.config.assets.map((asset, idx) => {
+                                      // Handle both string format and object format
+                                      const assetCode = typeof asset === 'string' ? asset : asset.assetCode;
+                                      const percentage = typeof asset === 'string' 
+                                        ? Math.round(100 / vault.config.assets.length) 
+                                        : asset.percentage;
+                                      
+                                      return (
+                                        <span
+                                          key={idx}
+                                          className="px-2 py-1 bg-neutral-800 rounded text-xs text-neutral-300"
+                                        >
+                                          {assetCode} ({percentage}%)
+                                        </span>
+                                      );
+                                    })}
+                                  </div>
+                                  {vault.config.rules && vault.config.rules.length > 0 && (
+                                    <p className="text-xs text-neutral-500 mt-2">
+                                      {vault.config.rules.length} rebalance rule{vault.config.rules.length !== 1 ? 's' : ''}
+                                    </p>
+                                  )}
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                          {errors.selectedVaultId && (
+                            <p className="mt-2 text-sm text-error-400 flex items-center gap-1">
+                              <AlertCircle className="w-4 h-4" />
+                              {errors.selectedVaultId}
+                            </p>
+                          )}
+                        </div>
+
                         {/* Quick Presets */}
                         <div>
                           <label className="block text-sm font-medium mb-3 text-neutral-300">
@@ -608,6 +901,12 @@ const Backtests = () => {
                       </h3>
                       <div className="space-y-3">
                         <div className="flex justify-between text-sm">
+                          <span className="text-neutral-400">Vault</span>
+                          <span className="text-neutral-50 font-medium">
+                            {selectedVault ? selectedVault.name : 'Not selected'}
+                          </span>
+                        </div>
+                        <div className="flex justify-between text-sm">
                           <span className="text-neutral-400">Period</span>
                           <span className="text-neutral-50 font-medium">
                             {config.startTime && config.endTime
@@ -623,6 +922,26 @@ const Backtests = () => {
                           <span className="text-neutral-400">Resolution</span>
                           <span className="text-neutral-50 font-medium capitalize">{config.resolution}</span>
                         </div>
+                        {selectedVault && (
+                          <div className="pt-3 border-t border-default">
+                            <p className="text-xs text-neutral-500 mb-2">Assets:</p>
+                            <div className="space-y-1">
+                              {selectedVault.config.assets.map((asset, idx) => {
+                                const assetCode = typeof asset === 'string' ? asset : asset.assetCode;
+                                const percentage = typeof asset === 'string' 
+                                  ? Math.round(100 / selectedVault.config.assets.length) 
+                                  : asset.percentage;
+                                
+                                return (
+                                  <div key={idx} className="flex justify-between text-xs">
+                                    <span className="text-neutral-400">{assetCode}</span>
+                                    <span className="text-neutral-300">{percentage}%</span>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
                       </div>
                     </Card>
 
@@ -708,6 +1027,42 @@ const Backtests = () => {
               >
                 {selectedResult ? (
                   <div className="space-y-6">
+                    {/* Mock Data Warning (if applicable) */}
+                    {selectedResult.results.metrics.usingMockData && (
+                      <Card className="p-4 bg-warning-500/10 border border-warning-500/30">
+                        <div className="flex items-start gap-3">
+                          <div className="p-2 rounded-lg bg-warning-500/20 mt-0.5">
+                            <AlertTriangle className="w-5 h-5 text-warning-400" />
+                          </div>
+                          <div className="flex-1">
+                            <h3 className="text-sm font-bold text-warning-400 mb-1">Synthetic Data Used</h3>
+                            <p className="text-xs text-neutral-300">
+                              {selectedResult.results.metrics.dataSourceWarning}
+                            </p>
+                          </div>
+                        </div>
+                      </Card>
+                    )}
+
+                    {/* No Rebalancing Info */}
+                    {selectedResult.results.metrics.numRebalances === 0 && (
+                      <Card className="p-4 bg-blue-500/10 border border-blue-500/30">
+                        <div className="flex items-start gap-3">
+                          <div className="p-2 rounded-lg bg-blue-500/20 mt-0.5">
+                            <AlertCircle className="w-5 h-5 text-blue-400" />
+                          </div>
+                          <div className="flex-1">
+                            <h3 className="text-sm font-bold text-blue-400 mb-1">Static Portfolio (No Rebalancing)</h3>
+                            <p className="text-xs text-neutral-300">
+                              This backtest shows a "buy and hold" strategy. No rebalancing rules were triggered during the test period. 
+                              {selectedResult.vaultConfig.rules?.length === 0 && ' The vault has no rebalancing rules configured.'}
+                              {(selectedResult.vaultConfig.rules?.length || 0) > 0 && ' None of the configured rules met their trigger conditions.'}
+                            </p>
+                          </div>
+                        </div>
+                      </Card>
+                    )}
+
                     {/* Results Header with Export */}
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-3">
@@ -782,7 +1137,7 @@ const Backtests = () => {
                         </div>
                         <div className="space-y-1">
                           <div className="text-2xl font-bold text-error-400">
-                            {formatPercent(selectedResult.results.metrics.maxDrawdown)}
+                            {formatPercent(-Math.abs(selectedResult.results.metrics.maxDrawdown))}
                           </div>
                           <div className="text-sm text-neutral-400">Max Drawdown</div>
                           <div className="text-xs text-neutral-500">Worst decline</div>
@@ -922,7 +1277,12 @@ const Backtests = () => {
                         </h3>
                         <div className="space-y-4">
                           <div className="flex justify-between items-center p-3 bg-neutral-900 rounded-lg">
-                            <span className="text-sm text-neutral-400">Total Rebalances</span>
+                            <div className="flex flex-col">
+                              <span className="text-sm text-neutral-400">Total Rebalances</span>
+                              {selectedResult.results.metrics.numRebalances === 0 && (
+                                <span className="text-xs text-neutral-600 mt-1">No rebalancing rules triggered</span>
+                              )}
+                            </div>
                             <span className="text-lg font-bold text-neutral-50">
                               {selectedResult.results.metrics.numRebalances}
                             </span>
@@ -1145,7 +1505,7 @@ const Backtests = () => {
                                       {result.vaultConfig?.name || 'Unnamed Test'}
                                     </h3>
                                     <span className="text-xs px-2 py-0.5 rounded-full bg-primary-500/20 text-primary-400">
-                                      {result.backtestId.slice(0, 8)}
+                                      {result.backtestId?.slice(0, 8) || 'N/A'}
                                     </span>
                                   </div>
                                   <div className="flex items-center gap-3 text-xs text-neutral-500">
@@ -1182,7 +1542,7 @@ const Backtests = () => {
                                   <div>
                                     <div className="text-xs text-neutral-500 mb-0.5">Drawdown</div>
                                     <div className="text-sm font-semibold text-error-400">
-                                      {formatPercent(result.results.metrics.maxDrawdown)}
+                                      {formatPercent(-Math.abs(result.results.metrics.maxDrawdown))}
                                     </div>
                                   </div>
                                   <div>
@@ -1246,7 +1606,7 @@ const Backtests = () => {
                               <div>
                                 <div className="text-xs text-neutral-500 mb-0.5">Drawdown</div>
                                 <div className="text-sm font-semibold text-error-400">
-                                  {formatPercent(result.results.metrics.maxDrawdown)}
+                                  {formatPercent(-Math.abs(result.results.metrics.maxDrawdown))}
                                 </div>
                               </div>
                               <div>

@@ -6,11 +6,15 @@ dotenv.config();
 const horizonUrl = process.env.STELLAR_HORIZON_URL || 'https://horizon-testnet.stellar.org';
 const sorobanRpcUrl = process.env.STELLAR_RPC_URL || process.env.SOROBAN_RPC_URL || 'https://soroban-testnet.stellar.org';
 
-// Create Horizon server instance
+// Create Horizon server instance (for user's execution network - testnet/futurenet/mainnet)
 export const horizonServer = new StellarSdk.Horizon.Server(horizonUrl);
 
 // Create Soroban RPC server instance for contract interactions
 export const sorobanServer = new StellarSdk.rpc.Server(sorobanRpcUrl);
+
+// ALWAYS use mainnet for real-time price data (separate from execution network)
+// This ensures we get live, accurate price data regardless of user's connected network
+export const mainnetPriceServer = new StellarSdk.Horizon.Server('https://horizon.stellar.org');
 
 /**
  * Get network-specific servers based on user's connected network
