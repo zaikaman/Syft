@@ -102,10 +102,12 @@ router.post('/', async (req: Request, res: Response) => {
 /**
  * GET /api/vaults/:vaultId
  * Get vault state and configuration
+ * Query params: includeStrategy (default: false) - only show to owner
  */
 router.get('/:vaultId', async (req: Request, res: Response) => {
   try {
     const { vaultId } = req.params;
+    const { requesterAddress, includeStrategy } = req.query;
 
     // Get vault from database
     const { data: vault, error } = await supabase
@@ -136,13 +138,28 @@ router.get('/:vaultId', async (req: Request, res: Response) => {
       .limit(1)
       .single();
 
+    // Check if requester is the owner
+    const isOwner = requesterAddress && requesterAddress === vault.owner_wallet_address;
+    
+    // Only include full config if requester is owner or includeStrategy is explicitly true
+    const shouldIncludeStrategy = isOwner || (includeStrategy === 'true' && isOwner);
+    
+    // Return sanitized config for non-owners (hide visual builder strategy)
+    const sanitizedConfig = shouldIncludeStrategy ? vault.config : {
+      assets: vault.config?.assets?.map((a: any) => ({ code: a.code || a.assetCode })) || [],
+      isPublic: vault.config?.isPublic,
+      // Hide rules, nodes, edges, etc.
+    };
+
     return res.json({
       success: true,
       data: {
         vaultId: vault.vault_id,
+        name: vault.name,
+        description: vault.description,
         owner: vault.owner_wallet_address,
         contractAddress: vault.contract_address,
-        config: vault.config,
+        config: sanitizedConfig,
         status: vault.status,
         state,
         performance: {
@@ -155,6 +172,7 @@ router.get('/:vaultId', async (req: Request, res: Response) => {
         },
         createdAt: vault.created_at,
         updatedAt: vault.updated_at,
+        isOwner,
       },
     });
   } catch (error) {

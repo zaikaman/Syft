@@ -60,6 +60,14 @@ export async function buildDepositTransaction(
     const simulationResponse = await servers.sorobanServer.simulateTransaction(transaction);
     
     if (StellarSdk.rpc.Api.isSimulationError(simulationResponse)) {
+      // Check for trustline error
+      const errorMsg = JSON.stringify(simulationResponse);
+      if (errorMsg.includes('trustline entry is missing')) {
+        throw new Error(
+          `Missing trustline: Your account doesn't have a trustline for one of the vault's assets. ` +
+          `Please add trustlines for all vault assets in your wallet before depositing.`
+        );
+      }
       throw new Error(`Simulation failed: ${simulationResponse.error}`);
     }
 

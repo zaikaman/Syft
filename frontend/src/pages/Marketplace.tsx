@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { MarketplaceBrowse } from '../components/marketplace/MarketplaceBrowse';
 import { motion } from 'framer-motion';
-import { ShoppingBag, TrendingUp, Package, DollarSign } from 'lucide-react';
+import { ShoppingBag, TrendingUp, Package, Percent } from 'lucide-react';
 import { Card } from '../components/ui';
 
 const Marketplace = () => {
@@ -29,8 +29,8 @@ const Marketplace = () => {
           
           // Calculate stats from listings
           const totalListings = listings.length;
-          const avgPrice = listings.length > 0 
-            ? listings.reduce((sum: number, l: any) => sum + l.price, 0) / listings.length 
+          const avgProfitShare = listings.length > 0 
+            ? listings.reduce((sum: number, l: any) => sum + (l.profit_share_percentage || 0), 0) / listings.length 
             : 0;
           const bestPerformance = listings.length > 0
             ? Math.max(...listings.map((l: any) => l.vault_nfts?.vaults?.performance || 0))
@@ -38,7 +38,7 @@ const Marketplace = () => {
 
           setMarketStats({
             totalListings,
-            avgPrice,
+            avgPrice: avgProfitShare,
             bestPerformance,
           });
         }
@@ -61,9 +61,9 @@ const Marketplace = () => {
       color: 'primary',
     },
     {
-      label: 'Avg. Price',
-      value: `${marketStats.avgPrice.toFixed(0)} XLM`,
-      icon: DollarSign,
+      label: 'Avg. Profit Share',
+      value: `${marketStats.avgPrice.toFixed(1)}%`,
+      icon: Percent,
       color: 'success',
     },
     {

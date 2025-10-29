@@ -914,14 +914,13 @@ const VaultBuilder = () => {
                           throw new Error(nftData.error || 'Failed to create NFT');
                         }
 
-                        // Create marketplace listing with a default price
+                        // Create marketplace listing with profit sharing
                         const listingResponse = await fetch(`${backendUrl}/api/marketplace/listings`, {
                           method: 'POST',
                           headers: { 'Content-Type': 'application/json' },
                           body: JSON.stringify({
                             nftId: nftData.data.nftId,
-                            price: 100, // Default price - user can edit later
-                            currency: 'XLM',
+                            profitSharePercentage: 10, // 10% profit share - user can edit later
                             sellerAddress: address,
                           }),
                         });

@@ -6,14 +6,17 @@ import { motion } from 'framer-motion';
 import { Card } from '../ui/Card';
 import { Button } from '../ui/Button';
 import { Package, TrendingUp, DollarSign, Clock, AlertCircle, RefreshCw } from 'lucide-react';
+import { useWallet } from '../../hooks/useWallet';
+import { useNavigate } from 'react-router-dom';
 
 interface Listing {
   listing_id: string;
   nft_id: string;
   vault_id: string;
   seller: string;
-  price: number;
-  currency: string;
+  profit_share_percentage?: number;
+  price?: number;
+  currency?: string;
   status: string;
   created_at: string;
   vault_nfts: {
@@ -39,14 +42,15 @@ interface MarketplaceBrowseProps {
 }
 
 export function MarketplaceBrowse({ onSelectListing }: MarketplaceBrowseProps) {
+  const { address, signTransaction } = useWallet();
+  const navigate = useNavigate();
   const [listings, setListings] = useState<Listing[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isInitialLoad, setIsInitialLoad] = useState(true);
   const [error, setError] = useState('');
+  const [subscribing, setSubscribing] = useState<string | null>(null);
 
   // Filters
-  const [minPrice, setMinPrice] = useState('');
-  const [maxPrice, setMaxPrice] = useState('');
   const [sortBy, setSortBy] = useState('created_at');
   const [sortOrder, setSortOrder] = useState('desc');
 
@@ -59,7 +63,7 @@ export function MarketplaceBrowse({ onSelectListing }: MarketplaceBrowseProps) {
     }, 30000);
 
     return () => clearInterval(interval);
-  }, [minPrice, maxPrice, sortBy, sortOrder]);
+  }, [sortBy, sortOrder]);
 
   const loadListings = async (showLoading = false) => {
     if (showLoading) {
@@ -74,9 +78,6 @@ export function MarketplaceBrowse({ onSelectListing }: MarketplaceBrowseProps) {
         sortBy,
         sortOrder,
       });
-
-      if (minPrice) params.append('minPrice', minPrice);
-      if (maxPrice) params.append('maxPrice', maxPrice);
 
       const response = await fetch(`${backendUrl}/api/marketplace/listings?${params}`);
       
@@ -114,6 +115,88 @@ export function MarketplaceBrowse({ onSelectListing }: MarketplaceBrowseProps) {
 
   const truncateAddress = (address: string) => {
     return `${address.slice(0, 6)}...${address.slice(-4)}`;
+  };
+
+
+  const handleSubscribe = async (listing: Listing) => {
+    if (!address) {
+      alert('Please connect your wallet first');
+      return;
+    }
+
+    if (!signTransaction) {
+      alert('Wallet does not support transaction signing');
+      return;
+    }
+
+    try {
+      setSubscribing(listing.listing_id);
+
+      // Backend URL (local fallback)
+      const backendUrl = import.meta.env.PUBLIC_BACKEND_URL || 'http://localhost:3001';
+
+      // Call subscribe endpoint
+      const response = await fetch(`${backendUrl}/api/marketplace/subscribe`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          listingId: listing.listing_id,
+          subscriberAddress: address,
+          network: 'futurenet',
+        }),
+      });
+
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({ error: 'Unknown error' }));
+        console.error('[Subscribe] Backend error:', data);
+        throw new Error(data.error || data.details || 'Failed to start subscription');
+      }
+
+      const data = await response.json();
+      const { deploymentXdr, profitSharePercentage } = data.data;
+
+      // Sign deployment transaction
+      const signedXdr = await signTransaction(deploymentXdr);
+
+      // Submit transaction
+      const submitResponse = await fetch(`${backendUrl}/api/vaults/submit-deployment`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          signedXdr,
+          ownerAddress: address,
+          config: {}, // Config is already in the contract
+          network: 'futurenet',
+        }),
+      });
+
+      if (!submitResponse.ok) {
+        throw new Error('Failed to deploy vault');
+      }
+
+      const submitData = await submitResponse.json();
+      const { vaultId, transactionHash } = submitData.data;
+
+      // Complete subscription
+      await fetch(`${backendUrl}/api/marketplace/subscribe/complete`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          listingId: listing.listing_id,
+          subscriberAddress: address,
+          subscribedVaultId: vaultId,
+          transactionHash,
+        }),
+      });
+
+      alert(`Successfully subscribed! You're sharing ${profitSharePercentage}% of profits with the creator.`);
+      navigate(`/vault/${vaultId}`);
+    } catch (error) {
+      console.error('Subscription error:', error);
+      alert(error instanceof Error ? error.message : 'Failed to subscribe');
+    } finally {
+      setSubscribing(null);
+    }
   };
 
   if (isLoading && isInitialLoad) {
@@ -170,35 +253,7 @@ export function MarketplaceBrowse({ onSelectListing }: MarketplaceBrowseProps) {
           </Button>
         </div>
         
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          {/* Min Price */}
-          <div>
-            <label className="block text-sm font-medium text-neutral-400 mb-2">
-              Min Price (XLM)
-            </label>
-            <input
-              type="number"
-              value={minPrice}
-              onChange={(e) => setMinPrice(e.target.value)}
-              placeholder="0"
-              className="w-full px-3 py-2 bg-neutral-900 border border-default rounded-lg text-neutral-50 placeholder-neutral-500 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-all"
-            />
-          </div>
-
-          {/* Max Price */}
-          <div>
-            <label className="block text-sm font-medium text-neutral-400 mb-2">
-              Max Price (XLM)
-            </label>
-            <input
-              type="number"
-              value={maxPrice}
-              onChange={(e) => setMaxPrice(e.target.value)}
-              placeholder="∞"
-              className="w-full px-3 py-2 bg-neutral-900 border border-default rounded-lg text-neutral-50 placeholder-neutral-500 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-all"
-            />
-          </div>
-
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {/* Sort By */}
           <div>
             <label className="block text-sm font-medium text-neutral-400 mb-2">
@@ -209,8 +264,8 @@ export function MarketplaceBrowse({ onSelectListing }: MarketplaceBrowseProps) {
               onChange={(e) => setSortBy(e.target.value)}
               className="w-full px-3 py-2 bg-neutral-900 border border-default rounded-lg text-neutral-50 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-all appearance-none cursor-pointer"
             >
-              <option value="created_at">Date Listed</option>
-              <option value="price">Price</option>
+              <option value="created_at">Recently Listed</option>
+              <option value="profit_share_percentage">Profit Share %</option>
             </select>
           </div>
 
@@ -319,17 +374,25 @@ export function MarketplaceBrowse({ onSelectListing }: MarketplaceBrowseProps) {
                   )}
                 </div>
 
-                {/* Price Section */}
+                {/* Profit Share Section */}
                 <div className="pt-4 border-t border-default">
                   <div className="flex items-center justify-between mb-4">
                     <div>
-                      <p className="text-xs text-neutral-500 mb-1">Price</p>
-                      <p className="text-2xl font-bold text-neutral-50">
-                        {listing.price} <span className="text-base text-neutral-400">{listing.currency}</span>
+                      <p className="text-xs text-neutral-500 mb-1">Profit Share</p>
+                      <p className="text-2xl font-bold text-primary-500">
+                        {listing.profit_share_percentage || 0}%
+                      </p>
+                      <p className="text-xs text-neutral-400 mt-1">
+                        Goes to creator
                       </p>
                     </div>
-                    <Button variant="primary" size="sm">
-                      Buy Now
+                    <Button 
+                      variant="primary" 
+                      size="sm"
+                      onClick={() => handleSubscribe(listing)}
+                      disabled={subscribing === listing.listing_id}
+                    >
+                      {subscribing === listing.listing_id ? 'Subscribing...' : 'Subscribe'}
                     </Button>
                   </div>
                 </div>
