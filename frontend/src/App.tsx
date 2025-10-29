@@ -10,7 +10,7 @@ import Analytics from "./pages/Analytics";
 import Backtests from "./pages/Backtests";
 import NFTs from "./pages/NFTs";
 import Suggestions from "./pages/Suggestions";
-import Debugger from "./pages/Debugger";
+
 import AppLayout from "./layouts/AppLayout";
 
 // Redirect component for vault details
@@ -51,7 +51,7 @@ function App() {
         <Route path="backtests" element={<Backtests />} />
         <Route path="nfts" element={<NFTs />} />
         <Route path="suggestions" element={<Suggestions />} />
-        <Route path="debugger" element={<Debugger />} />
+
         <Route path="vaults/:vaultId" element={<VaultDetail />} />
       </Route>
     </Routes>

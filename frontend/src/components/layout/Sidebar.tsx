@@ -1,6 +1,6 @@
 import { motion, AnimatePresence } from 'framer-motion';
 import { Link, useLocation } from 'react-router-dom';
-import { LayoutDashboard, Box, Home, X, ShoppingBag, BarChart3, TestTube, Package, Lightbulb, Code } from 'lucide-react';
+import { LayoutDashboard, Box, Home, X, ShoppingBag, BarChart3, TestTube, Package, Lightbulb } from 'lucide-react';
 import { clsx } from 'clsx';
 
 interface SidebarProps {
@@ -19,7 +19,6 @@ export const Sidebar = ({ isOpen = true, onClose }: SidebarProps) => {
     { path: '/app/backtests', label: 'Backtests', icon: TestTube },
     { path: '/app/nfts', label: 'My NFTs', icon: Package },
     { path: '/app/suggestions', label: 'AI Suggestions', icon: Lightbulb },
-    { path: '/app/debugger', label: 'Debugger', icon: Code },
   ];
 
   const isActive = (path: string) => location.pathname === path;
