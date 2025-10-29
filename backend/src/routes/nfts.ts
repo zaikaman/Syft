@@ -7,6 +7,128 @@ import { supabase } from '../lib/supabase.js';
 const router = Router();
 
 /**
+ * POST /api/nfts/mint
+ * Mint a new vault NFT (convenience endpoint)
+ * 
+ * Body: {
+ *   vaultId: string,
+ *   ownerAddress: string,
+ *   ownershipPercentage: number,  // In basis points (100 = 1%, 10000 = 100%)
+ *   metadata: {
+ *     name: string,
+ *     description: string,
+ *     imageUrl?: string
+ *   }
+ * }
+ */
+router.post('/mint', async (req: Request, res: Response) => {
+  try {
+    const { vaultId, ownerAddress, ownershipPercentage, metadata } = req.body;
+
+    // Validate required fields
+    if (!vaultId || !ownerAddress || !ownershipPercentage || !metadata) {
+      return res.status(400).json({
+        success: false,
+        error: 'Missing required fields: vaultId, ownerAddress, ownershipPercentage, metadata',
+      });
+    }
+
+    // Validate ownership percentage (1-10000 basis points)
+    if (ownershipPercentage <= 0 || ownershipPercentage > 10000) {
+      return res.status(400).json({
+        success: false,
+        error: 'Ownership percentage must be between 1 and 10000 basis points',
+      });
+    }
+
+    // Get vault details
+    const { data: vault, error: vaultError } = await supabase
+      .from('vaults')
+      .select('*')
+      .eq('vault_id', vaultId)
+      .single();
+
+    if (vaultError || !vault) {
+      return res.status(404).json({
+        success: false,
+        error: 'Vault not found',
+      });
+    }
+
+    // Check total ownership doesn't exceed 100%
+    const { data: existingNFTs } = await supabase
+      .from('vault_nfts')
+      .select('ownership_percentage')
+      .eq('vault_id', vault.id);
+
+    const totalExistingOwnership = existingNFTs?.reduce(
+      (sum, nft) => sum + (nft.ownership_percentage || 0),
+      0
+    ) || 0;
+
+    const ownershipPctPercent = ownershipPercentage / 100;
+
+    if (totalExistingOwnership + ownershipPctPercent > 100) {
+      return res.status(400).json({
+        success: false,
+        error: `Cannot mint NFT: would exceed 100% ownership. Current: ${totalExistingOwnership}%, Requested: ${ownershipPctPercent}%`,
+      });
+    }
+
+    // Generate NFT ID and token ID
+    const timestamp = Date.now();
+    const nftId = `nft_${vaultId}_${timestamp}`;
+    const tokenId = `token_${vaultId}_${timestamp}`;
+    
+    // Use vault contract address or generate placeholder
+    const contractAddress = vault.contract_address || `pending_${vaultId}`;
+
+    // Store NFT in database
+    const { data: nft, error: nftError } = await supabase
+      .from('vault_nfts')
+      .insert({
+        nft_id: nftId,
+        vault_id: vault.id,
+        token_id: tokenId,
+        contract_address: contractAddress,
+        ownership_percentage: ownershipPctPercent,
+        original_owner: ownerAddress,
+        current_holder: ownerAddress,
+        metadata: metadata,
+        minted_at: new Date().toISOString(),
+      })
+      .select()
+      .single();
+
+    if (nftError) {
+      console.error('Error storing NFT:', nftError);
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to mint NFT',
+      });
+    }
+
+    return res.json({
+      success: true,
+      data: {
+        nftId: nft.nft_id,
+        vaultId: vault.vault_id,
+        ownershipPercentage: (nft.ownership_percentage ?? ownershipPctPercent) * 100,
+        holder: nft.current_holder,
+        metadata: nft.metadata,
+        mintedAt: nft.minted_at,
+      },
+    });
+  } catch (error) {
+    console.error('Error minting NFT:', error);
+    return res.status(500).json({
+      success: false,
+      error: 'Internal server error',
+    });
+  }
+});
+
+/**
  * POST /api/vaults/:vaultId/nft
  * Mint a new vault NFT
  * 

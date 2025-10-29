@@ -73,17 +73,24 @@ router.post('/listings', async (req: Request, res: Response) => {
       });
     }
 
-    // Create listing
+    // Create listing - use NFT's UUID id for foreign key
     const listingId = `listing_${nftId}_${Date.now()}`;
+    
+    // Generate title from NFT metadata
+    const title = nft.metadata?.name || `Vault NFT ${nft.ownership_percentage}%`;
+    const description = nft.metadata?.description || 'Vault ownership NFT';
+    
     const { data: listing, error: listingError } = await supabase
       .from('marketplace_listings')
       .insert({
         listing_id: listingId,
-        nft_id: nftId,
+        nft_id: nft.id, // Use UUID foreign key
         seller_wallet_address: sellerAddress,
         price: price,
         price_asset: currency,
         status: 'active',
+        title: title,
+        description: description,
       })
       .select()
       .single();

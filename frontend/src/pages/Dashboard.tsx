@@ -10,8 +10,10 @@ interface Vault {
   vault_id: string;
   owner: string;
   contract_address: string;
+  name?: string;
+  description?: string;
   config: {
-    name: string;
+    name?: string;
     assets: Array<{ code: string; issuer?: string }>;
     current_state?: {
       totalShares: string;
@@ -619,7 +621,7 @@ const Dashboard = () => {
                       <Card hover className="p-4 bg-neutral-900">
                         <div className="grid grid-cols-1 md:grid-cols-6 gap-3 items-center">
                           <div className="md:col-span-2">
-                            <h3 className="text-base font-semibold text-neutral-50 mb-1">{vault.config.name || 'Unnamed Vault'}</h3>
+                            <h3 className="text-base font-semibold text-neutral-50 mb-1">{vault.name || vault.config?.name || 'Unnamed Vault'}</h3>
                             <p className="text-sm text-neutral-400">{assets}</p>
                             {userPositions[vault.vault_id]?.shares && userPositions[vault.vault_id]?.shares !== '0' && (
                               <p className="text-xs text-primary-400 mt-1">

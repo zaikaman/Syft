@@ -1070,7 +1070,7 @@ export async function getVaultBreakdown(userAddress: string, network: string = '
 
         return {
           ...analytics,
-          name: vault.config?.name || 'Unnamed Vault',
+          name: vault.name || vault.config?.name || 'Unnamed Vault',
           assets: vault.config?.assets || [],
           status: vault.status,
           riskMetrics: {

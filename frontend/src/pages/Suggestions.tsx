@@ -6,7 +6,7 @@ import { useWallet } from '../providers/WalletProvider';
 
 interface Vault {
   vault_id: string;
-  name: string;
+  name?: string;
   config?: {
     name?: string;
     assets?: any[];
@@ -355,7 +355,7 @@ const Suggestions = () => {
                       <div className="flex items-start justify-between mb-3">
                         <div className="flex-1 min-w-0">
                           <h4 className="font-semibold text-neutral-50 truncate">
-                            {vault.config?.name || vault.name || 'Unnamed Vault'}
+                            {vault.name || vault.config?.name || 'Unnamed Vault'}
                           </h4>
                           <p className="text-xs text-neutral-400 mt-0.5">{assets}</p>
                         </div>

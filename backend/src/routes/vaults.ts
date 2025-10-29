@@ -369,6 +369,22 @@ router.post('/submit-deployment', async (req: Request, res: Response) => {
       console.log(`[Submit Deploy] ✅ Transaction submitted successfully: ${txHash}`);
     } catch (submitError: any) {
       console.error(`[Submit Deploy] Error submitting transaction:`, submitError);
+      
+      // Check if it's a timeout error (504)
+      if (submitError?.response?.status === 504 || submitError?.code === 'ERR_BAD_RESPONSE') {
+        const txHashFromError = submitError?.response?.data?.extras?.hash;
+        
+        return res.status(202).json({
+          success: false,
+          timeout: true,
+          transactionHash: txHashFromError,
+          contractAddress,
+          vaultId,
+          error: 'Transaction submission timed out. The transaction may still be processing on the network. Please wait a moment and check your dashboard, or use the transaction hash below to verify on Stellar Expert.',
+          message: 'This timeout does not mean the transaction failed. Stellar testnet can be slow during high load.',
+        });
+      }
+      
       return res.status(500).json({
         success: false,
         error: 'Failed to submit transaction to network',
@@ -395,11 +411,12 @@ router.post('/submit-deployment', async (req: Request, res: Response) => {
       vault_id: vaultId,
       owner_wallet_address: config.owner,
       contract_address: contractAddress,
-      name: config.name,
-      description: 'Deployed vault from visual builder',
+      name: config.name || 'Untitled Vault',
+      description: config.description || 'Deployed vault from visual builder',
       config: {
         assets: config.assets,
         rules: config.rules,
+        isPublic: config.isPublic ?? true,
       },
       status: 'active',
       network: network || 'testnet',
@@ -1322,7 +1339,7 @@ router.get('/', async (req: Request, res: Response) => {
  */
 router.post('/drafts', async (req: Request, res: Response) => {
   try {
-    const { owner, config, name, network } = req.body;
+    const { owner, config, name, description, network } = req.body;
 
     if (!owner || !config) {
       return res.status(400).json({
@@ -1369,7 +1386,7 @@ router.post('/drafts', async (req: Request, res: Response) => {
         owner_wallet_address: owner,
         contract_address: null, // No contract yet
         name: vaultName,
-        description: 'Vault draft created from visual builder',
+        description: description || 'Vault draft created from visual builder',
         config,
         status: 'draft',
         network: vaultNetwork, // Store network

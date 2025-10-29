@@ -550,7 +550,7 @@ const Analytics = () => {
                           <div className="flex items-center gap-4 flex-1">
                             <div className="flex-1">
                               <div className="flex items-center gap-2 mb-1">
-                                <h3 className="font-semibold text-neutral-50">{vault.name}</h3>
+                                <h3 className="font-semibold text-neutral-50">{vault.name || 'Unnamed Vault'}</h3>
                                 <span className={`text-xs px-2 py-0.5 rounded-full ${
                                   vault.status === 'active' ? 'bg-success-400/20 text-success-400' : 'bg-neutral-700 text-neutral-400'
                                 }`}>

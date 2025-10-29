@@ -51,10 +51,10 @@ interface BacktestConfig {
 
 interface UserVault {
   vault_id: string;
-  name: string;
+  name?: string;
   description?: string;
   config: {
-    name: string;
+    name?: string;
     assets: Array<{ assetId?: string; assetCode: string; assetIssuer?: string; percentage: number }>;
     rules?: any[];
   };
@@ -711,7 +711,7 @@ const Backtests = () => {
                                 >
                                   <div className="flex items-start justify-between mb-2">
                                     <div className="flex-1">
-                                      <h4 className="font-semibold text-neutral-50 mb-1">{vault.name}</h4>
+                                      <h4 className="font-semibold text-neutral-50 mb-1">{vault.name || vault.config?.name || 'Unnamed Vault'}</h4>
                                       <p className="text-xs text-neutral-500">ID: {vault.vault_id.slice(0, 12)}...</p>
                                     </div>
                                     {config.selectedVaultId === vault.vault_id && (
