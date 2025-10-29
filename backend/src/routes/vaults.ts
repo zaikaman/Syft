@@ -24,8 +24,12 @@ import {
 import { supabase } from '../lib/supabase.js';
 import { syncVaultState } from '../services/vaultSyncService.js';
 import { getNetworkServers } from '../lib/horizonClient.js';
+import suggestionsRoutes from './suggestions.js';
 
 const router = Router();
+
+// Mount suggestions routes at /vaults/:vaultId/suggestions
+router.use('/', suggestionsRoutes);
 
 /**
  * POST /api/vaults

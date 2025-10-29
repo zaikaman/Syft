@@ -51,8 +51,9 @@ router.get('/', (_req, res) => {
 router.use('/users', userRoutes);
 router.use('/wallet', walletRoutes);
 router.use('/vaults', vaultRoutes);
+// Note: suggestions routes are nested under vaults (e.g., /api/vaults/:vaultId/suggestions)
+// So they should be mounted on the vaults router, not here separately
 router.use('/backtests', backtestRoutes);
-router.use('/suggestions', suggestionsRoutes);
 router.use('/nfts', nftRoutes);
 router.use('/marketplace', marketplaceRoutes);
 router.use('/price', priceRoutes);
