@@ -797,3 +797,272 @@ export async function getPortfolioAllocation(
   }
 }
 
+/**
+ * Calculate Sharpe Ratio for a vault
+ * Sharpe Ratio = (Average Return - Risk-Free Rate) / Standard Deviation
+ */
+async function calculateSharpeRatio(vaultId: string, riskFreeRate: number = 0.04): Promise<number> {
+  try {
+    const { data: vault } = await supabase
+      .from('vaults')
+      .select('id')
+      .eq('vault_id', vaultId)
+      .single();
+
+    if (!vault) return 0;
+
+    // Get 30 days of snapshots
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+    
+    const { data: snapshots } = await supabase
+      .from('vault_performance')
+      .select('*')
+      .eq('vault_id', vault.id)
+      .gte('timestamp', thirtyDaysAgo)
+      .order('timestamp', { ascending: true });
+
+    if (!snapshots || snapshots.length < 2) return 0;
+
+    // Calculate daily returns
+    const dailyReturns: number[] = [];
+    for (let i = 1; i < snapshots.length; i++) {
+      const prevValue = snapshots[i - 1].total_value;
+      const currValue = snapshots[i].total_value;
+      if (prevValue > 0) {
+        const dailyReturn = (currValue - prevValue) / prevValue;
+        dailyReturns.push(dailyReturn);
+      }
+    }
+
+    if (dailyReturns.length === 0) return 0;
+
+    // Calculate average return
+    const avgReturn = dailyReturns.reduce((sum, r) => sum + r, 0) / dailyReturns.length;
+
+    // Calculate standard deviation
+    const variance = dailyReturns.reduce((sum, r) => sum + Math.pow(r - avgReturn, 2), 0) / dailyReturns.length;
+    const stdDev = Math.sqrt(variance);
+
+    if (stdDev === 0) return 0;
+
+    // Annualize values (multiply by sqrt(365) for standard deviation)
+    const annualizedReturn = avgReturn * 365;
+    const annualizedStdDev = stdDev * Math.sqrt(365);
+    const dailyRiskFreeRate = riskFreeRate / 365;
+
+    const sharpeRatio = (annualizedReturn - dailyRiskFreeRate * 365) / annualizedStdDev;
+
+    return sharpeRatio;
+  } catch (error) {
+    console.error('[calculateSharpeRatio] Error:', error);
+    return 0;
+  }
+}
+
+/**
+ * Calculate Maximum Drawdown for a vault
+ * Max Drawdown = (Trough Value - Peak Value) / Peak Value
+ */
+async function calculateMaxDrawdown(vaultId: string): Promise<number> {
+  try {
+    const { data: vault } = await supabase
+      .from('vaults')
+      .select('id')
+      .eq('vault_id', vaultId)
+      .single();
+
+    if (!vault) return 0;
+
+    const { data: snapshots } = await supabase
+      .from('vault_performance')
+      .select('*')
+      .eq('vault_id', vault.id)
+      .order('timestamp', { ascending: true });
+
+    if (!snapshots || snapshots.length < 2) return 0;
+
+    let maxDrawdown = 0;
+    let peak = snapshots[0].total_value;
+
+    for (const snapshot of snapshots) {
+      const value = snapshot.total_value;
+      
+      // Update peak if new high
+      if (value > peak) {
+        peak = value;
+      }
+
+      // Calculate drawdown from peak
+      const drawdown = ((value - peak) / peak) * 100;
+      
+      // Update max drawdown if this is worse
+      if (drawdown < maxDrawdown) {
+        maxDrawdown = drawdown;
+      }
+    }
+
+    return maxDrawdown;
+  } catch (error) {
+    console.error('[calculateMaxDrawdown] Error:', error);
+    return 0;
+  }
+}
+
+/**
+ * Calculate volatility (standard deviation of returns)
+ */
+async function calculateVolatility(vaultId: string): Promise<number> {
+  try {
+    const { data: vault } = await supabase
+      .from('vaults')
+      .select('id')
+      .eq('vault_id', vaultId)
+      .single();
+
+    if (!vault) return 0;
+
+    // Get 30 days of snapshots
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+    
+    const { data: snapshots } = await supabase
+      .from('vault_performance')
+      .select('*')
+      .eq('vault_id', vault.id)
+      .gte('timestamp', thirtyDaysAgo)
+      .order('timestamp', { ascending: true });
+
+    if (!snapshots || snapshots.length < 2) return 0;
+
+    // Calculate daily returns
+    const dailyReturns: number[] = [];
+    for (let i = 1; i < snapshots.length; i++) {
+      const prevValue = snapshots[i - 1].total_value;
+      const currValue = snapshots[i].total_value;
+      if (prevValue > 0) {
+        const dailyReturn = (currValue - prevValue) / prevValue;
+        dailyReturns.push(dailyReturn);
+      }
+    }
+
+    if (dailyReturns.length === 0) return 0;
+
+    // Calculate average return
+    const avgReturn = dailyReturns.reduce((sum, r) => sum + r, 0) / dailyReturns.length;
+
+    // Calculate standard deviation
+    const variance = dailyReturns.reduce((sum, r) => sum + Math.pow(r - avgReturn, 2), 0) / dailyReturns.length;
+    const stdDev = Math.sqrt(variance);
+
+    // Annualize volatility
+    const annualizedVolatility = stdDev * Math.sqrt(365) * 100;
+
+    return annualizedVolatility;
+  } catch (error) {
+    console.error('[calculateVolatility] Error:', error);
+    return 0;
+  }
+}
+
+/**
+ * Get detailed vault analytics with risk metrics
+ */
+export async function getDetailedVaultAnalytics(vaultId: string) {
+  try {
+    const baseAnalytics = await getVaultAnalytics(vaultId);
+    
+    // Calculate additional risk metrics
+    const [sharpeRatio, maxDrawdown, volatility] = await Promise.all([
+      calculateSharpeRatio(vaultId),
+      calculateMaxDrawdown(vaultId),
+      calculateVolatility(vaultId),
+    ]);
+
+    // Get transaction history
+    const { data: vault } = await supabase
+      .from('vaults')
+      .select('id, config')
+      .eq('vault_id', vaultId)
+      .single();
+
+    let transactions: any[] = [];
+    if (vault) {
+      const { data: txData } = await supabase
+        .from('vault_transactions')
+        .select('*')
+        .eq('vault_id', vault.id)
+        .order('timestamp', { ascending: false })
+        .limit(50);
+      
+      transactions = txData || [];
+    }
+
+    // Get rebalance events from snapshots
+    const { data: rebalances } = await supabase
+      .from('vault_performance')
+      .select('*')
+      .eq('vault_id', vault?.id)
+      .order('timestamp', { ascending: false })
+      .limit(20);
+
+    return {
+      ...baseAnalytics,
+      riskMetrics: {
+        sharpeRatio,
+        maxDrawdown,
+        volatility,
+      },
+      transactions,
+      recentRebalances: rebalances || [],
+      vaultConfig: vault?.config || {},
+    };
+  } catch (error) {
+    console.error('[getDetailedVaultAnalytics] Error:', error);
+    throw error;
+  }
+}
+
+/**
+ * Get vault breakdown for portfolio analytics
+ */
+export async function getVaultBreakdown(userAddress: string, network: string = 'testnet') {
+  try {
+    // Get all user vaults
+    const { data: vaults } = await supabase
+      .from('vaults')
+      .select('*')
+      .eq('owner_wallet_address', userAddress)
+      .eq('network', network);
+
+    if (!vaults || vaults.length === 0) return [];
+
+    // Get analytics for each vault
+    const vaultAnalytics = await Promise.all(
+      vaults.map(async (vault) => {
+        const analytics = await getVaultAnalytics(vault.vault_id);
+        const [sharpeRatio, maxDrawdown, volatility] = await Promise.all([
+          calculateSharpeRatio(vault.vault_id),
+          calculateMaxDrawdown(vault.vault_id),
+          calculateVolatility(vault.vault_id),
+        ]);
+
+        return {
+          ...analytics,
+          name: vault.config?.name || 'Unnamed Vault',
+          assets: vault.config?.assets || [],
+          status: vault.status,
+          riskMetrics: {
+            sharpeRatio,
+            maxDrawdown,
+            volatility,
+          },
+        };
+      })
+    );
+
+    return vaultAnalytics.sort((a, b) => b.tvl - a.tvl);
+  } catch (error) {
+    console.error('[getVaultBreakdown] Error:', error);
+    throw error;
+  }
+}
+

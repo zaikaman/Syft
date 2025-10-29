@@ -2,7 +2,9 @@ import { Router, Request, Response } from 'express';
 import { 
   getVaultAnalytics, 
   getPortfolioAnalytics, 
-  getHistoricalPerformance 
+  getHistoricalPerformance,
+  getDetailedVaultAnalytics,
+  getVaultBreakdown,
 } from '../services/analyticsService.js';
 
 const router = Router();
@@ -14,8 +16,11 @@ const router = Router();
 router.get('/vault/:vaultId', async (req: Request, res: Response) => {
   try {
     const { vaultId } = req.params;
+    const detailed = req.query.detailed === 'true';
 
-    const analytics = await getVaultAnalytics(vaultId);
+    const analytics = detailed 
+      ? await getDetailedVaultAnalytics(vaultId)
+      : await getVaultAnalytics(vaultId);
 
     return res.json({
       success: true,
@@ -126,6 +131,31 @@ router.get('/portfolio/:userAddress/allocation', async (req: Request, res: Respo
     });
   } catch (error) {
     console.error('Error in GET /api/analytics/portfolio/:userAddress/allocation:', error);
+    return res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Internal server error',
+    });
+  }
+});
+
+/**
+ * GET /api/analytics/portfolio/:userAddress/breakdown
+ * Get detailed breakdown of all vaults in portfolio with risk metrics
+ * Query params: network (default: testnet)
+ */
+router.get('/portfolio/:userAddress/breakdown', async (req: Request, res: Response) => {
+  try {
+    const { userAddress } = req.params;
+    const network = (req.query.network as string) || 'testnet';
+
+    const breakdown = await getVaultBreakdown(userAddress, network);
+
+    return res.json({
+      success: true,
+      data: breakdown,
+    });
+  } catch (error) {
+    console.error('Error in GET /api/analytics/portfolio/:userAddress/breakdown:', error);
     return res.status(500).json({
       success: false,
       error: error instanceof Error ? error.message : 'Internal server error',
