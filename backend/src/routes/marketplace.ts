@@ -80,12 +80,10 @@ router.post('/listings', async (req: Request, res: Response) => {
       .insert({
         listing_id: listingId,
         nft_id: nftId,
-        vault_id: nft.vault_id,
-        seller_address: sellerAddress,
+        seller_wallet_address: sellerAddress,
         price: price,
-        currency: currency,
+        price_asset: currency,
         status: 'active',
-        listed_at: new Date().toISOString(),
       })
       .select()
       .single();
@@ -119,7 +117,7 @@ router.post('/listings', async (req: Request, res: Response) => {
  *   - status: 'active' | 'sold' | 'cancelled'
  *   - minPrice: number
  *   - maxPrice: number
- *   - sortBy: 'price' | 'listed_at' | 'ownership_pct'
+ *   - sortBy: 'price' | 'created_at' | 'ownership_pct'
  *   - sortOrder: 'asc' | 'desc'
  */
 router.get('/listings', async (req: Request, res: Response) => {
@@ -128,27 +126,13 @@ router.get('/listings', async (req: Request, res: Response) => {
       status = 'active',
       minPrice,
       maxPrice,
-      sortBy = 'listed_at',
+      sortBy = 'created_at',
       sortOrder = 'desc',
     } = req.query;
 
     let query = supabase
       .from('marketplace_listings')
-      .select(`
-        *,
-        vault_nfts (
-          nft_id,
-          ownership_pct,
-          metadata,
-          vaults (
-            vault_id,
-            name,
-            description,
-            total_value,
-            performance
-          )
-        )
-      `)
+      .select('*')
       .eq('status', status);
 
     // Apply price filters
@@ -173,9 +157,33 @@ router.get('/listings', async (req: Request, res: Response) => {
       });
     }
 
+    // Transform response to match frontend expectations
+    const transformedListings = listings?.map((listing: any) => ({
+      listing_id: listing.listing_id || listing.id,
+      nft_id: listing.nft_id,
+      vault_id: listing.vault_id,
+      seller: listing.seller_wallet_address || listing.seller_address,
+      price: listing.price,
+      currency: listing.price_asset || listing.currency || 'XLM',
+      status: listing.status,
+      created_at: listing.created_at,
+      vault_nfts: {
+        nft_id: listing.nft_id,
+        ownership_percentage: 0, // Will be fetched separately if needed
+        metadata: listing.metadata || {},
+        vaults: {
+          vault_id: listing.vault_id,
+          name: 'Unknown Vault',
+          description: '',
+          total_value: 0,
+          performance: 0,
+        },
+      },
+    })) || [];
+
     return res.json({
       success: true,
-      data: listings,
+      data: transformedListings,
     });
   } catch (error) {
     console.error('Error browsing marketplace:', error);

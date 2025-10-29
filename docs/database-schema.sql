@@ -1,210 +1,147 @@
--- ============================================
--- SYFT DEFI PLATFORM - DATABASE SCHEMA
--- ============================================
--- Migration 001: Users table
--- Purpose: Store user profiles and wallet information
+-- WARNING: This schema is for context only and is not meant to be run.
+-- Table order and constraints may not be valid for execution.
 
-CREATE TABLE IF NOT EXISTS users (
-  id BIGSERIAL PRIMARY KEY,
-  wallet_address VARCHAR(56) NOT NULL UNIQUE,
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  profile JSONB DEFAULT '{}'::jsonb,
-  is_active BOOLEAN DEFAULT true
+CREATE TABLE public.ai_suggestions (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  suggestion_id text NOT NULL UNIQUE CHECK (length(suggestion_id) > 0),
+  vault_id uuid NOT NULL,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  status USER-DEFINED NOT NULL DEFAULT 'pending'::suggestion_status,
+  suggestion_type USER-DEFINED NOT NULL,
+  title text NOT NULL,
+  description text NOT NULL,
+  reasoning text,
+  confidence_score numeric CHECK (confidence_score >= 0::numeric AND confidence_score <= 1::numeric),
+  projected_apy_improvement numeric,
+  projected_risk_change numeric,
+  expected_return numeric,
+  suggestion_data jsonb NOT NULL CHECK (jsonb_typeof(suggestion_data) = 'object'::text),
+  sentiment_data jsonb,
+  market_data jsonb,
+  applied_at timestamp with time zone,
+  dismissed_at timestamp with time zone,
+  user_feedback text,
+  CONSTRAINT ai_suggestions_pkey PRIMARY KEY (id),
+  CONSTRAINT ai_suggestions_vault_id_fkey FOREIGN KEY (vault_id) REFERENCES public.vaults(id)
 );
-
-CREATE INDEX idx_users_wallet_address ON users(wallet_address);
-CREATE INDEX idx_users_created_at ON users(created_at);
-
--- ============================================
--- Migration 002: Vaults table
--- Purpose: Store vault configurations and metadata
-
-CREATE TABLE IF NOT EXISTS vaults (
-  id BIGSERIAL PRIMARY KEY,
-  vault_id UUID NOT NULL UNIQUE DEFAULT gen_random_uuid(),
-  owner VARCHAR(56) NOT NULL REFERENCES users(wallet_address),
-  contract_address VARCHAR(56) UNIQUE,
-  name VARCHAR(255) NOT NULL,
-  description TEXT,
-  config JSONB NOT NULL,
-  status VARCHAR(50) DEFAULT 'inactive', -- inactive, active, paused, closed
-  total_value NUMERIC(30, 7) DEFAULT 0,
-  total_shares NUMERIC(30, 7) DEFAULT 0,
-  share_price NUMERIC(30, 7) DEFAULT 1,
-  last_rebalance TIMESTAMP,
-  is_public BOOLEAN DEFAULT false,
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+CREATE TABLE public.backtest_results (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  backtest_id text NOT NULL UNIQUE CHECK (length(backtest_id) > 0),
+  vault_id uuid,
+  vault_config jsonb NOT NULL CHECK (jsonb_typeof(vault_config) = 'object'::text),
+  timeframe_start timestamp with time zone NOT NULL,
+  timeframe_end timestamp with time zone NOT NULL,
+  status USER-DEFINED NOT NULL DEFAULT 'pending'::backtest_status,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  completed_at timestamp with time zone,
+  total_return numeric,
+  annualized_return numeric,
+  volatility numeric,
+  sharpe_ratio numeric,
+  max_drawdown numeric,
+  win_rate numeric,
+  benchmark_return numeric,
+  alpha numeric,
+  beta numeric,
+  results jsonb DEFAULT '{}'::jsonb,
+  error_message text,
+  CONSTRAINT backtest_results_pkey PRIMARY KEY (id),
+  CONSTRAINT backtest_results_vault_id_fkey FOREIGN KEY (vault_id) REFERENCES public.vaults(id)
 );
-
-CREATE INDEX idx_vaults_owner ON vaults(owner);
-CREATE INDEX idx_vaults_status ON vaults(status);
-CREATE INDEX idx_vaults_contract_address ON vaults(contract_address);
-CREATE INDEX idx_vaults_created_at ON vaults(created_at);
-CREATE INDEX idx_vaults_is_public ON vaults(is_public);
-
--- ============================================
--- Migration 003: Vault Performance table
--- Purpose: Track vault performance metrics over time
-
-CREATE TABLE IF NOT EXISTS vault_performance (
-  id BIGSERIAL PRIMARY KEY,
-  vault_id UUID NOT NULL REFERENCES vaults(vault_id) ON DELETE CASCADE,
-  timestamp TIMESTAMP NOT NULL,
-  total_value NUMERIC(30, 7) NOT NULL,
-  returns NUMERIC(20, 7) NOT NULL DEFAULT 0,
-  return_percentage NUMERIC(10, 7) NOT NULL DEFAULT 0,
-  allocations JSONB,
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+CREATE TABLE public.marketplace_listings (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  listing_id text NOT NULL UNIQUE CHECK (length(listing_id) > 0),
+  nft_id uuid NOT NULL,
+  seller_wallet_address text NOT NULL CHECK (length(seller_wallet_address) > 0),
+  price numeric NOT NULL CHECK (price > 0::numeric),
+  price_asset text NOT NULL DEFAULT 'USDC'::text,
+  status USER-DEFINED NOT NULL DEFAULT 'active'::listing_status,
+  title text NOT NULL CHECK (length(title) > 0),
+  description text,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  expires_at timestamp with time zone,
+  sold_at timestamp with time zone,
+  cancelled_at timestamp with time zone,
+  buyer_wallet_address text,
+  sale_price numeric,
+  metadata jsonb DEFAULT '{}'::jsonb,
+  CONSTRAINT marketplace_listings_pkey PRIMARY KEY (id),
+  CONSTRAINT marketplace_listings_nft_id_fkey FOREIGN KEY (nft_id) REFERENCES public.vault_nfts(id)
 );
-
-CREATE INDEX idx_vault_performance_vault_id ON vault_performance(vault_id);
-CREATE INDEX idx_vault_performance_timestamp ON vault_performance(timestamp);
-CREATE INDEX idx_vault_performance_vault_timestamp ON vault_performance(vault_id, timestamp);
-
--- ============================================
--- Migration 004: Backtest Results table
--- Purpose: Store backtest simulation results
-
-CREATE TABLE IF NOT EXISTS backtest_results (
-  id BIGSERIAL PRIMARY KEY,
-  backtest_id UUID NOT NULL UNIQUE DEFAULT gen_random_uuid(),
-  vault_id UUID REFERENCES vaults(vault_id) ON DELETE CASCADE,
-  user_wallet VARCHAR(56) REFERENCES users(wallet_address),
-  timeframe VARCHAR(50) NOT NULL, -- e.g., "3m", "1y", "2y"
-  start_date DATE NOT NULL,
-  end_date DATE NOT NULL,
-  metrics JSONB NOT NULL, -- total_return, volatility, sharpe_ratio, max_drawdown, etc.
-  timeline JSONB, -- array of daily/monthly snapshots
-  comparison JSONB, -- buy-and-hold comparison
-  status VARCHAR(50) DEFAULT 'completed', -- pending, running, completed, failed
-  error_message TEXT,
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+CREATE TABLE public.users (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  wallet_address text NOT NULL UNIQUE CHECK (length(wallet_address) > 0),
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  profile jsonb DEFAULT '{}'::jsonb,
+  network text DEFAULT 'futurenet'::text,
+  last_login_at timestamp with time zone,
+  CONSTRAINT users_pkey PRIMARY KEY (id)
 );
-
-CREATE INDEX idx_backtest_results_vault_id ON backtest_results(vault_id);
-CREATE INDEX idx_backtest_results_user ON backtest_results(user_wallet);
-CREATE INDEX idx_backtest_results_created_at ON backtest_results(created_at);
-
--- ============================================
--- Migration 005: AI Suggestions table
--- Purpose: Store AI-generated strategy suggestions
-
-CREATE TABLE IF NOT EXISTS ai_suggestions (
-  id BIGSERIAL PRIMARY KEY,
-  suggestion_id UUID NOT NULL UNIQUE DEFAULT gen_random_uuid(),
-  vault_id UUID NOT NULL REFERENCES vaults(vault_id) ON DELETE CASCADE,
-  title VARCHAR(255) NOT NULL,
-  description TEXT NOT NULL,
-  suggestion_data JSONB NOT NULL,
-  expected_impact VARCHAR(255),
-  risk_level VARCHAR(50), -- low, medium, high
-  priority INTEGER,
-  applied BOOLEAN DEFAULT false,
-  applied_at TIMESTAMP,
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+CREATE TABLE public.vault_nfts (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  nft_id text NOT NULL UNIQUE CHECK (length(nft_id) > 0),
+  vault_id uuid NOT NULL,
+  token_id text NOT NULL UNIQUE CHECK (length(token_id) > 0),
+  contract_address text NOT NULL,
+  ownership_percentage numeric NOT NULL CHECK (ownership_percentage > 0::numeric AND ownership_percentage <= 100::numeric),
+  original_owner text NOT NULL,
+  current_holder text NOT NULL,
+  metadata jsonb DEFAULT '{}'::jsonb,
+  minted_at timestamp with time zone NOT NULL DEFAULT now(),
+  last_transfer_at timestamp with time zone,
+  total_profits_earned numeric DEFAULT 0,
+  last_profit_distribution timestamp with time zone,
+  CONSTRAINT vault_nfts_pkey PRIMARY KEY (id),
+  CONSTRAINT vault_nfts_vault_id_fkey FOREIGN KEY (vault_id) REFERENCES public.vaults(id)
 );
-
-CREATE INDEX idx_ai_suggestions_vault_id ON ai_suggestions(vault_id);
-CREATE INDEX idx_ai_suggestions_applied ON ai_suggestions(applied);
-CREATE INDEX idx_ai_suggestions_created_at ON ai_suggestions(created_at);
-
--- ============================================
--- Migration 006: Vault NFTs table
--- Purpose: Track fractional ownership NFTs for vaults
-
-CREATE TABLE IF NOT EXISTS vault_nfts (
-  id BIGSERIAL PRIMARY KEY,
-  nft_id UUID NOT NULL UNIQUE DEFAULT gen_random_uuid(),
-  vault_id UUID NOT NULL REFERENCES vaults(vault_id) ON DELETE CASCADE,
-  owner VARCHAR(56) NOT NULL REFERENCES users(wallet_address),
-  ownership_percentage NUMERIC(10, 7) NOT NULL,
-  contract_address VARCHAR(56),
-  metadata JSONB,
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+CREATE TABLE public.vault_performance (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  vault_id uuid NOT NULL,
+  timestamp timestamp with time zone NOT NULL DEFAULT now(),
+  total_value numeric NOT NULL CHECK (total_value >= 0::numeric),
+  share_price numeric NOT NULL CHECK (share_price > 0::numeric),
+  returns_24h numeric,
+  returns_7d numeric,
+  returns_30d numeric,
+  returns_all_time numeric,
+  apy_current numeric,
+  metadata jsonb DEFAULT '{}'::jsonb,
+  CONSTRAINT vault_performance_pkey PRIMARY KEY (id),
+  CONSTRAINT vault_performance_vault_id_fkey FOREIGN KEY (vault_id) REFERENCES public.vaults(id)
 );
-
-CREATE INDEX idx_vault_nfts_vault_id ON vault_nfts(vault_id);
-CREATE INDEX idx_vault_nfts_owner ON vault_nfts(owner);
-CREATE INDEX idx_vault_nfts_contract_address ON vault_nfts(contract_address);
-
--- ============================================
--- Migration 007: Marketplace Listings table
--- Purpose: Track NFT marketplace listings
-
-CREATE TABLE IF NOT EXISTS marketplace_listings (
-  id BIGSERIAL PRIMARY KEY,
-  listing_id UUID NOT NULL UNIQUE DEFAULT gen_random_uuid(),
-  nft_id UUID NOT NULL REFERENCES vault_nfts(nft_id) ON DELETE CASCADE,
-  vault_id UUID NOT NULL REFERENCES vaults(vault_id) ON DELETE CASCADE,
-  seller VARCHAR(56) NOT NULL REFERENCES users(wallet_address),
-  price NUMERIC(30, 7) NOT NULL,
-  currency VARCHAR(50) DEFAULT 'USDC',
-  status VARCHAR(50) DEFAULT 'active', -- active, sold, cancelled
-  buyer VARCHAR(56),
-  sold_at TIMESTAMP,
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+CREATE TABLE public.vault_transactions (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  vault_id uuid NOT NULL,
+  user_address text NOT NULL,
+  type text NOT NULL CHECK (type = ANY (ARRAY['deposit'::text, 'withdrawal'::text])),
+  amount_xlm numeric NOT NULL CHECK (amount_xlm > 0::numeric),
+  amount_usd numeric NOT NULL CHECK (amount_usd > 0::numeric),
+  shares numeric NOT NULL CHECK (shares > 0::numeric),
+  xlm_price numeric NOT NULL CHECK (xlm_price > 0::numeric),
+  share_price numeric NOT NULL CHECK (share_price > 0::numeric),
+  transaction_hash text,
+  block_number bigint,
+  timestamp timestamp with time zone NOT NULL DEFAULT now(),
+  metadata jsonb DEFAULT '{}'::jsonb,
+  CONSTRAINT vault_transactions_pkey PRIMARY KEY (id),
+  CONSTRAINT vault_transactions_vault_id_fkey FOREIGN KEY (vault_id) REFERENCES public.vaults(id)
 );
-
-CREATE INDEX idx_marketplace_listings_vault_id ON marketplace_listings(vault_id);
-CREATE INDEX idx_marketplace_listings_seller ON marketplace_listings(seller);
-CREATE INDEX idx_marketplace_listings_status ON marketplace_listings(status);
-CREATE INDEX idx_marketplace_listings_nft_id ON marketplace_listings(nft_id);
-
--- ============================================
--- Migration 008: User Positions table
--- Purpose: Track individual user positions in vaults
-
-CREATE TABLE IF NOT EXISTS user_vault_positions (
-  id BIGSERIAL PRIMARY KEY,
-  user_wallet VARCHAR(56) NOT NULL REFERENCES users(wallet_address) ON DELETE CASCADE,
-  vault_id UUID NOT NULL REFERENCES vaults(vault_id) ON DELETE CASCADE,
-  shares NUMERIC(30, 7) NOT NULL DEFAULT 0,
-  initial_deposit NUMERIC(30, 7) NOT NULL,
-  current_value NUMERIC(30, 7) DEFAULT 0,
-  deposited_at TIMESTAMP NOT NULL,
-  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+CREATE TABLE public.vaults (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  vault_id text NOT NULL UNIQUE CHECK (length(vault_id) > 0),
+  owner_wallet_address text NOT NULL,
+  contract_address text UNIQUE,
+  name text NOT NULL,
+  description text,
+  config jsonb NOT NULL DEFAULT '{}'::jsonb CHECK (jsonb_typeof(config) = 'object'::text),
+  status USER-DEFINED NOT NULL DEFAULT 'draft'::vault_status,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  deployed_at timestamp with time zone,
+  total_value_locked numeric DEFAULT 0,
+  network text NOT NULL DEFAULT 'testnet'::text,
+  CONSTRAINT vaults_pkey PRIMARY KEY (id),
+  CONSTRAINT vaults_owner_wallet_address_fkey FOREIGN KEY (owner_wallet_address) REFERENCES public.users(wallet_address)
 );
-
-CREATE INDEX idx_user_positions_user_wallet ON user_vault_positions(user_wallet);
-CREATE INDEX idx_user_positions_vault_id ON user_vault_positions(vault_id);
-CREATE INDEX idx_user_positions_user_vault ON user_vault_positions(user_wallet, vault_id);
-CREATE UNIQUE INDEX idx_user_vault_position_unique ON user_vault_positions(user_wallet, vault_id);
-
--- ============================================
--- Migration 009: Transaction History table
--- Purpose: Track all vault-related transactions
-
-CREATE TABLE IF NOT EXISTS vault_transactions (
-  id BIGSERIAL PRIMARY KEY,
-  transaction_id UUID NOT NULL UNIQUE DEFAULT gen_random_uuid(),
-  vault_id UUID NOT NULL REFERENCES vaults(vault_id) ON DELETE CASCADE,
-  user_wallet VARCHAR(56) REFERENCES users(wallet_address),
-  type VARCHAR(50) NOT NULL, -- deposit, withdraw, rebalance, deployment
-  amount NUMERIC(30, 7),
-  shares NUMERIC(30, 7),
-  status VARCHAR(50) DEFAULT 'pending', -- pending, success, failed
-  hash VARCHAR(256),
-  ledger BIGINT,
-  error_message TEXT,
-  metadata JSONB,
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE INDEX idx_vault_transactions_vault_id ON vault_transactions(vault_id);
-CREATE INDEX idx_vault_transactions_user ON vault_transactions(user_wallet);
-CREATE INDEX idx_vault_transactions_type ON vault_transactions(type);
-CREATE INDEX idx_vault_transactions_status ON vault_transactions(status);
-CREATE INDEX idx_vault_transactions_created_at ON vault_transactions(created_at);
-
--- ============================================
--- Enable Real-time
--- ============================================
-ALTER PUBLICATION supabase_realtime ADD TABLE vaults;
-ALTER PUBLICATION supabase_realtime ADD TABLE vault_performance;
-ALTER PUBLICATION supabase_realtime ADD TABLE vault_transactions;
