@@ -132,15 +132,13 @@ async function calculateAPY(vaultId: string): Promise<number> {
     }
 
     // METHOD 2: Fallback to snapshot-based APY (less accurate for trading vaults)
+    // IMPORTANT: Use ALL snapshots from inception to match the earnings calculation timeframe
     console.log(`[calculateAPY] ${vaultId} - Using snapshot-based method (no transaction data)`);
-
-    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
     
     const { data: snapshots } = await supabase
       .from('vault_performance')
       .select('*')
       .eq('vault_id', vault.id)
-      .gte('timestamp', thirtyDaysAgo)
       .order('timestamp', { ascending: true });
 
     if (!snapshots || snapshots.length < 2) {
@@ -173,16 +171,23 @@ async function calculateAPY(vaultId: string): Promise<number> {
       return 0;
     }
 
-    const firstSnapshot = filteredSnapshots[0];
+    // IMPORTANT FIX: Use MINIMUM snapshot value as initial, not first chronologically
+    // This matches how earnings are calculated (TVL - min deposits)
+    // The deposit might have happened before first snapshot, and gains occurred before monitoring started
+    const minSnapshot = filteredSnapshots.reduce((min, s) => 
+      s.total_value < min.total_value ? s : min
+    );
     const lastSnapshot = filteredSnapshots[filteredSnapshots.length - 1];
 
-    const initialValue = firstSnapshot.total_value;
+    const initialValue = minSnapshot.total_value;
     const currentValue = lastSnapshot.total_value;
+    
+    console.log(`[calculateAPY] ${vaultId} - Using MIN snapshot as baseline: $${initialValue.toFixed(2)} (not first: $${filteredSnapshots[0].total_value.toFixed(2)})`);
 
     if (initialValue <= 0) return 0;
 
-    // Calculate time period in days
-    const timeDiff = new Date(lastSnapshot.timestamp).getTime() - new Date(firstSnapshot.timestamp).getTime();
+    // Calculate time period in days from minimum value to current
+    const timeDiff = new Date(lastSnapshot.timestamp).getTime() - new Date(minSnapshot.timestamp).getTime();
     const days = timeDiff / (1000 * 60 * 60 * 24);
 
     if (days <= 0) return 0;
@@ -254,7 +259,7 @@ async function getTransactionTotals(vaultId: string, currentTVL: number): Promis
     }
 
     // Fallback: Estimate from snapshots (old method - less accurate)
-    console.log(`[getTransactionTotals] ${vaultId} - No transaction data, falling back to estimation`);
+    console.warn(`[getTransactionTotals] ${vaultId} - No transaction data available! Falling back to snapshot-based estimation. Earnings calculations will be approximate only.`);
     
     const { data: snapshots } = await supabase
       .from('vault_performance')
@@ -263,6 +268,7 @@ async function getTransactionTotals(vaultId: string, currentTVL: number): Promis
       .order('timestamp', { ascending: true });
 
     if (!snapshots || snapshots.length === 0) {
+      console.warn(`[getTransactionTotals] ${vaultId} - No snapshots either. Assuming current TVL as deposit baseline.`);
       return { totalDeposits: currentTVL, totalWithdrawals: 0 };
     }
 
@@ -392,15 +398,10 @@ export async function getVaultAnalytics(vaultId: string): Promise<VaultAnalytics
 
     console.log(`[getVaultAnalytics] ${vaultId} - Current TVL from latest snapshot: $${tvl.toFixed(2)}`);
 
-    // Use pre-calculated APY from snapshot if available, otherwise calculate it
-    let apy: number;
-    if (latestSnapshot && latestSnapshot.length > 0 && latestSnapshot[0].apy_current !== null) {
-      apy = latestSnapshot[0].apy_current;
-      console.log(`[getVaultAnalytics] ${vaultId} - Using pre-calculated APY: ${apy.toFixed(2)}%`);
-    } else {
-      apy = await calculateAPY(vaultId);
-      console.log(`[getVaultAnalytics] ${vaultId} - Calculated APY on-the-fly: ${apy.toFixed(2)}%`);
-    }
+    // ALWAYS calculate APY fresh to ensure consistency with earnings calculation
+    // Don't use pre-calculated snapshot APY as it may use different methodology
+    const apy = await calculateAPY(vaultId);
+    console.log(`[getVaultAnalytics] ${vaultId} - Calculated APY: ${apy.toFixed(2)}%`);
 
     // Get transaction totals (pass current TVL for safety checks)
     const { totalDeposits, totalWithdrawals } = await getTransactionTotals(vaultId, tvl);
@@ -408,12 +409,20 @@ export async function getVaultAnalytics(vaultId: string): Promise<VaultAnalytics
 
     // Calculate earnings
     // Earnings = Current TVL - Net Deposits
+    // NOTE: If no transaction data exists, this uses min snapshot value as deposits,
+    // which means earnings will be TVL - min(snapshot), representing growth from lowest point
     let totalEarnings = tvl - netDeposits;
     
-    // Safety check: if earnings are wildly negative (more than TVL), 
-    // it means our deposit tracking is wrong. Reset to 0.
+    // Safety checks for unrealistic values
     if (totalEarnings < -tvl) {
       console.warn(`[getVaultAnalytics] Unrealistic earnings (${totalEarnings}) for vault ${vaultId}. Resetting to 0.`);
+      totalEarnings = 0;
+    }
+    
+    // If earnings are negative but very small (< 1% of TVL), it's likely just price fluctuations
+    // when we have no transaction data. Consider it break-even.
+    if (totalEarnings < 0 && Math.abs(totalEarnings) < tvl * 0.01 && totalDeposits === totalWithdrawals) {
+      console.log(`[getVaultAnalytics] Small negative earnings without transaction data. Likely price noise. Setting to 0.`);
       totalEarnings = 0;
     }
     
@@ -678,24 +687,38 @@ export async function getPortfolioPerformanceHistory(
 
     if (!snapshots || snapshots.length === 0) return [];
 
-    // Group snapshots by timestamp (hour-level grouping)
-    const groupedByHour = snapshots.reduce((acc, snapshot) => {
+    // FIXED: Group by hour and vault, taking only the LATEST snapshot per vault per hour
+    // This prevents summing multiple snapshots from the same vault in one hour
+    const groupedByHourAndVault: Record<string, Record<number, any>> = {};
+    
+    snapshots.forEach(snapshot => {
       const hourKey = new Date(snapshot.timestamp).toISOString().slice(0, 13); // YYYY-MM-DDTHH
-      if (!acc[hourKey]) {
-        acc[hourKey] = {
-          timestamp: snapshot.timestamp,
-          totalValue: 0,
-          count: 0,
-        };
+      if (!groupedByHourAndVault[hourKey]) {
+        groupedByHourAndVault[hourKey] = {};
       }
-      acc[hourKey].totalValue += snapshot.total_value;
-      acc[hourKey].count++;
-      return acc;
-    }, {} as Record<string, { timestamp: string; totalValue: number; count: number }>);
+      
+      // Keep only the latest snapshot for each vault in this hour
+      const existing = groupedByHourAndVault[hourKey][snapshot.vault_id];
+      if (!existing || new Date(snapshot.timestamp) > new Date(existing.timestamp)) {
+        groupedByHourAndVault[hourKey][snapshot.vault_id] = snapshot;
+      }
+    });
 
-    // Convert to array and calculate portfolio value at each point
-    const portfolioHistory = (Object.values(groupedByHour) as Array<{ timestamp: string; totalValue: number; count: number }>)
-      .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+    // Now sum the latest snapshot from each vault per hour
+    const portfolioHistory: Array<{ timestamp: string; totalValue: number }> = [];
+    
+    for (const hourKey of Object.keys(groupedByHourAndVault).sort()) {
+      const vaultSnapshots = Object.values(groupedByHourAndVault[hourKey]);
+      const totalValue = vaultSnapshots.reduce((sum, s: any) => sum + s.total_value, 0);
+      const latestTimestamp = vaultSnapshots.reduce((latest: string, s: any) => {
+        return new Date(s.timestamp) > new Date(latest) ? s.timestamp : latest;
+      }, vaultSnapshots[0].timestamp);
+      
+      portfolioHistory.push({
+        timestamp: latestTimestamp,
+        totalValue,
+      });
+    }
 
     if (portfolioHistory.length === 0) return [];
 

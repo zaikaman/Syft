@@ -606,8 +606,8 @@ const Dashboard = () => {
                         : 0);
                   
                   const apy = vault.performance?.apyCurrent ?? vaultAnalytics[vault.vault_id]?.apy;
-                  const returns24h = vault.performance?.returns24h;
-                  const returns7d = vault.performance?.returns7d;
+                  // const returns24h = vault.performance?.returns24h;
+                  // const returns7d = vault.performance?.returns7d;
                   
                   return (
                     <motion.div
@@ -654,7 +654,7 @@ const Dashboard = () => {
                                 : 'N/A'}
                             </div>
                           </div>
-                          <div>
+                          {/* <div>
                             <div className="text-xs text-neutral-500 mb-0.5">24h / 7d</div>
                             <div className="text-sm">
                               <span className={`font-medium ${
@@ -673,7 +673,7 @@ const Dashboard = () => {
                                   : 'N/A'}
                               </span>
                             </div>
-                          </div>
+                          </div> */}
                           <div className="flex items-center justify-between md:justify-end gap-3">
                             <div className="flex items-center gap-2">
                               <div className={`w-1.5 h-1.5 rounded-full ${vault.status === 'active' ? 'bg-success-400' : 'bg-neutral-400'}`} />

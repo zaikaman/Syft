@@ -103,7 +103,38 @@ export class StrategyAnalyzer {
     const strengths: string[] = [];
 
     const assets = config.assets || [];
-    const totalAllocation = assets.reduce((sum, asset) => sum + (asset.percentage || 0), 0);
+    
+    // CRITICAL FIX: Handle case where assets are stored as strings without percentage
+    // This happens when vaults are deployed without explicit allocations
+    const assetsWithPercentages = assets.map(asset => {
+      // If asset is just a string (legacy format), convert to AssetAllocation
+      if (typeof asset === 'string') {
+        return {
+          assetCode: asset,
+          assetId: asset,
+          percentage: 0, // Will trigger equal distribution below
+        };
+      }
+      // If asset object exists but percentage is missing, default to 0
+      return {
+        ...asset,
+        percentage: asset.percentage ?? 0,
+      };
+    });
+    
+    let totalAllocation = assetsWithPercentages.reduce((sum, asset) => sum + asset.percentage, 0);
+    
+    // If total allocation is 0 but we have assets, assume equal distribution
+    // This is a reasonable default for vaults without explicit allocations
+    if (totalAllocation === 0 && assetsWithPercentages.length > 0) {
+      const equalPercentage = 100 / assetsWithPercentages.length;
+      assetsWithPercentages.forEach(asset => {
+        asset.percentage = equalPercentage;
+      });
+      totalAllocation = 100;
+      
+      console.log(`[StrategyAnalyzer] No allocations found for vault, assuming equal distribution: ${equalPercentage.toFixed(2)}% per asset`);
+    }
 
     // Check if allocations sum to 100%
     if (Math.abs(totalAllocation - 100) > 0.1) {
@@ -118,7 +149,7 @@ export class StrategyAnalyzer {
     }
 
     // Check for over-concentration in single asset
-    const maxAllocation = Math.max(...assets.map(a => a.percentage || 0));
+    const maxAllocation = Math.max(...assetsWithPercentages.map(a => a.percentage));
     if (maxAllocation > 70) {
       issues.push({
         severity: 'medium',
@@ -133,8 +164,8 @@ export class StrategyAnalyzer {
     }
 
     // Check for minimum viable allocation
-    assets.forEach((asset, index) => {
-      if (asset.percentage && asset.percentage < 5 && asset.percentage > 0) {
+    assetsWithPercentages.forEach((asset, index) => {
+      if (asset.percentage < 5 && asset.percentage > 0) {
         issues.push({
           severity: 'low',
           category: 'efficiency',
@@ -147,7 +178,7 @@ export class StrategyAnalyzer {
     });
 
     // Check asset count
-    if (assets.length < 2) {
+    if (assetsWithPercentages.length < 2) {
       issues.push({
         severity: 'medium',
         category: 'diversification',
@@ -156,7 +187,7 @@ export class StrategyAnalyzer {
         impact: 'No diversification benefit; high correlation with single asset',
         recommendation: 'Add 2-4 additional assets for better risk distribution',
       });
-    } else if (assets.length >= 3) {
+    } else if (assetsWithPercentages.length >= 3) {
       strengths.push('Good number of assets for diversification');
     }
 
@@ -236,10 +267,25 @@ export class StrategyAnalyzer {
 
     // Check for stablecoin allocation
     const assets = config.assets || [];
+    
+    // Normalize assets to handle both string[] and AssetAllocation[] formats
+    const normalizedAssets = assets.map(asset => {
+      if (typeof asset === 'string') {
+        return {
+          assetCode: asset,
+          percentage: 100 / assets.length, // Equal distribution if not specified
+        };
+      }
+      return {
+        assetCode: asset.assetCode || '',
+        percentage: asset.percentage || 0,
+      };
+    });
+    
     const stablecoins = ['USDC', 'USDT', 'DAI'];
-    const stablecoinAllocation = assets
+    const stablecoinAllocation = normalizedAssets
       .filter(a => stablecoins.includes(a.assetCode?.toUpperCase() || ''))
-      .reduce((sum, a) => sum + (a.percentage || 0), 0);
+      .reduce((sum, a) => sum + a.percentage, 0);
 
     if (stablecoinAllocation === 0) {
       issues.push({
@@ -277,16 +323,30 @@ export class StrategyAnalyzer {
     if (assets.length === 0) return 0;
     if (assets.length === 1) return 20;
 
+    // Normalize assets to handle both string[] and AssetAllocation[] formats
+    const normalizedAssets = assets.map(asset => {
+      if (typeof asset === 'string') {
+        return {
+          assetCode: asset,
+          percentage: 100 / assets.length, // Equal distribution
+        };
+      }
+      return {
+        assetCode: asset.assetCode || '',
+        percentage: asset.percentage || (100 / assets.length),
+      };
+    });
+
     // Number of assets (max 40 points)
-    const assetCountScore = Math.min((assets.length / 5) * 40, 40);
+    const assetCountScore = Math.min((normalizedAssets.length / 5) * 40, 40);
 
     // Allocation balance (max 40 points) - using Herfindahl index inverse
-    const allocations = assets.map(a => (a.percentage || 0) / 100);
+    const allocations = normalizedAssets.map(a => a.percentage / 100);
     const herfindahl = allocations.reduce((sum, a) => sum + a * a, 0);
     const balanceScore = (1 - herfindahl) * 40;
 
     // Asset type diversity (max 20 points)
-    const hasStablecoin = assets.some(a => 
+    const hasStablecoin = normalizedAssets.some(a => 
       ['USDC', 'USDT', 'DAI'].includes(a.assetCode?.toUpperCase() || '')
     );
     const typeScore = hasStablecoin ? 20 : 10;
@@ -359,10 +419,25 @@ export class StrategyAnalyzer {
 
     // Check stablecoin allocation
     const assets = config.assets || [];
+    
+    // Normalize assets to handle both string[] and AssetAllocation[] formats
+    const normalizedAssets = assets.map(asset => {
+      if (typeof asset === 'string') {
+        return {
+          assetCode: asset,
+          percentage: 100 / assets.length,
+        };
+      }
+      return {
+        assetCode: asset.assetCode || '',
+        percentage: asset.percentage || 0,
+      };
+    });
+    
     const stablecoins = ['USDC', 'USDT', 'DAI'];
-    const stablecoinAllocation = assets
+    const stablecoinAllocation = normalizedAssets
       .filter(a => stablecoins.includes(a.assetCode?.toUpperCase() || ''))
-      .reduce((sum, a) => sum + (a.percentage || 0), 0);
+      .reduce((sum, a) => sum + a.percentage, 0);
 
     if (stablecoinAllocation === 0) return 'high';
     if (stablecoinAllocation < 20) return 'medium';

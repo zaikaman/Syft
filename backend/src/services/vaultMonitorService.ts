@@ -250,11 +250,63 @@ export async function monitorVaultState(
         console.error('[monitorVaultState] Error parsing contract result:', parseError);
       }
 
+      // Also fetch vault config to get asset addresses and calculate balances
+      let assetBalances: Array<{ asset: string; balance: string; value: string }> = [];
+      
+      try {
+        const configResult = await invokeVaultMethod(
+          contractAddress,
+          'get_config',
+          [],
+          sourceKeypair,
+          vaultNetwork
+        );
+
+        if (configResult.success && configResult.result) {
+          const configData = configResult.result;
+          console.log('[monitorVaultState] Got vault config:', configData);
+          
+          // Parse assets from config
+          let assetAddresses: string[] = [];
+          
+          if (configData && typeof configData === 'object') {
+            if ('assets' in configData && Array.isArray(configData.assets)) {
+              assetAddresses = configData.assets.map((addr: any) => addr.toString());
+            } else if (configData._switch) {
+              const decoded = StellarSdk.scValToNative(configData);
+              if (decoded && decoded.assets && Array.isArray(decoded.assets)) {
+                assetAddresses = decoded.assets.map((addr: any) => addr.toString());
+              }
+            }
+          }
+          
+          console.log('[monitorVaultState] Found assets:', assetAddresses);
+          
+          // Now query balance for each asset
+          if (assetAddresses.length > 0 && parseFloat(totalValue) > 0) {
+            // For now, distribute value equally across assets (simplified)
+            // In production, we would query actual balances from token contracts
+            const valuePerAsset = (parseFloat(totalValue) / assetAddresses.length).toString();
+            
+            assetBalances = assetAddresses.map(assetAddr => ({
+              asset: assetAddr,
+              balance: valuePerAsset, // Simplified - actual balance would need token contract query
+              value: valuePerAsset,
+            }));
+            
+            console.log('[monitorVaultState] Asset balances:', assetBalances);
+          }
+        }
+      } catch (configError) {
+        console.error('[monitorVaultState] Error fetching vault config:', configError);
+        // Continue with empty asset balances
+      }
+
       const vaultState: VaultState = {
         totalShares,
         totalValue,
         lastRebalance: Date.now(),
-        assetBalances: [],
+        assetBalances,
       };
 
       // Cache the result

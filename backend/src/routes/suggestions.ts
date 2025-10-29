@@ -67,10 +67,73 @@ router.post('/:vaultId/suggestions', async (req: Request, res: Response) => {
       .order('timestamp', { ascending: false })
       .limit(100);
 
+    // DEBUG: Log the vault config structure
+    console.log(`[Suggestions API] Raw vault config:`, JSON.stringify(vault.config, null, 2));
+    console.log(`[Suggestions API] Config keys:`, Object.keys(vault.config || {}));
+    console.log(`[Suggestions API] Current state exists:`, !!vault.config?.current_state);
+    if (vault.config?.current_state) {
+      console.log(`[Suggestions API] Current state keys:`, Object.keys(vault.config.current_state));
+      console.log(`[Suggestions API] Asset balances:`, vault.config.current_state.assetBalances);
+    }
+
+    // Helper to convert contract address to asset code
+    const getAssetCodeFromAddress = (address: string, _network: string): string => {
+      const nativeXLMAddresses: { [key: string]: string } = {
+        'testnet': 'CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC',
+        'futurenet': 'CB64D3G7SM2RTH6JSGG34DDTFTQ5CFDKVDZJZSODMCX4NJ2HV2KN7OHT',
+        'mainnet': 'CAS3J7GYLGXMF6TDJBBYYSE3HQ6BBSMLNUQ34T6TZMYMW2EVH34XOWMA',
+        'public': 'CAS3J7GYLGXMF6TDJBBYYSE3HQ6BBSMLNUQ34T6TZMYMW2EVH34XOWMA',
+      };
+      
+      // Check if it's Native XLM
+      if (Object.values(nativeXLMAddresses).includes(address)) {
+        return 'XLM';
+      }
+      
+      // For other assets, return the address (would need a full registry for mainnet)
+      // In production, you'd query the asset issuer and code
+      return address;
+    };
+
+    // Enrich config with real allocation data from blockchain state
+    const enrichedConfig = { ...vault.config };
+    
+    // If we have current_state with assetBalances, calculate real allocations
+    if (enrichedConfig.current_state?.assetBalances && Array.isArray(enrichedConfig.current_state.assetBalances)) {
+      const assetBalances = enrichedConfig.current_state.assetBalances;
+      const totalValue = parseFloat(enrichedConfig.current_state.totalValue || '0');
+      
+      if (totalValue > 0 && assetBalances.length > 0) {
+        const network = vault.network || 'testnet';
+        
+        // Build assets array with real allocations
+        enrichedConfig.assets = assetBalances.map((balance: any) => {
+          const assetValue = parseFloat(balance.value || '0');
+          const percentage = (assetValue / totalValue) * 100;
+          const assetCode = getAssetCodeFromAddress(balance.asset, network);
+          
+          return {
+            assetCode,
+            assetId: balance.asset, // Keep contract address as ID
+            percentage: percentage,
+          };
+        });
+        
+        console.log(`[Suggestions API] Using real allocations from blockchain:`, 
+          enrichedConfig.assets.map((a: any) => `${a.assetCode}: ${a.percentage.toFixed(2)}%`).join(', ')
+        );
+      }
+    }
+    
+    // If still no proper allocations, use the original assets array
+    if (!enrichedConfig.assets || enrichedConfig.assets.length === 0 || typeof enrichedConfig.assets[0] === 'string') {
+      console.warn(`[Suggestions API] No real allocation data found, using config assets as-is`);
+    }
+
     // Generate suggestions
     const request: SuggestionRequest = {
       vaultId,
-      config: vault.config,
+      config: enrichedConfig,
       performanceData: performance || [],
       userPreferences,
     };

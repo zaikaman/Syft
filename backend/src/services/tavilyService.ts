@@ -106,8 +106,8 @@ export class TavilyService {
     const daysBack = options?.daysBack || 7;
     const maxResults = options?.maxResults || 5;
 
-    // Build search query for crypto asset news
-    const query = `${assetCode} cryptocurrency news analysis trends last ${daysBack} days`;
+    // Build search query for Stellar asset news
+    const query = `${assetCode} Stellar blockchain cryptocurrency news analysis trends last ${daysBack} days`;
 
     try {
       const searchResult = await this.search(query, {
@@ -115,12 +115,13 @@ export class TavilyService {
         maxResults,
         includeAnswer: true,
         includeDomains: [
+          'stellar.org',
+          'soroban.stellar.org',
           'coindesk.com',
           'cointelegraph.com',
           'decrypt.co',
           'theblock.co',
           'cryptoslate.com',
-          'stellar.org',
         ],
       });
 
@@ -155,7 +156,7 @@ export class TavilyService {
    * Search for DeFi and Stellar ecosystem trends
    */
   async getDeFiTrends(): Promise<TavilySearchResponse> {
-    const query = 'Stellar DeFi Soroban smart contracts latest trends developments';
+    const query = 'Stellar blockchain DeFi Soroban Soroswap Aquarius Blend protocols latest trends developments 2025';
 
     return this.search(query, {
       searchDepth: 'basic',
@@ -172,11 +173,11 @@ export class TavilyService {
   }
 
   /**
-   * Search for yield optimization strategies
+   * Search for Stellar yield optimization strategies
    */
   async getYieldStrategies(assets: string[]): Promise<TavilySearchResponse> {
     const assetList = assets.join(' ');
-    const query = `${assetList} DeFi yield farming optimization strategies 2025`;
+    const query = `Stellar blockchain ${assetList} DeFi yield farming optimization strategies Soroswap liquidity 2025`;
 
     return this.search(query, {
       searchDepth: 'advanced',

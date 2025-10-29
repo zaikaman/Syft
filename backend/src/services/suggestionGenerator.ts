@@ -51,7 +51,25 @@ export interface SuggestionRequest {
 }
 
 export class SuggestionGenerator {
-  private readonly SUGGESTION_PROMPT = `You are an expert DeFi yield vault strategist. Based on the following data, generate 3-5 specific, actionable suggestions to improve this vault's performance.
+  private readonly SUGGESTION_PROMPT = `You are an expert DeFi yield vault strategist specializing in the Stellar Network blockchain.
+
+IMPORTANT CONTEXT - STELLAR NETWORK VAULTS:
+- These vaults operate on the Stellar blockchain, NOT Ethereum or other EVM chains
+- Stellar uses its own native DEX (SDEX) and liquidity pools, not Uniswap/Aave
+- Assets are Stellar tokens (e.g., XLM, USDC on Stellar, AQUA, yXLM, etc.)
+- Soroban is Stellar's smart contract platform (similar to Ethereum's Solidity)
+- Transaction fees on Stellar are very low (fractions of a cent, ~0.00001 XLM)
+- Stellar has fast finality (3-5 seconds) enabling frequent rebalancing
+- Popular Stellar DeFi protocols: Soroswap (DEX), Aquarius (liquidity), Blend (lending)
+- Stellar assets use trustlines and are issued by specific issuers
+- The vault smart contracts are written in Rust and deployed on Soroban
+- Rebalancing happens on-chain via Stellar's native DEX or Soroswap
+- Users deposit funds, vault automatically rebalances based on rules (time-based, threshold-based, etc.)
+- Vault configurations include: asset allocations (%), rebalancing rules with conditions, and risk parameters
+- Rebalancing rules can trigger on: time intervals, allocation drift, price changes, or custom conditions
+- The vault aims to optimize yield while managing risk through automated rebalancing
+
+Based on the following data about this Stellar vault, generate 3-5 specific, actionable suggestions to improve its performance:
 
 Strategy Analysis:
 {analysis}
@@ -62,7 +80,7 @@ Social Sentiment Data:
 Market News & Trends:
 {marketNews}
 
-DeFi Ecosystem Trends:
+DeFi Ecosystem Trends (focus on Stellar-specific news):
 {defiTrends}
 
 Market Forecasts:
@@ -72,10 +90,13 @@ User Preferences:
 {preferences}
 
 Generate suggestions that are:
-1. Specific and actionable
-2. Data-driven with clear rationale
-3. Prioritized by potential impact
-4. Realistic to implement
+1. Specific to Stellar Network capabilities and limitations
+2. Reference Stellar DeFi protocols (Soroswap, Aquarius, Blend, etc.) when relevant
+3. Take advantage of Stellar's low fees and fast finality
+4. Consider Stellar asset liquidity and trustline requirements
+5. Data-driven with clear rationale
+6. Prioritized by potential impact
+7. Realistic to implement on Stellar/Soroban
 
 Return a JSON object with a "suggestions" array:
 {
@@ -104,6 +125,13 @@ Respond only with valid JSON object.`;
     const { vaultId, config, performanceData, userPreferences } = request;
 
     console.log(`[SuggestionGenerator] Starting generation for vault: ${vaultId}`);
+    console.log(`[SuggestionGenerator] Config received:`, {
+      name: config.name,
+      assetsCount: config.assets?.length || 0,
+      assetsType: Array.isArray(config.assets) ? (typeof config.assets[0]) : 'not an array',
+      assetsPreview: config.assets?.slice(0, 3),
+      rulesCount: config.rules?.length || 0,
+    });
 
     // Gather all relevant data in parallel
     const [analysis, sentimentData, marketNews, defiTrends, forecasts] = await Promise.allSettled([
@@ -197,21 +225,25 @@ Respond only with valid JSON object.`;
     const sentimentMap: Record<string, SentimentAnalysis> = {};
 
     // Get sentiment for each asset
+    // Handle both string[] and AssetAllocation[] formats
     for (const asset of config.assets) {
+      // Extract asset code from either string or object
+      const assetCode = typeof asset === 'string' ? asset : asset?.assetCode;
+      
       // Skip if asset code is missing or empty
-      if (!asset?.assetCode || asset.assetCode.trim().length === 0) {
+      if (!assetCode || assetCode.trim().length === 0) {
         continue;
       }
 
       try {
         const sentiment = await sentimentAnalysisService.analyzeAssetSentiment(
-          asset.assetCode,
+          assetCode,
           24 // Last 24 hours
         );
-        sentimentMap[asset.assetCode] = sentiment;
+        sentimentMap[assetCode] = sentiment;
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-        console.error(`Failed to get sentiment for ${asset.assetCode}:`, errorMessage);
+        console.error(`Failed to get sentiment for ${assetCode}:`, errorMessage);
         // Continue with other assets even if one fails
       }
     }
@@ -231,21 +263,25 @@ Respond only with valid JSON object.`;
     const newsMap: Record<string, MarketNewsResult> = {};
 
     // Get news for each asset
+    // Handle both string[] and AssetAllocation[] formats
     for (const asset of config.assets) {
+      // Extract asset code from either string or object
+      const assetCode = typeof asset === 'string' ? asset : asset?.assetCode;
+      
       // Skip if asset code is missing or empty
-      if (!asset?.assetCode || asset.assetCode.trim().length === 0) {
+      if (!assetCode || assetCode.trim().length === 0) {
         continue;
       }
 
       try {
-        const news = await tavilyService.getAssetNews(asset.assetCode, {
+        const news = await tavilyService.getAssetNews(assetCode, {
           daysBack: 7,
           maxResults: 3,
         });
-        newsMap[asset.assetCode] = news;
+        newsMap[assetCode] = news;
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-        console.error(`Failed to get market news for ${asset.assetCode}:`, errorMessage);
+        console.error(`Failed to get market news for ${assetCode}:`, errorMessage);
         // Continue with other assets even if one fails
       }
     }
@@ -328,7 +364,7 @@ Respond only with valid JSON object.`;
         messages: [
           {
             role: 'system',
-            content: 'You are an expert DeFi strategist specializing in yield vault optimization. Provide specific, actionable, data-driven suggestions.',
+            content: 'You are an expert DeFi strategist specializing in Stellar Network yield vault optimization. You understand Stellar blockchain, Soroban smart contracts, Stellar DEX, and the Stellar DeFi ecosystem (Soroswap, Aquarius, Blend, etc.). Provide specific, actionable, Stellar-focused, data-driven suggestions that leverage Stellar\'s unique features like low fees and fast finality.',
           },
           {
             role: 'user',

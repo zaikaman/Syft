@@ -676,7 +676,7 @@ router.post('/:vaultId/build-deposit', async (req: Request, res: Response) => {
 router.post('/:vaultId/submit-deposit', async (req: Request, res: Response) => {
   try {
     const { vaultId } = req.params;
-    const { signedXDR, network } = req.body;
+    const { signedXDR, network, userAddress, amount } = req.body;
 
     if (!signedXDR) {
       return res.status(400).json({
@@ -709,6 +709,29 @@ router.post('/:vaultId/submit-deposit', async (req: Request, res: Response) => {
         error: 'Failed to submit deposit transaction',
         details: submitError?.response?.data || submitError.message,
       });
+    }
+
+    // Record transaction for analytics
+    if (userAddress && amount) {
+      try {
+        const { recordVaultTransaction } = await import('../services/transactionService.js');
+        
+        // We need to get the shares from the transaction result
+        // For now, use amount as shares (1:1 ratio for initial deposit)
+        // In production, should parse the transaction result to get actual shares
+        await recordVaultTransaction({
+          vaultId,
+          userAddress,
+          type: 'deposit',
+          amountStroops: amount,
+          shares: amount, // TODO: Extract actual shares from transaction result
+          transactionHash: txHash,
+          network,
+        });
+      } catch (recordError) {
+        console.error('[Submit Deposit] Failed to record transaction (non-critical):', recordError);
+        // Continue - don't fail the deposit if recording fails
+      }
     }
 
     // Invalidate cache and sync state
@@ -786,7 +809,7 @@ router.post('/:vaultId/build-withdraw', async (req: Request, res: Response) => {
 router.post('/:vaultId/submit-withdraw', async (req: Request, res: Response) => {
   try {
     const { vaultId } = req.params;
-    const { signedXDR, network } = req.body;
+    const { signedXDR, network, userAddress, shares } = req.body;
 
     if (!signedXDR) {
       return res.status(400).json({
@@ -819,6 +842,28 @@ router.post('/:vaultId/submit-withdraw', async (req: Request, res: Response) => 
         error: 'Failed to submit withdrawal transaction',
         details: submitError?.response?.data || submitError.message,
       });
+    }
+
+    // Record transaction for analytics
+    if (userAddress && shares) {
+      try {
+        const { recordVaultTransaction } = await import('../services/transactionService.js');
+        
+        // For withdrawals, shares are provided, amount needs to be calculated
+        // For now, use shares as amount (will be calculated based on share price)
+        await recordVaultTransaction({
+          vaultId,
+          userAddress,
+          type: 'withdrawal',
+          amountStroops: shares, // Will be converted based on share price
+          shares: shares,
+          transactionHash: txHash,
+          network,
+        });
+      } catch (recordError) {
+        console.error('[Submit Withdrawal] Failed to record transaction (non-critical):', recordError);
+        // Continue - don't fail the withdrawal if recording fails
+      }
     }
 
     // Invalidate cache and sync state
