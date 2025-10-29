@@ -55,7 +55,8 @@ const Suggestions = () => {
   const [loading, setLoading] = useState(true);
   const [loadingSuggestions, setLoadingSuggestions] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [_suggestionsError, setSuggestionsError] = useState<string | null>(null);
+  const [suggestionsError, setSuggestionsError] = useState<string | null>(null);
+  const [suggestionsMessage, setSuggestionsMessage] = useState<string | null>(null);
   const { address, network, networkPassphrase } = useWallet();
 
   const normalizeNetwork = (net?: string, passphrase?: string): string => {
@@ -122,6 +123,7 @@ const Suggestions = () => {
     
     setLoadingSuggestions(true);
     setSuggestionsError(null);
+    setSuggestionsMessage(null);
 
     try {
       const backendUrl = import.meta.env.PUBLIC_BACKEND_URL || 'http://localhost:3001';
@@ -141,6 +143,7 @@ const Suggestions = () => {
       }
 
       // Generate new AI suggestions (POST endpoint)
+      console.log(`[Frontend] Requesting suggestions for vault: ${selectedVault}`);
       const postResponse = await fetch(`${backendUrl}/api/vaults/${selectedVault}/suggestions`, {
         method: 'POST',
         headers: {
@@ -161,13 +164,26 @@ const Suggestions = () => {
       }
 
       const postData = await postResponse.json();
+      console.log('[Frontend] Received response:', postData);
+      
       if (postData.success) {
         setSuggestions(postData.suggestions || []);
+        
+        // Check if there's a message from the backend
+        if (postData.meta?.message) {
+          setSuggestionsMessage(postData.meta.message);
+          console.warn('[Frontend] Backend message:', postData.meta.message);
+        }
+        
+        // Log empty suggestions
+        if (!postData.suggestions || postData.suggestions.length === 0) {
+          console.warn('[Frontend] Received empty suggestions array');
+        }
       } else {
         throw new Error(postData.error || 'Failed to generate suggestions');
       }
     } catch (err: any) {
-      console.error('Error fetching suggestions:', err);
+      console.error('[Frontend] Error fetching suggestions:', err);
       setSuggestionsError(err.message);
       setSuggestions([]);
     } finally {
@@ -411,11 +427,33 @@ const Suggestions = () => {
                     <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-primary-500 mb-4"></div>
                     <p className="text-neutral-400">Generating AI suggestions...</p>
                   </div>
+                ) : suggestionsError ? (
+                  <div className="text-center py-12">
+                    <AlertCircle className="w-12 h-12 text-error-400 mx-auto mb-3" />
+                    <p className="text-neutral-50 font-semibold mb-2">Failed to Generate Suggestions</p>
+                    <p className="text-sm text-neutral-400 mb-4">{suggestionsError}</p>
+                    <Button
+                      variant="outline"
+                      size="md"
+                      onClick={generateNewSuggestions}
+                    >
+                      Try Again
+                    </Button>
+                  </div>
                 ) : suggestions.length === 0 ? (
                   <div className="text-center py-12">
                     <Lightbulb className="w-12 h-12 text-neutral-600 mx-auto mb-3" />
-                    <p className="text-neutral-400 mb-2">No suggestions yet</p>
-                    <p className="text-sm text-neutral-500 mb-4">Click "Get New Suggestions" to generate AI recommendations</p>
+                    <p className="text-neutral-400 mb-2">No suggestions generated</p>
+                    {suggestionsMessage ? (
+                      <div className="bg-warning-400/10 border border-warning-400/30 rounded-lg p-4 mb-4 max-w-2xl mx-auto">
+                        <div className="flex items-start gap-3">
+                          <AlertCircle className="w-5 h-5 text-warning-400 flex-shrink-0 mt-0.5" />
+                          <p className="text-sm text-neutral-300 text-left">{suggestionsMessage}</p>
+                        </div>
+                      </div>
+                    ) : (
+                      <p className="text-sm text-neutral-500 mb-4">Click "Get New Suggestions" to generate AI recommendations</p>
+                    )}
                   </div>
                 ) : (
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">

@@ -63,7 +63,7 @@ export class TwitterService {
         'Authorization': `Bearer ${this.apiKey}`,
         'Content-Type': 'application/json',
       },
-      timeout: 30000,
+      timeout: 8000, // Reduce timeout to 8 seconds
     });
   }
 
@@ -121,10 +121,35 @@ export class TwitterService {
       };
     } catch (error) {
       if (axios.isAxiosError(error)) {
-        console.error('TwitterXAPI error:', error.response?.data || error.message);
-        throw new Error(`Failed to fetch tweets: ${error.response?.data?.message || error.message}`);
+        const errorMsg = error.code === 'ECONNABORTED' || error.code === 'ETIMEDOUT' 
+          ? 'timeout' 
+          : (error.response?.data || error.message);
+        console.error('TwitterXAPI error:', errorMsg);
+        // Return empty result instead of throwing to prevent cascading failures
+        return {
+          tweets: [],
+          metadata: {
+            totalTweets: 0,
+            timeRange: {
+              start: startTime || new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(),
+              end: endTime || new Date().toISOString(),
+            },
+            searchQuery: query,
+          },
+        };
       }
-      throw error;
+      console.error('Unexpected Twitter error:', error);
+      return {
+        tweets: [],
+        metadata: {
+          totalTweets: 0,
+          timeRange: {
+            start: startTime || new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(),
+            end: endTime || new Date().toISOString(),
+          },
+          searchQuery: query,
+        },
+      };
     }
   }
 

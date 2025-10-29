@@ -84,7 +84,7 @@ export class RedditService {
       headers: {
         'User-Agent': this.userAgent,
       },
-      timeout: 30000,
+      timeout: 8000, // Reduce timeout to 8 seconds
     });
   }
 
@@ -158,10 +158,13 @@ export class RedditService {
       return response.data.data.children.map(child => child.data as RedditPost);
     } catch (error) {
       if (axios.isAxiosError(error)) {
-        console.error('Reddit search error:', error.response?.data || error.message);
-        throw new Error(`Failed to search Reddit: ${error.message}`);
+        const errorMsg = error.code === 'ECONNABORTED' ? 'timeout' : (error.response?.data || error.message);
+        console.error(`Reddit search error for r/${subreddit}:`, errorMsg);
+        // Return empty array instead of throwing to prevent cascading failures
+        return [];
       }
-      throw error;
+      console.error('Unexpected Reddit search error:', error);
+      return [];
     }
   }
 
@@ -184,10 +187,13 @@ export class RedditService {
       return response.data.data.children.map(child => child.data as RedditPost);
     } catch (error) {
       if (axios.isAxiosError(error)) {
-        console.error('Reddit hot posts error:', error.response?.data || error.message);
-        throw new Error(`Failed to fetch hot posts: ${error.message}`);
+        const errorMsg = error.code === 'ECONNABORTED' ? 'timeout' : (error.response?.data || error.message);
+        console.error(`Reddit hot posts error for r/${subreddit}:`, errorMsg);
+        // Return empty array instead of throwing to prevent cascading failures
+        return [];
       }
-      throw error;
+      console.error('Unexpected Reddit hot posts error:', error);
+      return [];
     }
   }
 

@@ -75,25 +75,50 @@ router.post('/:vaultId/suggestions', async (req: Request, res: Response) => {
       userPreferences,
     };
 
+    console.log(`[Suggestions API] Generating suggestions for vault ${vaultId}`);
     const suggestions = await suggestionGenerator.generateSuggestions(request);
+    console.log(`[Suggestions API] Generated ${suggestions.length} suggestions`);
+
+    // Warn if no suggestions were generated
+    if (suggestions.length === 0) {
+      console.warn(`[Suggestions API] No suggestions generated for vault ${vaultId}. Check logs for AI errors.`);
+    }
 
     // Cache the results
     suggestionCacheService.set(vaultId, suggestions);
 
-    // Store suggestions in database
-    const suggestionRecords = suggestions.map(s => ({
-      vault_id: vaultId,
-      suggestion_data: s,
-      created_at: new Date().toISOString(),
-      expires_at: s.expiresAt,
-    }));
+    // Store suggestions in database (only if we have suggestions)
+    if (suggestions.length > 0) {
+      const suggestionRecords = suggestions.map(s => ({
+        suggestion_id: s.id,
+        vault_id: vaultData.id, // Use UUID instead of text vault_id
+        suggestion_type: s.type,
+        title: s.title,
+        description: s.description,
+        reasoning: s.rationale,
+        confidence_score: s.expectedImpact?.returnIncrease ? Math.min(s.expectedImpact.returnIncrease / 100, 1) : null,
+        projected_apy_improvement: s.expectedImpact?.returnIncrease || null,
+        projected_risk_change: s.expectedImpact?.riskReduction ? -s.expectedImpact.riskReduction : null,
+        suggestion_data: s,
+        sentiment_data: s.dataSupport?.sentiment || null,
+        market_data: s.dataSupport?.forecast || null,
+        created_at: new Date().toISOString(),
+      }));
 
-    await supabase.from('ai_suggestions').insert(suggestionRecords);
+      await supabase.from('ai_suggestions').insert(suggestionRecords);
+    }
 
     return res.json({
       success: true,
       cached: false,
       suggestions,
+      meta: {
+        count: suggestions.length,
+        generatedAt: new Date().toISOString(),
+        message: suggestions.length === 0 
+          ? 'No suggestions generated. This could be due to AI errors or insufficient data. Check server logs for details.'
+          : undefined,
+      },
     });
   } catch (error) {
     console.error('Error generating suggestions:', error);
@@ -122,12 +147,25 @@ router.get('/:vaultId/suggestions', async (req: Request, res: Response) => {
       });
     }
 
+    // Get the vault UUID from vault_id
+    const { data: vaultData, error: vaultError } = await supabase
+      .from('vaults')
+      .select('id')
+      .eq('vault_id', vaultId)
+      .single();
+
+    if (vaultError || !vaultData) {
+      return res.status(404).json({
+        success: false,
+        error: 'Vault not found',
+      });
+    }
+
     // Fetch from database
     const { data: suggestions, error } = await supabase
       .from('ai_suggestions')
       .select('*')
-      .eq('vault_id', vaultId)
-      .gte('expires_at', new Date().toISOString())
+      .eq('vault_id', vaultData.id)
       .order('created_at', { ascending: false })
       .limit(10);
 

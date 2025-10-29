@@ -5,7 +5,6 @@ import { Router } from 'express';
 import walletRoutes from './wallet.js';
 import vaultRoutes from './vaults.js';
 import backtestRoutes from './backtests.js';
-import suggestionsRoutes from './suggestions.js';
 import nftRoutes from './nfts.js';
 import marketplaceRoutes from './marketplace.js';
 import userRoutes from './users.js';

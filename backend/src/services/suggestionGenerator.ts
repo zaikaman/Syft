@@ -6,6 +6,7 @@
 import { openai } from '../lib/openaiClient';
 import { strategyAnalyzer, StrategyAnalysis } from './strategyAnalyzer';
 import { sentimentAnalysisService, SentimentAnalysis } from './sentimentAnalysisService';
+import { tavilyService, MarketNewsResult } from './tavilyService';
 import { VaultConfig } from '../../../shared/types/vault';
 
 export interface Suggestion {
@@ -30,6 +31,8 @@ export interface Suggestion {
     sentiment?: Record<string, SentimentAnalysis>;
     forecast?: any;
     analysis?: StrategyAnalysis;
+    marketNews?: Record<string, MarketNewsResult>;
+    defiTrends?: any;
   };
   configChanges?: Partial<VaultConfig>;
   createdAt: string;
@@ -53,8 +56,14 @@ export class SuggestionGenerator {
 Strategy Analysis:
 {analysis}
 
-Sentiment Data:
+Social Sentiment Data:
 {sentiment}
+
+Market News & Trends:
+{marketNews}
+
+DeFi Ecosystem Trends:
+{defiTrends}
 
 Market Forecasts:
 {forecasts}
@@ -68,23 +77,25 @@ Generate suggestions that are:
 3. Prioritized by potential impact
 4. Realistic to implement
 
-Return a JSON array of suggestions with this structure:
-[{
-  "type": "rebalance" | "add_asset" | "remove_asset" | "adjust_rule" | "risk_adjustment",
-  "priority": "low" | "medium" | "high",
-  "title": "<concise title>",
-  "description": "<detailed description>",
-  "rationale": "<why this helps, referencing data>",
-  "expectedImpact": {
-    "returnIncrease": <number or null>,
-    "riskReduction": <number or null>,
-    "efficiencyGain": <number or null>
-  },
-  "steps": ["<step 1>", "<step 2>", ...],
-  "difficulty": "easy" | "moderate" | "advanced"
-}]
+Return a JSON object with a "suggestions" array:
+{
+  "suggestions": [{
+    "type": "rebalance" | "add_asset" | "remove_asset" | "adjust_rule" | "risk_adjustment",
+    "priority": "low" | "medium" | "high",
+    "title": "<concise title>",
+    "description": "<detailed description>",
+    "rationale": "<why this helps, referencing data>",
+    "expectedImpact": {
+      "returnIncrease": <number or null>,
+      "riskReduction": <number or null>,
+      "efficiencyGain": <number or null>
+    },
+    "steps": ["<step 1>", "<step 2>", ...],
+    "difficulty": "easy" | "moderate" | "advanced"
+  }]
+}
 
-Respond only with valid JSON array.`;
+Respond only with valid JSON object.`;
 
   /**
    * Generate AI-powered suggestions for a vault
@@ -92,24 +103,51 @@ Respond only with valid JSON array.`;
   async generateSuggestions(request: SuggestionRequest): Promise<Suggestion[]> {
     const { vaultId, config, performanceData, userPreferences } = request;
 
+    console.log(`[SuggestionGenerator] Starting generation for vault: ${vaultId}`);
+
     // Gather all relevant data in parallel
-    const [analysis, sentimentData, forecasts] = await Promise.allSettled([
+    const [analysis, sentimentData, marketNews, defiTrends, forecasts] = await Promise.allSettled([
       this.analyzeStrategy(vaultId, config, performanceData),
       this.gatherSentimentData(config),
+      this.gatherMarketNews(config),
+      this.gatherDeFiTrends(),
       this.gatherForecasts(config),
     ]);
 
+    console.log('[SuggestionGenerator] Data gathering results:', {
+      analysis: analysis.status,
+      sentimentData: sentimentData.status,
+      marketNews: marketNews.status,
+      defiTrends: defiTrends.status,
+      forecasts: forecasts.status,
+    });
+
     const strategyAnalysis = analysis.status === 'fulfilled' ? analysis.value : null;
     const sentiment = sentimentData.status === 'fulfilled' ? sentimentData.value : null;
+    const marketNewsData = marketNews.status === 'fulfilled' ? marketNews.value : null;
+    const defiTrendsData = defiTrends.status === 'fulfilled' ? defiTrends.value : null;
     const forecastData = forecasts.status === 'fulfilled' ? forecasts.value : null;
+
+    // Log failures
+    if (analysis.status === 'rejected') console.error('[SuggestionGenerator] Analysis failed:', analysis.reason);
+    if (sentimentData.status === 'rejected') console.error('[SuggestionGenerator] Sentiment data failed:', sentimentData.reason);
+    if (marketNews.status === 'rejected') console.error('[SuggestionGenerator] Market news failed:', marketNews.reason);
+    if (defiTrends.status === 'rejected') console.error('[SuggestionGenerator] DeFi trends failed:', defiTrends.reason);
+    if (forecasts.status === 'rejected') console.error('[SuggestionGenerator] Forecasts failed:', forecasts.reason);
+
+    console.log('[SuggestionGenerator] Calling AI suggestion generation...');
 
     // Generate suggestions using AI
     const aiSuggestions = await this.generateAISuggestions(
       strategyAnalysis,
       sentiment,
+      marketNewsData,
+      defiTrendsData,
       forecastData,
       userPreferences
     );
+
+    console.log(`[SuggestionGenerator] AI generated ${aiSuggestions.length} suggestions`);
 
     // Enhance suggestions with additional data
     const enrichedSuggestions = aiSuggestions.map((suggestion, index) => ({
@@ -120,10 +158,18 @@ Respond only with valid JSON array.`;
         sentiment: sentiment || undefined,
         forecast: forecastData || undefined,
         analysis: strategyAnalysis || undefined,
+        marketNews: marketNewsData || undefined,
+        defiTrends: defiTrendsData || undefined,
       },
       createdAt: new Date().toISOString(),
       expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(), // 7 days
     }));
+
+    console.log(`[SuggestionGenerator] Successfully enriched ${enrichedSuggestions.length} suggestions`);
+
+    if (enrichedSuggestions.length === 0) {
+      console.warn('[SuggestionGenerator] WARNING: No suggestions generated. Check AI response and fallback logic.');
+    }
 
     return enrichedSuggestions;
   }
@@ -152,6 +198,11 @@ Respond only with valid JSON array.`;
 
     // Get sentiment for each asset
     for (const asset of config.assets) {
+      // Skip if asset code is missing or empty
+      if (!asset?.assetCode || asset.assetCode.trim().length === 0) {
+        continue;
+      }
+
       try {
         const sentiment = await sentimentAnalysisService.analyzeAssetSentiment(
           asset.assetCode,
@@ -159,11 +210,72 @@ Respond only with valid JSON array.`;
         );
         sentimentMap[asset.assetCode] = sentiment;
       } catch (error) {
-        console.error(`Failed to get sentiment for ${asset.assetCode}:`, error);
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        console.error(`Failed to get sentiment for ${asset.assetCode}:`, errorMessage);
+        // Continue with other assets even if one fails
       }
     }
 
     return sentimentMap;
+  }
+
+  /**
+   * Gather market news from web search
+   */
+  private async gatherMarketNews(config: VaultConfig): Promise<Record<string, MarketNewsResult>> {
+    if (!tavilyService.isConfigured()) {
+      console.warn('Tavily API not configured, skipping market news');
+      return {};
+    }
+
+    const newsMap: Record<string, MarketNewsResult> = {};
+
+    // Get news for each asset
+    for (const asset of config.assets) {
+      // Skip if asset code is missing or empty
+      if (!asset?.assetCode || asset.assetCode.trim().length === 0) {
+        continue;
+      }
+
+      try {
+        const news = await tavilyService.getAssetNews(asset.assetCode, {
+          daysBack: 7,
+          maxResults: 3,
+        });
+        newsMap[asset.assetCode] = news;
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        console.error(`Failed to get market news for ${asset.assetCode}:`, errorMessage);
+        // Continue with other assets even if one fails
+      }
+    }
+
+    return newsMap;
+  }
+
+  /**
+   * Gather DeFi ecosystem trends
+   */
+  private async gatherDeFiTrends(): Promise<any> {
+    if (!tavilyService.isConfigured()) {
+      console.warn('Tavily API not configured, skipping DeFi trends');
+      return null;
+    }
+
+    try {
+      const trends = await tavilyService.getDeFiTrends();
+      return {
+        summary: trends.answer || 'No trends available',
+        articles: trends.results.slice(0, 3).map(r => ({
+          title: r.title,
+          url: r.url,
+          content: r.content.slice(0, 300), // Truncate for token efficiency
+        })),
+      };
+    } catch (error) {
+      console.error('Failed to get DeFi trends:', error);
+      return null;
+    }
   }
 
   /**
@@ -195,6 +307,8 @@ Respond only with valid JSON array.`;
   private async generateAISuggestions(
     analysis: StrategyAnalysis | null,
     sentiment: Record<string, SentimentAnalysis> | null,
+    marketNews: Record<string, MarketNewsResult> | null,
+    defiTrends: any,
     forecasts: Record<string, any> | null,
     preferences?: SuggestionRequest['userPreferences']
   ): Promise<Omit<Suggestion, 'id' | 'vaultId' | 'dataSupport' | 'createdAt'>[]> {
@@ -202,8 +316,12 @@ Respond only with valid JSON array.`;
       const prompt = this.SUGGESTION_PROMPT
         .replace('{analysis}', JSON.stringify(analysis, null, 2))
         .replace('{sentiment}', JSON.stringify(sentiment, null, 2))
+        .replace('{marketNews}', JSON.stringify(marketNews, null, 2))
+        .replace('{defiTrends}', JSON.stringify(defiTrends, null, 2))
         .replace('{forecasts}', JSON.stringify(forecasts, null, 2))
         .replace('{preferences}', JSON.stringify(preferences || {}, null, 2));
+
+      console.log('[SuggestionGenerator] Calling OpenAI API with model:', process.env.OPENAI_MODEL || 'gpt-4-turbo-preview');
 
       const response = await openai.chat.completions.create({
         model: process.env.OPENAI_MODEL || 'gpt-4-turbo-preview',
@@ -218,15 +336,46 @@ Respond only with valid JSON array.`;
           },
         ],
         temperature: 0.7,
-        max_tokens: 2000,
         response_format: { type: 'json_object' },
       });
 
+      console.log('[SuggestionGenerator] OpenAI API call successful');
+
       const content = response.choices[0].message.content || '[]';
-      const parsed = JSON.parse(content);
+      console.log('[SuggestionGenerator] OpenAI response content length:', content.length);
       
-      // Handle both array and object with suggestions array
-      const suggestionsArray = Array.isArray(parsed) ? parsed : (parsed.suggestions || []);
+      const parsed = JSON.parse(content);
+      console.log('[SuggestionGenerator] Parsed response type:', Array.isArray(parsed) ? 'array' : 'object');
+      
+      if (!Array.isArray(parsed)) {
+        console.log('[SuggestionGenerator] Parsed response keys:', Object.keys(parsed));
+      }
+      
+      // Handle multiple possible response structures
+      let suggestionsArray: any[] = [];
+      if (Array.isArray(parsed)) {
+        suggestionsArray = parsed;
+      } else if (parsed.suggestions && Array.isArray(parsed.suggestions)) {
+        suggestionsArray = parsed.suggestions;
+      } else if (parsed.data && Array.isArray(parsed.data)) {
+        suggestionsArray = parsed.data;
+      } else if (parsed.results && Array.isArray(parsed.results)) {
+        suggestionsArray = parsed.results;
+      } else {
+        // Try to find any array in the response
+        const possibleArrays = Object.entries(parsed).filter(([_, value]) => Array.isArray(value));
+        if (possibleArrays.length > 0) {
+          console.log('[SuggestionGenerator] Found array keys:', possibleArrays.map(([key]) => key));
+          suggestionsArray = possibleArrays[0][1] as any[];
+        }
+      }
+      
+      console.log('[SuggestionGenerator] Extracted suggestions count:', suggestionsArray.length);
+
+      if (suggestionsArray.length === 0) {
+        console.warn('[SuggestionGenerator] OpenAI returned empty suggestions array');
+        console.warn('[SuggestionGenerator] OpenAI response preview:', JSON.stringify(parsed, null, 2).substring(0, 500));
+      }
 
       return suggestionsArray.map((s: any) => ({
         type: s.type || 'rebalance',
@@ -243,10 +392,14 @@ Respond only with valid JSON array.`;
         configChanges: s.configChanges,
       }));
     } catch (error) {
-      console.error('Failed to generate AI suggestions:', error);
+      console.error('[SuggestionGenerator] Failed to generate AI suggestions:', error);
+      console.error('[SuggestionGenerator] Error details:', error instanceof Error ? error.message : String(error));
       
       // Fallback to rule-based suggestions
-      return this.generateFallbackSuggestions(analysis);
+      console.log('[SuggestionGenerator] Falling back to rule-based suggestions');
+      const fallbackSuggestions = this.generateFallbackSuggestions(analysis);
+      console.log(`[SuggestionGenerator] Generated ${fallbackSuggestions.length} fallback suggestions`);
+      return fallbackSuggestions;
     }
   }
 
@@ -259,8 +412,14 @@ Respond only with valid JSON array.`;
     const suggestions: Omit<Suggestion, 'id' | 'vaultId' | 'dataSupport' | 'createdAt'>[] = [];
 
     if (!analysis) {
+      console.warn('[SuggestionGenerator] No analysis data available for fallback suggestions');
       return suggestions;
     }
+
+    console.log('[SuggestionGenerator] Generating fallback from analysis:', {
+      issuesCount: analysis.issues.length,
+      diversificationScore: analysis.diversificationScore,
+    });
 
     // Convert high-severity issues to suggestions
     analysis.issues

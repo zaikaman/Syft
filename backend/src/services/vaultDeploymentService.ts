@@ -960,11 +960,8 @@ export async function invokeVaultMethod(
   network?: string
 ): Promise<any> {
   try {
-    console.log(`[Contract Invocation] Invoking ${method} on ${contractAddress}`);
-    
     // Get network-specific servers
     const servers = getNetworkServers(network);
-    console.log(`[Contract Invocation] Using network: ${servers.network}`);
     
     // Load source account
     const sourceAccount = await servers.horizonServer.loadAccount(sourceKeypair.publicKey());
@@ -1030,17 +1027,13 @@ export async function invokeVaultMethod(
       .setTimeout(300)
       .build();
     
-    console.log(`[Contract Invocation] Simulating transaction...`);
-    
     // Simulate transaction to get resource footprint and auth
     const simulationResponse = await servers.sorobanServer.simulateTransaction(transaction);
     
     if (StellarSdk.rpc.Api.isSimulationError(simulationResponse)) {
-      console.error(`[Contract Invocation] Simulation failed:`, simulationResponse.error);
+      console.error(`❌ Contract simulation failed for ${method}:`, simulationResponse.error);
       throw new Error(`Simulation failed: ${simulationResponse.error}`);
     }
-    
-    console.log(`[Contract Invocation] Simulation successful, preparing transaction...`);
     
     // Define read-only methods that don't need to be submitted
     const readOnlyMethods = [
@@ -1063,11 +1056,6 @@ export async function invokeVaultMethod(
     
     // For read-only methods, return simulation result without submitting transaction
     if (isReadOnly) {
-      console.log(`📖 Read-only method detected - using simulation result (no transaction submitted)`);
-      console.log(`✅ Successfully queried ${method} from ${contractAddress}`);
-      if (contractResult) {
-        console.log(`📦 Contract return value:`, contractResult);
-      }
       
       return {
         success: true,
@@ -1078,8 +1066,6 @@ export async function invokeVaultMethod(
     }
     
     // For write methods, assemble and submit the transaction
-    console.log(`✍️  Write method detected - submitting transaction...`);
-    
     // Assemble the transaction with simulation results (adds footprint and auth)
     transaction = StellarSdk.rpc.assembleTransaction(
       transaction,
@@ -1089,18 +1075,11 @@ export async function invokeVaultMethod(
     // Sign transaction
     transaction.sign(sourceKeypair);
     
-    console.log(`[Contract Invocation] Submitting transaction...`);
-    
     // Submit transaction
     const response = await servers.horizonServer.submitTransaction(transaction);
     
-    console.log(`✅ Successfully invoked ${method} on ${contractAddress}`);
-    console.log(`📡 Transaction hash: ${response.hash}`);
-    console.log(`🔗 View on explorer: https://stellar.expert/explorer/${servers.network}/tx/${response.hash}`);
-    
-    if (contractResult) {
-      console.log(`📦 Contract return value:`, contractResult);
-    }
+    console.log(`✅ ${method} transaction submitted: ${response.hash}`);
+    console.log(`🔗 https://stellar.expert/explorer/${servers.network}/tx/${response.hash}`);
     
     return {
       success: true,

@@ -74,35 +74,61 @@ Respond only with valid JSON.`;
     asset: string,
     hoursBack: number = 24
   ): Promise<SentimentAnalysis> {
-    // Fetch data from both sources in parallel
+    // Validate asset parameter
+    if (!asset || asset.trim().length === 0) {
+      throw new Error('Asset code is required for sentiment analysis');
+    }
+
+    // Fetch data from both sources in parallel with timeout
     const [twitterData, redditData] = await Promise.allSettled([
       twitterService.isConfigured() 
-        ? twitterService.getAssetSentiment(asset, hoursBack)
+        ? Promise.race([
+            twitterService.getAssetSentiment(asset, hoursBack),
+            new Promise((_, reject) => setTimeout(() => reject(new Error('Twitter API timeout')), 10000))
+          ])
         : Promise.resolve(null),
       redditService.isConfigured()
-        ? redditService.getAssetSentiment(asset, hoursBack)
+        ? Promise.race([
+            redditService.getAssetSentiment(asset, hoursBack),
+            new Promise((_, reject) => setTimeout(() => reject(new Error('Reddit API timeout')), 10000))
+          ])
         : Promise.resolve(null),
     ]);
 
-    const tweets = twitterData.status === 'fulfilled' && twitterData.value 
-      ? twitterData.value.tweets 
+    const tweets: any[] = twitterData.status === 'fulfilled' && twitterData.value && typeof twitterData.value === 'object' && 'tweets' in twitterData.value
+      ? (twitterData.value as any).tweets 
       : [];
-    const redditPosts = redditData.status === 'fulfilled' && redditData.value
-      ? redditData.value.posts
+    const redditPosts: any[] = redditData.status === 'fulfilled' && redditData.value && typeof redditData.value === 'object' && 'posts' in redditData.value
+      ? (redditData.value as any).posts
       : [];
 
     if (tweets.length === 0 && redditPosts.length === 0) {
-      throw new Error('No social media data available for sentiment analysis');
+      console.warn(`No social media data available for ${asset}, using neutral sentiment`);
+      // Return neutral sentiment instead of throwing error
+      return {
+        asset,
+        overallSentiment: 'neutral',
+        sentimentScore: 0,
+        confidence: 0.3,
+        totalPosts: 0,
+        sources: {
+          twitter: { count: 0, sentiment: 'neutral' },
+          reddit: { count: 0, sentiment: 'neutral' },
+        },
+        keyThemes: [],
+        summary: 'No social media data available for analysis',
+        timestamp: new Date().toISOString(),
+      };
     }
 
     // Analyze Twitter sentiment
     const twitterSentiment = tweets.length > 0
-      ? await this.analyzePosts(tweets.map(t => t.text))
+      ? await this.analyzePosts(tweets.map((t: any) => t.text))
       : { sentiment: 'neutral' as SentimentScore, score: 0, confidence: 0, keyThemes: [], summary: '' };
 
     // Analyze Reddit sentiment
     const redditSentiment = redditPosts.length > 0
-      ? await this.analyzePosts(redditPosts.map(p => `${p.title}\n${p.selftext}`))
+      ? await this.analyzePosts(redditPosts.map((p: any) => `${p.title}\n${p.selftext}`))
       : { sentiment: 'neutral' as SentimentScore, score: 0, confidence: 0, keyThemes: [], summary: '' };
 
     // Combine sentiments with weighted average
@@ -189,7 +215,6 @@ Respond only with valid JSON.`;
           },
         ],
         temperature: 0.3,
-        max_tokens: 500,
         response_format: { type: 'json_object' },
       });
 

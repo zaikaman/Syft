@@ -159,7 +159,6 @@ export async function monitorVaultState(
     // Check cache first
     const cached = vaultStateCache.get(contractAddress);
     if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
-      console.log(`[monitorVaultState] Returning cached state for ${contractAddress}`);
       return cached.state;
     }
 
@@ -209,7 +208,7 @@ export async function monitorVaultState(
       // Parse the XDR result - it should be a VaultState struct
       const contractResult = stateResult.result;
       
-      console.log('[monitorVaultState] Raw contract result:', contractResult);
+      // Raw contract result received
 
       // Import stellar-sdk for XDR parsing
       const StellarSdk = await import('@stellar/stellar-sdk');
@@ -235,7 +234,7 @@ export async function monitorVaultState(
           // If it's an ScVal, decode it
           if (contractResult._switch) {
             const decoded = StellarSdk.scValToNative(contractResult);
-            console.log('[monitorVaultState] Decoded contract state:', decoded);
+            // Contract state decoded
             
             if (decoded && typeof decoded === 'object') {
               const sharesValue = decoded.total_shares;
@@ -246,8 +245,7 @@ export async function monitorVaultState(
           }
         }
         
-        console.log('[monitorVaultState] Parsed state - shares:', totalShares, 'value:', totalValue);
-        console.log('[monitorVaultState] TVL in XLM:', (Number(totalValue) / 10_000_000).toFixed(7));
+        // State parsed successfully
       } catch (parseError) {
         console.error('[monitorVaultState] Error parsing contract result:', parseError);
       }
@@ -271,7 +269,7 @@ export async function monitorVaultState(
       
       // Return cached state if available, even if expired
       if (cached) {
-        console.log('[monitorVaultState] Returning expired cached state due to error');
+        console.warn('⚠️  Using cached vault state due to query error');
         return cached.state;
       }
       
@@ -398,7 +396,7 @@ async function calculateCurrentAPY(_vaultId: string, vaultUUID: string): Promise
       // For very new vaults (< 1 day), don't annualize - just show the actual return percentage
       // Annualizing tiny time periods creates unrealistic extrapolations
       if (daysInvested < 1) {
-        console.log(`[calculateCurrentAPY] Vault is very new (${(daysInvested * 24).toFixed(1)} hours), showing actual return instead of annualized`);
+        // Vault age: ${(daysInvested * 24).toFixed(1)} hours
         // Return actual percentage return (not annualized)
         return totalReturn * 100;
       }
@@ -441,7 +439,7 @@ async function calculateCurrentAPY(_vaultId: string, vaultUUID: string): Promise
     
     // For very new vaults (< 1 day), don't annualize - just show the actual return
     if (days < 1) {
-      console.log(`[calculateCurrentAPY] Vault is very new (${(days * 24).toFixed(1)} hours), showing actual return instead of annualized`);
+      // Vault age: ${(days * 24).toFixed(1)} hours
       return simpleReturn * 100;
     }
     
@@ -449,7 +447,7 @@ async function calculateCurrentAPY(_vaultId: string, vaultUUID: string): Promise
 
     return Math.max(-100, Math.min(10000, apy));
   } catch (error) {
-    console.error('[calculateCurrentAPY] Error:', error);
+    console.error('❌ Error calculating APY:', error instanceof Error ? error.message : error);
     return 0;
   }
 }
@@ -539,7 +537,7 @@ export async function recordPerformanceSnapshot(
       if (netInvested > 0) {
         // All-time return = (Current Value - Net Invested) / Net Invested
         returnsAllTime = ((value - netInvested) / netInvested) * 100;
-        console.log(`[recordPerformanceSnapshot] All-time return: Current=$${value.toFixed(2)}, Invested=$${netInvested.toFixed(2)}, Return=${returnsAllTime.toFixed(2)}%`);
+        // All-time return calculated
       }
     } else {
       // Fallback: Compare to first snapshot
@@ -578,7 +576,7 @@ export async function recordPerformanceSnapshot(
       throw error;
     }
 
-    console.log(`[recordPerformanceSnapshot] ${vaultId} - Recorded snapshot: TVL=$${value.toFixed(2)}, 24h=${returns24h?.toFixed(2) || 'N/A'}%, 7d=${returns7d?.toFixed(2) || 'N/A'}%, 30d=${returns30d?.toFixed(2) || 'N/A'}%, All-Time=${returnsAllTime?.toFixed(2) || 'N/A'}%, APY=${apyCurrent.toFixed(2)}%`);
+    // Performance snapshot recorded
   } catch (error) {
     console.error('Error recording performance snapshot:', error);
     throw error;
