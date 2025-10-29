@@ -5,6 +5,12 @@ import Home from "./pages/Home";
 import VaultBuilder from "./pages/VaultBuilder";
 import Dashboard from "./pages/Dashboard";
 import VaultDetail from "./pages/VaultDetail";
+import Marketplace from "./pages/Marketplace";
+import Analytics from "./pages/Analytics";
+import Backtests from "./pages/Backtests";
+import NFTs from "./pages/NFTs";
+import Suggestions from "./pages/Suggestions";
+import Debugger from "./pages/Debugger";
 import AppLayout from "./layouts/AppLayout";
 
 // Redirect component for vault details
@@ -40,6 +46,12 @@ function App() {
         <Route index element={<Navigate to="/app/dashboard" replace />} />
         <Route path="dashboard" element={<Dashboard />} />
         <Route path="builder" element={<VaultBuilder />} />
+        <Route path="marketplace" element={<Marketplace />} />
+        <Route path="analytics" element={<Analytics />} />
+        <Route path="backtests" element={<Backtests />} />
+        <Route path="nfts" element={<NFTs />} />
+        <Route path="suggestions" element={<Suggestions />} />
+        <Route path="debugger" element={<Debugger />} />
         <Route path="vaults/:vaultId" element={<VaultDetail />} />
       </Route>
     </Routes>
