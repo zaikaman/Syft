@@ -14,10 +14,12 @@ const kit: StellarWalletsKit = new StellarWalletsKit({
 });
 
 export const connectWallet = async () => {
+  console.log("[connectWallet] Starting connection...");
   await kit.openModal({
     modalTitle: "Connect to your wallet",
     onWalletSelected: (option: ISupportedWallet) => {
       const selectedId = option.id;
+      console.log("[connectWallet] Wallet selected:", selectedId);
       kit.setWallet(selectedId);
 
       // Now open selected wallet's login flow by calling `getAddress` --
@@ -25,22 +27,20 @@ export const connectWallet = async () => {
       void kit.getAddress().then((address) => {
         // Once `getAddress` returns successfully, we know they actually
         // connected the selected wallet, and we set our localStorage
+        console.log("[connectWallet] Got address:", address.address);
         if (address.address) {
           storage.setItem("walletId", selectedId);
           storage.setItem("walletAddress", address.address);
-        } else {
-          storage.setItem("walletId", "");
-          storage.setItem("walletAddress", "");
+          console.log("[connectWallet] Saved walletId and address to storage");
         }
       });
       if (selectedId == "freighter" || selectedId == "hot-wallet") {
         void kit.getNetwork().then((network) => {
+          console.log("[connectWallet] Got network:", network.network);
           if (network.network && network.networkPassphrase) {
             storage.setItem("walletNetwork", network.network);
             storage.setItem("networkPassphrase", network.networkPassphrase);
-          } else {
-            storage.setItem("walletNetwork", "");
-            storage.setItem("networkPassphrase", "");
+            console.log("[connectWallet] Saved network info to storage");
           }
         });
       }
@@ -49,8 +49,22 @@ export const connectWallet = async () => {
 };
 
 export const disconnectWallet = async () => {
+  console.log("[disconnectWallet] Starting disconnect...");
+  
+  // Disconnect from the wallet kit
   await kit.disconnect();
+  
+  // Clear all wallet-related storage
+  console.log("[disconnectWallet] Clearing storage...");
   storage.removeItem("walletId");
+  storage.removeItem("walletAddress");
+  storage.removeItem("walletNetwork");
+  storage.removeItem("networkPassphrase");
+  
+  // Verify storage is cleared
+  console.log("[disconnectWallet] After clearing - walletId:", storage.getItem("walletId"));
+  console.log("[disconnectWallet] After clearing - walletAddress:", storage.getItem("walletAddress"));
+  console.log("[disconnectWallet] Disconnect complete");
 };
 
 export const fetchBalance = async (address: string, network?: string) => {

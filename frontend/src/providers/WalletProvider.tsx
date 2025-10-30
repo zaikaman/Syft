@@ -3,9 +3,7 @@ import {
   useContext,
   useEffect,
   useMemo,
-  useRef,
   useState,
-  useTransition,
 } from "react";
 import { wallet } from "../util/wallet";
 import storage from "../util/storage";
@@ -41,16 +39,15 @@ export const useWallet = () => {
 export const WalletProvider = ({ children }: { children: React.ReactNode }) => {
   const [state, setState] =
     useState<Omit<WalletContextType, "isPending">>(initialState);
-  const [isPending, startTransition] = useTransition();
-  const popupLock = useRef(false);
+  const [isPending] = useState(false);
   const signTransaction = wallet.signTransaction.bind(wallet);
 
   const nullify = () => {
     updateState(initialState);
-    storage.setItem("walletId", "");
-    storage.setItem("walletAddress", "");
-    storage.setItem("walletNetwork", "");
-    storage.setItem("networkPassphrase", "");
+    storage.removeItem("walletId");
+    storage.removeItem("walletAddress");
+    storage.removeItem("walletNetwork");
+    storage.removeItem("networkPassphrase");
   };
 
   const updateState = (newState: Omit<WalletContextType, "isPending">) => {
@@ -66,83 +63,33 @@ export const WalletProvider = ({ children }: { children: React.ReactNode }) => {
     });
   };
 
-  const updateCurrentWalletState = async () => {
-    // There is no way, with StellarWalletsKit, to check if the wallet is
-    // installed/connected/authorized. We need to manage that on our side by
-    // checking our storage item.
+  const updateCurrentWalletState = () => {
+    // Check storage for wallet data
     const walletId = storage.getItem("walletId");
-    const walletNetwork = storage.getItem("walletNetwork");
     const walletAddr = storage.getItem("walletAddress");
+    const walletNetwork = storage.getItem("walletNetwork");
     const passphrase = storage.getItem("networkPassphrase");
 
-    if (
-      !state.address &&
-      walletAddr !== null &&
-      walletNetwork !== null &&
-      passphrase !== null
-    ) {
-      updateState({
-        address: walletAddr,
-        network: walletNetwork,
-        networkPassphrase: passphrase,
-      });
-    }
+    console.log("[WalletProvider] Polling - Storage:", { walletId, walletAddr, walletNetwork, passphrase });
+    console.log("[WalletProvider] Polling - State:", { address: state.address, network: state.network });
 
-    if (!walletId) {
-      nullify();
-    } else {
-      if (popupLock.current) return;
-      // If our storage item is there, then we try to get the user's address &
-      // network from their wallet. Note: `getAddress` MAY open their wallet
-      // extension, depending on which wallet they select!
-      try {
-        popupLock.current = true;
-        wallet.setWallet(walletId);
-        if (walletId !== "freighter" && walletAddr !== null) return;
-        const [a, n] = await Promise.all([
-          wallet.getAddress(),
-          wallet.getNetwork(),
-        ]);
-
-        if (!a.address) storage.setItem("walletId", "");
-        if (
-          a.address !== state.address ||
-          n.network !== state.network ||
-          n.networkPassphrase !== state.networkPassphrase
-        ) {
-          storage.setItem("walletAddress", a.address);
-          updateState({ ...a, ...n });
-          
-          // Register user in backend when wallet connects
-          if (a.address) {
-            try {
-              const backendUrl = import.meta.env.PUBLIC_BACKEND_URL || 'http://localhost:3001';
-              await fetch(`${backendUrl}/api/users/register`, {
-                method: 'POST',
-                headers: {
-                  'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                  walletAddress: a.address,
-                  network: n.network,
-                }),
-              });
-            } catch (error) {
-              // Silent fail - user can still use the app even if registration fails
-              console.warn('Failed to register user in backend:', error);
-            }
-          }
-        }
-      } catch (e) {
-        // If `getNetwork` or `getAddress` throw errors... sign the user out???
-        nullify();
-        // then log the error (instead of throwing) so we have visibility
-        // into the error while working on Scaffold Stellar but we do not
-        // crash the app process
-        console.error(e);
-      } finally {
-        popupLock.current = false;
+    // If storage has wallet data, sync it to state
+    if (walletId && walletAddr && walletNetwork && passphrase) {
+      // User has connected wallet, sync to state
+      console.log("[WalletProvider] Storage has wallet data, syncing to state");
+      if (state.address !== walletAddr) {
+        console.log("[WalletProvider] Updating state with address:", walletAddr);
+        updateState({
+          address: walletAddr,
+          network: walletNetwork,
+          networkPassphrase: passphrase,
+        });
       }
+    } else if (state.address) {
+      // Storage is empty but state has address = user disconnected
+      // Clear the state
+      console.log("[WalletProvider] Storage empty but state has address - CLEARING STATE");
+      updateState(initialState);
     }
   };
 
@@ -150,33 +97,35 @@ export const WalletProvider = ({ children }: { children: React.ReactNode }) => {
     let timer: NodeJS.Timeout;
     let isMounted = true;
 
+    // Clear any persisted wallet data on initial mount ONLY
+    // This ensures users must manually connect every time they load the page
+    nullify();
+
     // Create recursive polling function to check wallet state continuously
-    const pollWalletState = async () => {
+    const pollWalletState = () => {
       if (!isMounted) return;
 
-      await updateCurrentWalletState();
+      updateCurrentWalletState();
 
       if (isMounted) {
         timer = setTimeout(() => void pollWalletState(), POLL_INTERVAL);
       }
     };
 
-    // Get the wallet address when the component is mounted for the first time
-    startTransition(async () => {
-      await updateCurrentWalletState();
-      // Start polling after initial state is loaded
-
+    // Start polling after clearing storage
+    // This allows the polling to detect when user connects
+    timer = setTimeout(() => {
       if (isMounted) {
-        timer = setTimeout(() => void pollWalletState(), POLL_INTERVAL);
+        pollWalletState();
       }
-    });
+    }, POLL_INTERVAL);
 
     // Clear the timeout and stop polling when the component unmounts
     return () => {
       isMounted = false;
       if (timer) clearTimeout(timer);
     };
-  }, [state]); // eslint-disable-line react-hooks/exhaustive-deps -- it SHOULD only run once per component mount
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps -- it SHOULD only run once per component mount
 
   const contextValue = useMemo(
     () => ({

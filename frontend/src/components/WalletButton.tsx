@@ -1,5 +1,6 @@
-import { useState, useEffect } from "react";
-import { Text, Modal } from "@stellar/design-system";
+import { useState } from "react";
+import { createPortal } from "react-dom";
+import { Text } from "@stellar/design-system";
 import { Wallet, LogOut, RefreshCw, Copy, Check } from "lucide-react";
 import { useWallet } from "../hooks/useWallet";
 import { useWalletBalance } from "../hooks/useWalletBalance";
@@ -23,25 +24,6 @@ export const WalletButton = () => {
       setTimeout(() => setCopied(false), 2000);
     }
   };
-
-  // Style to override Modal backdrop opacity
-  useEffect(() => {
-    if (showDisconnectModal) {
-      const style = document.createElement('style');
-      style.textContent = `
-        #modalContainer + * > div:first-child {
-          background-color: rgba(0, 0, 0, 0.3) !important;
-          backdrop-filter: blur(4px) !important;
-        }
-      `;
-      style.id = 'modal-backdrop-style';
-      document.head.appendChild(style);
-      return () => {
-        const existingStyle = document.getElementById('modal-backdrop-style');
-        if (existingStyle) existingStyle.remove();
-      };
-    }
-  }, [showDisconnectModal]);
 
   if (!address) {
     return (
@@ -80,13 +62,19 @@ export const WalletButton = () => {
         </button>
       </div>
 
-      <div id="modalContainer">
-        <Modal
-          visible={showDisconnectModal}
-          onClose={() => setShowDisconnectModal(false)}
-          parentId="modalContainer"
-        >
-          <div className="w-full max-w-sm p-6 rounded-lg bg-card border border-default shadow-lg">
+      {showDisconnectModal && createPortal(
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center">
+          {/* Backdrop */}
+          <div 
+            className="absolute inset-0 bg-black/75 backdrop-blur-sm"
+            onClick={() => setShowDisconnectModal(false)}
+          />
+          
+          {/* Modal Content */}
+          <div 
+            className="relative w-full max-w-sm mx-4 p-6 rounded-lg bg-card border border-default shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
             {/* Header */}
             <div className="text-center mb-6">
               <div className="inline-flex items-center justify-center w-12 h-12 rounded-lg bg-primary-500/10 border border-primary-500/20 mb-4">
@@ -157,9 +145,11 @@ export const WalletButton = () => {
                 className="w-full justify-center"
                 leftIcon={<LogOut size={18} />}
                 onClick={() => {
-                  void disconnectWallet().then(() =>
-                    setShowDisconnectModal(false),
-                  );
+                  void disconnectWallet().then(() => {
+                    setShowDisconnectModal(false);
+                    // Force page reload to ensure clean state
+                    window.location.reload();
+                  });
                 }}
               >
                 Disconnect Wallet
@@ -176,8 +166,9 @@ export const WalletButton = () => {
               </Button>
             </div>
           </div>
-        </Modal>
-      </div>
+        </div>,
+        document.body
+      )}
 
       <button
         onClick={() => setShowDisconnectModal(true)}

@@ -7,7 +7,7 @@ import { Button } from '../ui/Button';
 import { WalletSelector } from './WalletSelector';
 import { useWallet } from '../../hooks/useWallet';
 import { wallet } from '../../util/wallet';
-import sessionManager from '../../lib/sessionManager';
+import storage from '../../util/storage';
 
 export const WalletConnect = () => {
   const { address, network, isPending } = useWallet();
@@ -39,13 +39,11 @@ export const WalletConnect = () => {
         throw new Error('Failed to get wallet address. Please make sure your wallet is unlocked.');
       }
 
-      // Save session
-      sessionManager.saveWalletSession({
-        walletId,
-        walletAddress: addressData.address,
-        walletNetwork: networkData.network,
-        networkPassphrase: networkData.networkPassphrase,
-      });
+      // Save to storage (wallet will be cleared on page reload/close)
+      storage.setItem('walletId', walletId);
+      storage.setItem('walletAddress', addressData.address);
+      storage.setItem('walletNetwork', networkData.network);
+      storage.setItem('networkPassphrase', networkData.networkPassphrase);
 
       // Close modal on success
       setIsModalOpen(false);
@@ -78,13 +76,12 @@ export const WalletConnect = () => {
     setError(null);
 
     try {
-      // Clear session storage
-      sessionManager.clearWalletSession();
+      // Clear all wallet storage
+      storage.removeItem('walletId');
+      storage.removeItem('walletAddress');
+      storage.removeItem('walletNetwork');
+      storage.removeItem('networkPassphrase');
 
-      // Optional: Disconnect from wallet if supported
-      // Note: StellarWalletsKit doesn't have a disconnect method,
-      // so we just clear our local state
-      
       // Force page reload to reset state
       window.location.reload();
     } catch (err: any) {
