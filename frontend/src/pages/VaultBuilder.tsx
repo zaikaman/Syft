@@ -372,9 +372,9 @@ const VaultBuilder = () => {
         console.log(`[VaultBuilder] ✅ Vault deployed: ${contractAddress}`);
         console.log(`[VaultBuilder] TX Hash: ${transactionHash}`);
         
-        // Step 4: Initialize the vault contract
+        // Step 4: Initialize the vault contract (if not already initialized by backend)
         try {
-          console.log(`[VaultBuilder] Initializing vault contract...`);
+          console.log(`[VaultBuilder] Checking if vault needs initialization...`);
           
           // Build initialization transaction
           const initBuildResponse = await fetch(`${backendUrl}/api/vaults/build-initialize`, {
@@ -393,44 +393,52 @@ const VaultBuilder = () => {
           const initBuildData = await initBuildResponse.json();
 
           if (!initBuildData.success) {
-            throw new Error(initBuildData.error || 'Failed to build initialization transaction');
-          }
-
-          console.log(`[VaultBuilder] Initialization transaction built, requesting wallet signature...`);
-
-          // Sign initialization transaction
-          const { wallet } = await import('../util/wallet');
-          const { signedTxXdr: signedInitXdr } = await wallet.signTransaction(initBuildData.data.xdr, {
-            networkPassphrase: networkPassphrase || 'Test SDF Network ; September 2015',
-          });
-
-          console.log(`[VaultBuilder] Initialization transaction signed, submitting...`);
-
-          // Submit initialization transaction
-          const initSubmitResponse = await fetch(`${backendUrl}/api/vaults/submit-initialize`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              signedXDR: signedInitXdr,
-              contractAddress,
-              network: normalizedNetwork,
-            }),
-          });
-
-          const initSubmitData = await initSubmitResponse.json();
-
-          if (initSubmitData.success) {
-            console.log(`[VaultBuilder] ✅ Vault initialized successfully`);
+            // Check if already initialized (Error #1 = AlreadyInitialized)
+            if (initBuildData.error?.includes('Error(Contract, #1)') || 
+                initBuildData.error?.includes('AlreadyInitialized')) {
+              console.log(`[VaultBuilder] ✅ Vault already initialized by backend`);
+              // Skip initialization - already done
+            } else {
+              throw new Error(initBuildData.error || 'Failed to build initialization transaction');
+            }
           } else {
-            console.warn(`[VaultBuilder] ⚠️ Vault deployed but initialization failed:`, initSubmitData.error);
-            modal.message(
-              `Vault deployed but initialization failed. You may need to initialize manually.\n\nContract: ${contractAddress}`,
-              'Initialization Failed',
-              'warning'
-            );
-            return;
+
+            console.log(`[VaultBuilder] Initialization transaction built, requesting wallet signature...`);
+
+            // Sign initialization transaction
+            const { wallet } = await import('../util/wallet');
+            const { signedTxXdr: signedInitXdr } = await wallet.signTransaction(initBuildData.data.xdr, {
+              networkPassphrase: networkPassphrase || 'Test SDF Network ; September 2015',
+            });
+
+            console.log(`[VaultBuilder] Initialization transaction signed, submitting...`);
+
+            // Submit initialization transaction
+            const initSubmitResponse = await fetch(`${backendUrl}/api/vaults/submit-initialize`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                signedXDR: signedInitXdr,
+                contractAddress,
+                network: normalizedNetwork,
+              }),
+            });
+
+            const initSubmitData = await initSubmitResponse.json();
+
+            if (initSubmitData.success) {
+              console.log(`[VaultBuilder] ✅ Vault initialized successfully`);
+            } else {
+              console.warn(`[VaultBuilder] ⚠️ Vault deployed but initialization failed:`, initSubmitData.error);
+              modal.message(
+                `Vault deployed but initialization failed. You may need to initialize manually.\n\nContract: ${contractAddress}`,
+                'Initialization Failed',
+                'warning'
+              );
+              return;
+            }
           }
         } catch (initError) {
           console.error(`[VaultBuilder] Error during initialization:`, initError);

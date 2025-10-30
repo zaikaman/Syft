@@ -21,4 +21,5 @@ pub enum VaultError {
     SwapFailed = 14,
     PoolNotFound = 15,
     InsufficientLiquidity = 16,
+    RouterNotSet = 17,
 }

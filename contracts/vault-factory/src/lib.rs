@@ -18,7 +18,7 @@ pub enum VaultFactoryError {
     Unauthorized = 4,
 }
 
-// Vault configuration type (minimal version for factory)
+// Minimal vault configuration for factory (we don't actually use this, but need it for function signature)
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct VaultConfig {
@@ -69,7 +69,7 @@ impl VaultFactory {
     }
 
     /// Deploy a new vault instance
-    pub fn create_vault(env: Env, _config: VaultConfig) -> Result<Address, VaultFactoryError> {
+    pub fn create_vault(env: Env, config: VaultConfig) -> Result<Address, VaultFactoryError> {
         // Get WASM hash
         let wasm_hash: BytesN<32> = env.storage().instance()
             .get(&WASM_HASH)
@@ -90,6 +90,9 @@ impl VaultFactory {
         let vault_address = env.deployer()
             .with_current_contract(salt)
             .deploy(wasm_hash);
+        
+        // NOTE: Initialization must be done separately after deployment
+        // The factory only deploys the contract, initialization happens in a separate transaction
         
         // Update vault count and list
         env.storage().instance().set(&VAULT_COUNT, &vault_count);

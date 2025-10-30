@@ -188,8 +188,9 @@ export async function buildDeploymentTransaction(
     const vaultId = generateVaultId();
 
     console.log(`[Build Deploy TX] Building deployment transaction for ${config.name}`);
-    console.log(`[Build Deploy TX] Network: ${network || 'testnet'}`);
+    console.log(`[Build Deploy TX] Network requested: ${network || 'testnet'}`);
     console.log(`[Build Deploy TX] Owner: ${config.owner}`);
+    console.log(`[Build Deploy TX] Source address to load: ${sourceAddress}`);
 
     // Convert asset symbols to contract addresses
     const assetAddressStrings = config.assets.map(asset => {
@@ -200,9 +201,33 @@ export async function buildDeploymentTransaction(
 
     // Get network-specific servers
     const servers = getNetworkServers(network);
+    console.log(`[Build Deploy TX] Network parameter received: "${network}"`);
+    console.log(`[Build Deploy TX] Resolved network: "${servers.network}"`);
+    console.log(`[Build Deploy TX] Network passphrase: "${servers.networkPassphrase}"`);
+    console.log(`[Build Deploy TX] Using Horizon URL: ${servers.horizonServer.serverURL.toString()}`);
+    console.log(`[Build Deploy TX] Using Soroban URL: ${servers.sorobanServer.serverURL.toString()}`);
     
-    // Load source account
-    const sourceAccount = await servers.horizonServer.loadAccount(sourceAddress);
+    // Load source account - check if account exists first
+    let sourceAccount;
+    try {
+      console.log(`[Build Deploy TX] Loading account ${sourceAddress} from ${servers.network}...`);
+      sourceAccount = await servers.horizonServer.loadAccount(sourceAddress);
+      console.log(`[Build Deploy TX] ✓ Account loaded successfully`);
+    } catch (accountError: any) {
+      console.error(`[Build Deploy TX] ✗ Failed to load account:`, accountError.message);
+      // Check if it's a 'not found' error
+      if (accountError.response?.status === 404 || accountError.message?.includes('Not Found')) {
+        throw new Error(
+          `Wallet account ${sourceAddress} not found on ${servers.network}. ` +
+          `Your wallet may be funded on a different network. ` +
+          `Please ensure you're connected to ${servers.network} and your wallet is funded. ` +
+          `For testnet: https://laboratory.stellar.org/#account-creator?network=test ` +
+          `For futurenet: https://laboratory.stellar.org/#account-creator?network=futurenet`
+        );
+      }
+      // Other errors
+      throw new Error(`Failed to load account: ${accountError.message || 'Unknown error'}`);
+    }
 
     // Get vault factory contract address
     let factoryAddress: string;
@@ -230,7 +255,9 @@ export async function buildDeploymentTransaction(
       StellarSdk.Address.fromString(asset).toScVal()
     );
 
-    // Build VaultConfig struct
+    // Build VaultConfig struct (simplified - only 3 fields needed for factory)
+    // Map keys MUST be in alphabetical order for Soroban!
+    // Alphabetical order: assets, name, owner
     const vaultConfigStruct = StellarSdk.xdr.ScVal.scvMap([
       new StellarSdk.xdr.ScMapEntry({
         key: StellarSdk.xdr.ScVal.scvSymbol(Buffer.from('assets')),
@@ -249,18 +276,26 @@ export async function buildDeploymentTransaction(
     // Build transaction to call create_vault on factory
     const operation = factoryContract.call('create_vault', vaultConfigStruct);
 
+    // Determine network passphrase
+    const buildNetworkPassphrase = servers.network === 'futurenet' 
+      ? StellarSdk.Networks.FUTURENET
+      : servers.network === 'mainnet' || servers.network === 'public'
+      ? StellarSdk.Networks.PUBLIC
+      : StellarSdk.Networks.TESTNET;
+    
+    console.log(`[Build Deploy TX] TransactionBuilder passphrase selected: "${buildNetworkPassphrase}"`);
+    console.log(`[Build Deploy TX] SDK TESTNET constant: "${StellarSdk.Networks.TESTNET}"`);
+    console.log(`[Build Deploy TX] SDK FUTURENET constant: "${StellarSdk.Networks.FUTURENET}"`);
+
     let transaction = new StellarSdk.TransactionBuilder(sourceAccount, {
       fee: StellarSdk.BASE_FEE,
-      networkPassphrase: servers.network === 'futurenet' 
-        ? StellarSdk.Networks.FUTURENET
-        : servers.network === 'mainnet' || servers.network === 'public'
-        ? StellarSdk.Networks.PUBLIC
-        : StellarSdk.Networks.TESTNET,
+      networkPassphrase: buildNetworkPassphrase,
     })
       .addOperation(operation)
       .setTimeout(300)
       .build();
 
+    console.log(`[Build Deploy TX] Built transaction network passphrase: "${transaction.networkPassphrase}"`);
     console.log(`[Build Deploy TX] Simulating transaction...`);
 
     // Simulate transaction to get resource footprint
@@ -540,8 +575,23 @@ export async function deployVault(
     // Get network-specific servers
     const servers = getNetworkServers(network);
     
-    // Load source account
-    const sourceAccount = await servers.horizonServer.loadAccount(sourceKeypair.publicKey());
+    // Load source account - check if account exists first
+    let sourceAccount;
+    try {
+      sourceAccount = await servers.horizonServer.loadAccount(sourceKeypair.publicKey());
+    } catch (accountError: any) {
+      // Check if it's a 'not found' error
+      if (accountError.response?.status === 404 || accountError.message?.includes('Not Found')) {
+        throw new Error(
+          `Wallet account not found on ${network || 'testnet'}. ` +
+          `Please fund your wallet first using the Stellar Laboratory or Friendbot. ` +
+          `For testnet: https://laboratory.stellar.org/#account-creator?network=test ` +
+          `For futurenet: https://laboratory.stellar.org/#account-creator?network=futurenet`
+        );
+      }
+      // Other errors
+      throw new Error(`Failed to load account: ${accountError.message || 'Unknown error'}`);
+    }
 
     // Get vault factory contract address based on network
     let factoryAddress: string;
@@ -963,8 +1013,23 @@ export async function invokeVaultMethod(
     // Get network-specific servers
     const servers = getNetworkServers(network);
     
-    // Load source account
-    const sourceAccount = await servers.horizonServer.loadAccount(sourceKeypair.publicKey());
+    // Load source account - check if account exists first
+    let sourceAccount;
+    try {
+      sourceAccount = await servers.horizonServer.loadAccount(sourceKeypair.publicKey());
+    } catch (accountError: any) {
+      // Check if it's a 'not found' error
+      if (accountError.response?.status === 404 || accountError.message?.includes('Not Found')) {
+        throw new Error(
+          `Wallet account not found on ${network || 'testnet'}. ` +
+          `Please fund your wallet first using the Stellar Laboratory or Friendbot. ` +
+          `For testnet: https://laboratory.stellar.org/#account-creator?network=test ` +
+          `For futurenet: https://laboratory.stellar.org/#account-creator?network=futurenet`
+        );
+      }
+      // Other errors
+      throw new Error(`Failed to load account: ${accountError.message || 'Unknown error'}`);
+    }
     
     // Create contract instance
     const contract = new StellarSdk.Contract(contractAddress);

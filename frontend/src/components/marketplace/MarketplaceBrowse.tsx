@@ -42,7 +42,7 @@ interface MarketplaceBrowseProps {
 }
 
 export function MarketplaceBrowse({ onSelectListing }: MarketplaceBrowseProps) {
-  const { address, signTransaction } = useWallet();
+  const { address, signTransaction, network } = useWallet();
   const navigate = useNavigate();
   const [listings, setListings] = useState<Listing[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -129,6 +129,19 @@ export function MarketplaceBrowse({ onSelectListing }: MarketplaceBrowseProps) {
       return;
     }
 
+    if (!network) {
+      alert('Unable to detect wallet network. Please reconnect your wallet.');
+      return;
+    }
+
+    console.log(`[Subscribe] Wallet network from context: "${network}"`);
+    console.log(`[Subscribe] Wallet address: ${address}`);
+    console.log(`[Subscribe] LocalStorage walletNetwork:`, localStorage.getItem('walletNetwork'));
+
+    // Fallback to localStorage if context network is not available yet
+    const effectiveNetwork = network || localStorage.getItem('walletNetwork')?.toLowerCase() || 'testnet';
+    console.log(`[Subscribe] Effective network to use: "${effectiveNetwork}"`);
+
     try {
       setSubscribing(listing.listing_id);
 
@@ -136,13 +149,14 @@ export function MarketplaceBrowse({ onSelectListing }: MarketplaceBrowseProps) {
       const backendUrl = import.meta.env.PUBLIC_BACKEND_URL || 'http://localhost:3001';
 
       // Call subscribe endpoint
+      console.log(`[Subscribe] Sending request with network: "${effectiveNetwork}"`);
       const response = await fetch(`${backendUrl}/api/marketplace/subscribe`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           listingId: listing.listing_id,
           subscriberAddress: address,
-          network: 'futurenet',
+          network: effectiveNetwork,
         }),
       });
 
@@ -153,25 +167,58 @@ export function MarketplaceBrowse({ onSelectListing }: MarketplaceBrowseProps) {
       }
 
       const data = await response.json();
-      const { deploymentXdr, profitSharePercentage } = data.data;
+      const { deploymentXdr, vaultId: newVaultId, profitSharePercentage } = data.data;
+      
+      console.log(`[Subscribe] Got deployment data - vaultId:`, newVaultId);
+
+      console.log(`[Subscribe] Received XDR from backend (first 100 chars):`, deploymentXdr.substring(0, 100));
+      console.log(`[Subscribe] XDR length:`, deploymentXdr.length);
+
+      // Decode and inspect the transaction
+      try {
+        // @ts-ignore - import StellarSdk dynamically
+        const { TransactionBuilder, Networks } = await import('@stellar/stellar-sdk');
+        const tx = TransactionBuilder.fromXDR(deploymentXdr, Networks.TESTNET);
+        console.log(`[Subscribe] Decoded transaction network passphrase:`, tx.networkPassphrase);
+      } catch (e) {
+        console.error(`[Subscribe] Failed to decode XDR:`, e);
+      }
 
       // Sign deployment transaction
-      const signedXdr = await signTransaction(deploymentXdr);
+      console.log(`[Subscribe] Calling signTransaction with XDR...`);
+      const signResult = await signTransaction(deploymentXdr);
+      console.log(`[Subscribe] Sign result:`, signResult);
+      
+      const signedXdr = signResult.signedTxXdr;
+      console.log(`[Subscribe] Extracted signedTxXdr length:`, signedXdr?.length);
+      console.log(`[Subscribe] Signed XDR (first 100 chars):`, signedXdr?.substring(0, 100));
+
+      if (!signedXdr) {
+        throw new Error('Failed to sign transaction - no XDR returned');
+      }
 
       // Submit transaction
+      console.log(`[Subscribe] Submitting signed transaction to backend...`);
       const submitResponse = await fetch(`${backendUrl}/api/vaults/submit-deployment`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          signedXdr,
-          ownerAddress: address,
-          config: {}, // Config is already in the contract
-          network: 'futurenet',
+          signedXDR: signedXdr, // Note: backend expects signedXDR with capital letters
+          vaultId: newVaultId,
+          config: {
+            owner: address,
+            name: `Subscribed ${listing.vault_nfts?.vaults?.name || 'Vault'}`,
+            assets: ['XLM'], // Will be properly set from cloned config
+            rules: [],
+          },
+          network: effectiveNetwork,
         }),
       });
 
       if (!submitResponse.ok) {
-        throw new Error('Failed to deploy vault');
+        const submitError = await submitResponse.json().catch(() => ({ error: 'Unknown error' }));
+        console.error('[Subscribe] Submit deployment error:', submitError);
+        throw new Error(submitError.error || submitError.details || 'Failed to deploy vault');
       }
 
       const submitData = await submitResponse.json();
@@ -190,10 +237,23 @@ export function MarketplaceBrowse({ onSelectListing }: MarketplaceBrowseProps) {
       });
 
       alert(`Successfully subscribed! You're sharing ${profitSharePercentage}% of profits with the creator.`);
-      navigate(`/vault/${vaultId}`);
+      navigate(`/app/vaults/${vaultId}`);
     } catch (error) {
       console.error('Subscription error:', error);
-      alert(error instanceof Error ? error.message : 'Failed to subscribe');
+      const errorMessage = error instanceof Error ? error.message : 'Failed to subscribe';
+      
+      // Check if it's an account not funded error
+      if (errorMessage.includes('Wallet account not found') || errorMessage.includes('Not Found')) {
+        alert(
+          `❌ Your wallet is not funded on this network.\n\n` +
+          `Please fund your wallet first:\n` +
+          `• Testnet: Visit https://laboratory.stellar.org/#account-creator?network=test\n` +
+          `• Futurenet: Visit https://laboratory.stellar.org/#account-creator?network=futurenet\n\n` +
+          `Then try subscribing again.`
+        );
+      } else {
+        alert(`Failed to subscribe: ${errorMessage}`);
+      }
     } finally {
       setSubscribing(null);
     }

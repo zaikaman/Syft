@@ -576,18 +576,25 @@ router.post('/subscribe', async (req: Request, res: Response) => {
       });
     }
 
-    // Clone the vault config
+    // Clone the vault config and ensure it has the correct format
+    const originalConfig = originalVault.config || {};
     const clonedConfig = {
-      ...originalVault.config,
-      // Keep the strategy but mark as cloned
+      owner: subscriberAddress, // Subscriber becomes the owner of the new vault
+      name: originalConfig.name || `Subscribed ${originalVault.name || 'Vault'}`,
+      assets: originalConfig.assets || ['XLM'], // Default to XLM if no assets specified
+      rules: originalConfig.rules || [],
+      routerAddress: originalConfig.routerAddress,
+      // Keep reference to original vault
       clonedFrom: originalVault.vault_id,
     };
+
+    console.log('[Subscribe] Cloned config:', JSON.stringify(clonedConfig, null, 2));
 
     // Build deployment transaction for the subscriber
     const deploymentResult = await buildDeploymentTransaction(
       clonedConfig,
       subscriberAddress,
-      network || originalVault.network || 'futurenet'
+      network || originalVault.network || 'testnet'
     );
 
     // Return deployment XDR for user to sign

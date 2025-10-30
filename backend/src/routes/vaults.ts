@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
 import * as StellarSdk from '@stellar/stellar-sdk';
+import { Keypair } from '@stellar/stellar-sdk';
 import {
   deployVault,
   estimateDeploymentFees,
@@ -27,6 +28,89 @@ import { getNetworkServers } from '../lib/horizonClient.js';
 import suggestionsRoutes from './suggestions.js';
 
 const router = Router();
+
+// Helper function to initialize a vault contract after deployment
+async function initializeVaultContract(
+  contractAddress: string,
+  config: any,
+  network?: string
+): Promise<void> {
+  const servers = getNetworkServers(network);
+  
+  // Use deployer keypair to initialize
+  const deployerSecret = process.env.DEPLOYER_SECRET_KEY;
+  if (!deployerSecret) {
+    throw new Error('DEPLOYER_SECRET_KEY not set');
+  }
+  
+  const deployerKeypair = Keypair.fromSecret(deployerSecret);
+  const deployerAccount = await servers.horizonServer.loadAccount(deployerKeypair.publicKey());
+  
+  // Build VaultConfig with all 5 fields for initialization
+  const vaultContract = new StellarSdk.Contract(contractAddress);
+  
+  // Convert assets to addresses
+  const assetAddresses = (config.assets || []).map((asset: string) => {
+    // This is a simplified version - reuse getAssetAddress logic from vaultDeploymentService
+    if (asset === 'XLM') {
+      return network === 'futurenet' 
+        ? 'CB64D3G7SM2RTH6JSGG34DDTFTQ5CFDKVDZJZSODMCX4NJ2HV2KN7OHT'
+        : 'CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC';
+    } else if (asset === 'USDC') {
+      return 'CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA';
+    }
+    return asset; // Assume it's already an address
+  }).map((addr: string) => StellarSdk.Address.fromString(addr).toScVal());
+  
+  // Build full VaultConfig struct (alphabetical order: assets, name, owner, router_address, rules)
+  const vaultConfigStruct = StellarSdk.xdr.ScVal.scvMap([
+    new StellarSdk.xdr.ScMapEntry({
+      key: StellarSdk.xdr.ScVal.scvSymbol(Buffer.from('assets')),
+      val: StellarSdk.xdr.ScVal.scvVec(assetAddresses),
+    }),
+    new StellarSdk.xdr.ScMapEntry({
+      key: StellarSdk.xdr.ScVal.scvSymbol(Buffer.from('name')),
+      val: StellarSdk.nativeToScVal(config.name, { type: 'string' }),
+    }),
+    new StellarSdk.xdr.ScMapEntry({
+      key: StellarSdk.xdr.ScVal.scvSymbol(Buffer.from('owner')),
+      val: StellarSdk.Address.fromString(config.owner).toScVal(),
+    }),
+    new StellarSdk.xdr.ScMapEntry({
+      key: StellarSdk.xdr.ScVal.scvSymbol(Buffer.from('router_address')),
+      // Option::None in Soroban is encoded as Void, not an empty Vec
+      val: StellarSdk.xdr.ScVal.scvVoid(),
+    }),
+    new StellarSdk.xdr.ScMapEntry({
+      key: StellarSdk.xdr.ScVal.scvSymbol(Buffer.from('rules')),
+      val: StellarSdk.xdr.ScVal.scvVec([]), // Empty rules array
+    }),
+  ]);
+  
+  const operation = vaultContract.call('initialize', vaultConfigStruct);
+  
+  let transaction = new StellarSdk.TransactionBuilder(deployerAccount, {
+    fee: StellarSdk.BASE_FEE,
+    networkPassphrase: servers.networkPassphrase,
+  })
+    .addOperation(operation)
+    .setTimeout(300)
+    .build();
+  
+  // Simulate and prepare transaction
+  const simulationResponse = await servers.sorobanServer.simulateTransaction(transaction);
+  
+  if (StellarSdk.rpc.Api.isSimulationError(simulationResponse)) {
+    throw new Error(`Initialize simulation failed: ${simulationResponse.error}`);
+  }
+  
+  transaction = StellarSdk.rpc.assembleTransaction(transaction, simulationResponse).build();
+  transaction.sign(deployerKeypair);
+  
+  // Submit transaction
+  const submitResult = await servers.horizonServer.submitTransaction(transaction);
+  console.log(`[Initialize] Transaction hash: ${submitResult.hash}`);
+}
 
 // Mount suggestions routes at /vaults/:vaultId/suggestions
 router.use('/', suggestionsRoutes);
@@ -325,11 +409,26 @@ router.post('/submit-deployment', async (req: Request, res: Response) => {
     // Get network-specific servers
     const servers = getNetworkServers(network);
 
+    console.log(`[Submit Deploy] Received signedXDR length:`, signedXDR?.length);
+    console.log(`[Submit Deploy] Network:`, network);
+    console.log(`[Submit Deploy] Network passphrase:`, servers.networkPassphrase);
+
     // Parse the signed transaction
-    const transaction = StellarSdk.TransactionBuilder.fromXDR(
-      signedXDR,
-      servers.networkPassphrase
-    );
+    let transaction;
+    try {
+      transaction = StellarSdk.TransactionBuilder.fromXDR(
+        signedXDR,
+        servers.networkPassphrase
+      );
+      console.log(`[Submit Deploy] ✓ Transaction parsed successfully`);
+    } catch (parseError) {
+      console.error(`[Submit Deploy] ✗ Failed to parse XDR:`, parseError);
+      return res.status(400).json({
+        success: false,
+        error: 'Failed to parse signed transaction',
+        details: parseError instanceof Error ? parseError.message : String(parseError),
+      });
+    }
 
     console.log(`[Submit Deploy] Simulating signed transaction to extract contract address...`);
 
@@ -424,6 +523,19 @@ router.post('/submit-deployment', async (req: Request, res: Response) => {
           ignoreDuplicates: true,
         }
       );
+
+    console.log(`[Submit Deploy] Vault deployed successfully at ${contractAddress}, now initializing...`);
+
+    // Initialize the vault with the full config
+    try {
+      console.log(`[Submit Deploy] Calling initializeVaultContract with config:`, JSON.stringify(config));
+      await initializeVaultContract(contractAddress, config, network);
+      console.log(`[Submit Deploy] ✅ Vault initialized successfully`);
+    } catch (initError) {
+      console.error(`[Submit Deploy] ❌ Failed to initialize vault:`, initError);
+      console.error(`[Submit Deploy] Error stack:`, initError instanceof Error ? initError.stack : 'No stack trace');
+      // Continue anyway - we'll store the vault but mark it as needing initialization
+    }
 
     await supabase.from('vaults').insert({
       vault_id: vaultId,

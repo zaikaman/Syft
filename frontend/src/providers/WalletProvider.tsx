@@ -67,18 +67,22 @@ export const WalletProvider = ({ children }: { children: React.ReactNode }) => {
     // Check storage for wallet data
     const walletId = storage.getItem("walletId");
     const walletAddr = storage.getItem("walletAddress");
-    const walletNetwork = storage.getItem("walletNetwork");
+    const walletNetworkRaw = storage.getItem("walletNetwork");
+    // Normalize network to lowercase (Freighter stores as 'TESTNET', we need 'testnet')
+    const walletNetwork = walletNetworkRaw?.toLowerCase();
     const passphrase = storage.getItem("networkPassphrase");
 
-    console.log("[WalletProvider] Polling - Storage:", { walletId, walletAddr, walletNetwork, passphrase });
+    console.log("[WalletProvider] Polling - Storage:", { walletId, walletAddr, walletNetwork: walletNetworkRaw, passphrase });
     console.log("[WalletProvider] Polling - State:", { address: state.address, network: state.network });
+    console.log("[WalletProvider] Normalized network:", walletNetwork);
 
     // If storage has wallet data, sync it to state
     if (walletId && walletAddr && walletNetwork && passphrase) {
       // User has connected wallet, sync to state
       console.log("[WalletProvider] Storage has wallet data, syncing to state");
-      if (state.address !== walletAddr) {
-        console.log("[WalletProvider] Updating state with address:", walletAddr);
+      // Update if address, network, or passphrase changed
+      if (state.address !== walletAddr || state.network !== walletNetwork || state.networkPassphrase !== passphrase) {
+        console.log("[WalletProvider] Updating state - address:", walletAddr, "network:", walletNetwork);
         updateState({
           address: walletAddr,
           network: walletNetwork,

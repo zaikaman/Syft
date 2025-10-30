@@ -17,15 +17,19 @@ if (Test-Path .env) {
 }
 
 $DEPLOYER_SECRET = $env:DEPLOYER_SECRET_KEY
-$NETWORK = "futurenet"
+# Allow network to be passed as environment variable, default to futurenet
+$NETWORK = if ($env:NETWORK) { $env:NETWORK } else { "testnet" }
+
+# Force new factory deployment (comment this out to use update_wasm instead)
+$FORCE_NEW_FACTORY = $true
 
 # Get network-specific factory address
 if ($NETWORK -eq "futurenet") {
-    $EXISTING_FACTORY = $env:VAULT_FACTORY_CONTRACT_ID_FUTURENET
+    $EXISTING_FACTORY = if ($FORCE_NEW_FACTORY) { $null } else { $env:VAULT_FACTORY_CONTRACT_ID_FUTURENET }
 } elseif ($NETWORK -eq "mainnet" -or $NETWORK -eq "public") {
-    $EXISTING_FACTORY = $env:VAULT_FACTORY_CONTRACT_ID_MAINNET
+    $EXISTING_FACTORY = if ($FORCE_NEW_FACTORY) { $null } else { $env:VAULT_FACTORY_CONTRACT_ID_MAINNET }
 } else {
-    $EXISTING_FACTORY = $env:VAULT_FACTORY_CONTRACT_ID
+    $EXISTING_FACTORY = if ($FORCE_NEW_FACTORY) { $null } else { $env:VAULT_FACTORY_CONTRACT_ID }
 }
 
 if (-not $DEPLOYER_SECRET) {
@@ -168,6 +172,7 @@ Write-Host "Factory Address:  $FACTORY_ADDRESS" -ForegroundColor White
 Write-Host "`n📝 Next Steps:" -ForegroundColor Cyan
 Write-Host "   1. Restart your backend server" -ForegroundColor White
 Write-Host "   2. Create a new vault to test deposit/withdraw" -ForegroundColor White
-Write-Host "`n🔗 View factory on explorer:" -ForegroundColor Cyan
+Write-Host "`nView factory on explorer:" -ForegroundColor Cyan
 $explorerUrl = "https://stellar.expert/explorer/$NETWORK/contract/$FACTORY_ADDRESS"
 Write-Host "   $explorerUrl" -ForegroundColor Blue
+Write-Host ""

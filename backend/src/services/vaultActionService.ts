@@ -60,15 +60,19 @@ export async function buildDepositTransaction(
     const simulationResponse = await servers.sorobanServer.simulateTransaction(transaction);
     
     if (StellarSdk.rpc.Api.isSimulationError(simulationResponse)) {
-      // Check for trustline error
+      // Check for various deposit errors
       const errorMsg = JSON.stringify(simulationResponse);
-      if (errorMsg.includes('trustline entry is missing')) {
+      
+      if (errorMsg.includes('trustline entry is missing') || errorMsg.includes('does not exist')) {
         throw new Error(
-          `Missing trustline: Your account doesn't have a trustline for one of the vault's assets. ` +
-          `Please add trustlines for all vault assets in your wallet before depositing.`
+          `Insufficient balance: This vault requires multiple assets (e.g., USDC + XLM). ` +
+          `You need to have ALL vault assets in your wallet before depositing. ` +
+          `Please get test tokens from a faucet or swap for the required assets first.`
         );
       }
-      throw new Error(`Simulation failed: ${simulationResponse.error}`);
+      
+      console.error(`[Build Deposit TX] Simulation error details:`, simulationResponse);
+      throw new Error(`Deposit failed: ${simulationResponse.error || 'Simulation error'}`);
     }
 
     // Assemble transaction with simulation results

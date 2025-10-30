@@ -40,8 +40,25 @@ impl VaultContract {
         Ok(())
     }
 
-    /// Deposit assets into the vault
+    /// Deposit assets into the vault (with optional auto-swap)
+    /// If deposit_token is different from base token, it will be swapped automatically
     pub fn deposit(env: Env, user: Address, amount: i128) -> Result<i128, VaultError> {
+        // Call deposit_with_token using the base asset (first asset)
+        let config: VaultConfig = env.storage().instance().get(&CONFIG)
+            .ok_or(VaultError::NotInitialized)?;
+        
+        if config.assets.is_empty() {
+            return Err(VaultError::InvalidConfiguration);
+        }
+        
+        let base_token = config.assets.get(0)
+            .ok_or(VaultError::InvalidConfiguration)?;
+        
+        Self::deposit_with_token(env, user, amount, base_token)
+    }
+
+    /// Deposit with specific token (will auto-swap if not base asset)
+    pub fn deposit_with_token(env: Env, user: Address, amount: i128, deposit_token: Address) -> Result<i128, VaultError> {
         // Debug: Entry point
         env.events().publish((symbol_short!("debug"),), symbol_short!("start"));
         
@@ -82,31 +99,56 @@ impl VaultContract {
         let vault_address = env.current_contract_address();
         env.events().publish((symbol_short!("debug"),), symbol_short!("addr_ok"));
         
-        // Transfer tokens from user to vault using token contract
-        // The transfer must happen BEFORE any state changes
+        // Transfer deposit token from user to vault
         env.events().publish((symbol_short!("debug"),), symbol_short!("b4_xfer"));
-        let token_client = token::TokenClient::new(&env, &base_token);
-        token_client.transfer(&user, &vault_address, &amount);
+        let deposit_token_client = token::TokenClient::new(&env, &deposit_token);
+        deposit_token_client.transfer(&user, &vault_address, &amount);
         env.events().publish((symbol_short!("debug"),), symbol_short!("xfer_ok"));
+
+        // Check if we need to swap to base token
+        let final_amount = if deposit_token != base_token {
+            // User deposited a different token, need to swap to base token
+            env.events().publish((symbol_short!("debug"),), symbol_short!("swap_req"));
+            
+            // Get router address
+            let router_address = config.router_address.clone()
+                .ok_or(VaultError::RouterNotSet)?;
+            
+            // Execute swap from deposit_token to base_token
+            let swapped_amount = crate::swap_router::swap_via_router(
+                &env,
+                &router_address,
+                &deposit_token,
+                &base_token,
+                amount,
+                0, // No minimum for now (in production, calculate slippage tolerance)
+            )?;
+            
+            env.events().publish((symbol_short!("debug"),), symbol_short!("swap_ok"));
+            swapped_amount
+        } else {
+            // Already in base token, no swap needed
+            amount
+        };
 
         // Get current state
         let mut state: VaultState = env.storage().instance().get(&STATE)
             .ok_or(VaultError::NotInitialized)?;
 
-        // Calculate shares to mint
+        // Calculate shares to mint based on final amount (after swap if needed)
         let shares = if state.total_shares == 0 {
-            amount // First deposit: 1:1 ratio
+            final_amount // First deposit: 1:1 ratio
         } else {
-            // shares = (amount * total_shares) / total_value
-            amount.checked_mul(state.total_shares)
+            // shares = (final_amount * total_shares) / total_value
+            final_amount.checked_mul(state.total_shares)
                 .and_then(|v| v.checked_div(state.total_value))
                 .ok_or(VaultError::InvalidAmount)?
         };
 
-        // Update state
+        // Update state with final amount
         state.total_shares = state.total_shares.checked_add(shares)
             .ok_or(VaultError::InvalidAmount)?;
-        state.total_value = state.total_value.checked_add(amount)
+        state.total_value = state.total_value.checked_add(final_amount)
             .ok_or(VaultError::InvalidAmount)?;
 
         // Update user position (position was already fetched at the start)
@@ -118,8 +160,8 @@ impl VaultContract {
         env.storage().instance().set(&STATE, &state);
         env.storage().instance().set(&(POSITION, user.clone()), &position);
 
-        // Emit event
-        emit_deposit(&env, &user, amount, shares);
+        // Emit event with final amount (after swap)
+        emit_deposit(&env, &user, final_amount, shares);
 
         Ok(shares)
     }
