@@ -1,5 +1,5 @@
 // T134: Marketplace listing creation form
-// Purpose: Allow NFT holders to list their NFTs for sale
+// Purpose: Allow NFT holders to list their NFTs for sale with profit-sharing model
 
 import { useState, useEffect } from 'react';
 import { Button } from '../ui/Button';
@@ -27,8 +27,7 @@ export function CreateListing({ nftId, onListingCreated }: CreateListingProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [userNFTs, setUserNFTs] = useState<NFT[]>([]);
   const [selectedNFT, setSelectedNFT] = useState<string>(nftId || '');
-  const [price, setPrice] = useState('');
-  const [currency, setCurrency] = useState('XLM');
+  const [profitSharePercentage, setProfitSharePercentage] = useState('10');
   const [error, setError] = useState('');
 
   useEffect(() => {
@@ -68,20 +67,20 @@ export function CreateListing({ nftId, onListingCreated }: CreateListingProps) {
         throw new Error('Please select an NFT');
       }
 
-      const priceNum = parseFloat(price);
-      if (isNaN(priceNum) || priceNum <= 0) {
-        throw new Error('Please enter a valid price');
+      const profitShareNum = parseFloat(profitSharePercentage);
+      if (isNaN(profitShareNum) || profitShareNum <= 0 || profitShareNum > 100) {
+        throw new Error('Please enter a valid profit share percentage (1-100)');
       }
 
-      const response = await fetch('/api/marketplace/listings', {
+      const backendUrl = import.meta.env.PUBLIC_BACKEND_URL || 'http://localhost:3001';
+      const response = await fetch(`${backendUrl}/api/marketplace/listings`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
           nftId: selectedNFT,
-          price: priceNum,
-          currency,
+          profitSharePercentage: profitShareNum,
           sellerAddress: walletAddress,
         }),
       });
@@ -95,7 +94,7 @@ export function CreateListing({ nftId, onListingCreated }: CreateListingProps) {
       // Success
       setIsOpen(false);
       setSelectedNFT('');
-      setPrice('');
+      setProfitSharePercentage('10');
 
       if (onListingCreated) {
         onListingCreated(data.data.listing_id);
@@ -167,60 +166,57 @@ export function CreateListing({ nftId, onListingCreated }: CreateListingProps) {
               </div>
             )}
 
-            {/* Price Input */}
+            {/* Profit Share Percentage Input */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Price *
+              <label className="block text-sm font-medium text-neutral-200 mb-1">
+                Profit Share Percentage *
               </label>
-              <div className="flex gap-2">
+              <div className="flex gap-2 items-center">
                 <input
                   type="number"
-                  value={price}
-                  onChange={(e) => setPrice(e.target.value)}
-                  placeholder="0.00"
-                  step="0.01"
-                  min="0"
-                  className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  value={profitSharePercentage}
+                  onChange={(e) => setProfitSharePercentage(e.target.value)}
+                  placeholder="10"
+                  step="1"
+                  min="1"
+                  max="100"
+                  className="flex-1 px-3 py-2 bg-neutral-900 border border-default rounded-md text-neutral-50 focus:outline-none focus:ring-2 focus:ring-primary-500"
                 />
-                <select
-                  value={currency}
-                  onChange={(e) => setCurrency(e.target.value)}
-                  className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="XLM">XLM</option>
-                  <option value="USDC">USDC</option>
-                </select>
+                <span className="text-neutral-400 text-sm">%</span>
               </div>
+              <p className="text-xs text-neutral-500 mt-1">
+                Percentage of profits subscribers will share with you (1-100%)
+              </p>
             </div>
 
-            {/* Listing Fee Info */}
-            <div className="bg-blue-50 p-4 rounded-md">
-              <h4 className="font-medium text-sm mb-2">Listing Details</h4>
-              <div className="space-y-1 text-sm">
+            {/* Profit Sharing Model Info */}
+            <div className="bg-primary-500/10 border border-primary-500/30 p-4 rounded-md">
+              <h4 className="font-medium text-sm mb-2 text-neutral-50">Profit Sharing Model</h4>
+              <div className="space-y-2 text-sm">
                 <div className="flex justify-between">
-                  <span className="text-gray-600">Platform Fee:</span>
-                  <span className="font-medium">2.5%</span>
+                  <span className="text-neutral-400">Your profit share:</span>
+                  <span className="font-medium text-primary-400">{profitSharePercentage}%</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-gray-600">You'll receive:</span>
-                  <span className="font-medium">
-                    {price ? (parseFloat(price) * 0.975).toFixed(2) : '0.00'} {currency}
-                  </span>
+                  <span className="text-neutral-400">Subscriber keeps:</span>
+                  <span className="font-medium text-neutral-50">{100 - parseFloat(profitSharePercentage || '0')}%</span>
                 </div>
               </div>
+              <p className="text-xs text-neutral-500 mt-3">
+                Subscribers will clone your vault strategy and share {profitSharePercentage}% of their profits with you ongoing.
+              </p>
             </div>
 
             {/* Terms */}
-            <div className="text-xs text-gray-600">
+            <div className="text-xs text-neutral-500">
               <p>
-                By listing your NFT, you agree to our marketplace terms. Your NFT will be
-                locked until sold or you cancel the listing.
+                By listing your NFT, you agree to our marketplace terms. Subscribers will clone your vault strategy and share profits with you.
               </p>
             </div>
 
             {/* Error */}
             {error && (
-              <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded">
+              <div className="bg-error-500/10 border border-error-500/30 text-error-400 px-4 py-3 rounded">
                 {error}
               </div>
             )}
@@ -238,7 +234,7 @@ export function CreateListing({ nftId, onListingCreated }: CreateListingProps) {
               <Button
                 onClick={handleCreateListing}
                 variant="primary"
-                disabled={isLoading || !selectedNFT || !price}
+                disabled={isLoading || !selectedNFT || !profitSharePercentage}
                 className="flex-1"
               >
                 {isLoading ? 'Creating...' : 'Create Listing'}

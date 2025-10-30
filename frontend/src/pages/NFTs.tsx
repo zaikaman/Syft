@@ -168,7 +168,7 @@ const NFTs = () => {
             <div className="flex-1 relative max-w-xl">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-500" />
               <input
-                className="w-full pl-10 pr-10 py-3 rounded-lg bg-neutral-900 border border-default text-neutral-50 focus:outline-none focus:ring-2 focus:ring-primary-500"
+                className="w-full pl-10 pr-10 py-3 rounded-lg bg-neutral-800 border border-neutral-700 text-neutral-50 placeholder:text-neutral-500 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
                 placeholder="Search by NFT name, vault name or ID..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
@@ -188,7 +188,7 @@ const NFTs = () => {
                   setSortBy(s);
                   setSortOrder(o);
                 }}
-                className="px-3 py-2 bg-neutral-900 border border-default rounded-lg text-sm text-neutral-50"
+                className="px-3 py-2 bg-neutral-800 border border-neutral-700 rounded-lg text-sm text-neutral-50 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
               >
                 <option value="date-desc">Newest</option>
                 <option value="date-asc">Oldest</option>
@@ -227,64 +227,65 @@ const NFTs = () => {
                     {/* Image */}
                     {nft.metadata?.imageUrl ? (
                       <div className="relative h-48 overflow-hidden">
-                        <img src={nft.metadata.imageUrl} alt={nft.metadata.name} className="w-full h-full object-cover" />
-                        <div className="absolute top-3 right-3 bg-black/60 px-3 py-1 rounded-full">
-                          <span className="text-xs font-semibold text-primary-500">{(nft.ownership_pct / 100).toFixed(2)}% Ownership</span>
+                        <img src={nft.metadata.imageUrl} alt={nft.metadata.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
+                        <div className="absolute top-3 right-3 bg-black/70 backdrop-blur-sm px-3 py-1.5 rounded-full border border-primary-500/30">
+                          <span className="text-xs font-bold text-primary-400">{(nft.ownership_pct / 100).toFixed(2)}% Ownership</span>
                         </div>
                       </div>
                     ) : (
-                      <div className="h-48 bg-gradient-to-br from-primary-500/20 to-primary-600/20 flex items-center justify-center">
-                        <Package className="w-16 h-16 text-primary-500/50" />
+                      <div className="h-48 bg-gradient-to-br from-primary-500/10 to-primary-600/10 flex items-center justify-center border-b border-neutral-800">
+                        <Package className="w-16 h-16 text-primary-400/50" />
                       </div>
                     )}
 
                     {/* Body */}
                     <div className="p-5">
                       <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <h3 className="text-lg font-bold text-neutral-50 mb-1">{nft.metadata?.name || 'Unnamed NFT'}</h3>
-                          <div className="text-sm text-neutral-400">{nft.vaults?.name}</div>
+                        <div className="flex-1">
+                          <h3 className="text-lg font-bold text-neutral-50 mb-1 line-clamp-1">{nft.metadata?.name || 'Unnamed NFT'}</h3>
+                          <div className="text-sm text-neutral-400 line-clamp-1">{nft.vaults?.name}</div>
                         </div>
                         <div className="flex items-start gap-2">
-                          <Link to={`/app/nfts/${nft.nft_id}`} className="text-neutral-400 hover:text-neutral-200 p-2 rounded-md">
+                          <Link to={`/app/nfts/${nft.nft_id}`} className="text-neutral-400 hover:text-primary-400 p-2 rounded-md hover:bg-neutral-800 transition-colors">
                             <ExternalLink className="w-4 h-4" />
                           </Link>
                         </div>
                       </div>
 
                       {nft.vaults && (
-                        <div className="mt-4 space-y-3">
-                          <div className="flex items-center justify-between p-2 bg-neutral-900 rounded-lg">
-                            <div className="flex items-center gap-2 text-xs text-neutral-400">
+                        <div className="mt-4 space-y-2">
+                          <div className="flex items-center justify-between p-3 bg-neutral-800 rounded-lg border border-neutral-700">
+                            <div className="flex items-center gap-2 text-xs text-neutral-300">
                               <TrendingUp className="w-4 h-4 text-success-400" />
                               Performance
                             </div>
-                            <div className={`text-sm font-semibold ${nft.vaults.performance >= 0 ? 'text-success-400' : 'text-error-400'}`}>
+                            <div className={`text-sm font-bold ${nft.vaults.performance >= 0 ? 'text-success-400' : 'text-error-400'}`}>
                               {nft.vaults.performance >= 0 ? '+' : ''}{nft.vaults.performance.toFixed(2)}%
                             </div>
                           </div>
 
-                          <div className="flex items-center justify-between p-2 bg-neutral-900 rounded-lg">
-                            <div className="flex items-center gap-2 text-xs text-neutral-400">
-                              <DollarSign className="w-4 h-4 text-primary-500" />
+                          <div className="flex items-center justify-between p-3 bg-neutral-800 rounded-lg border border-neutral-700">
+                            <div className="flex items-center gap-2 text-xs text-neutral-300">
+                              <DollarSign className="w-4 h-4 text-primary-400" />
                               Vault Value
                             </div>
-                            <div className="text-sm font-semibold text-neutral-50">${nft.vaults.total_value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+                            <div className="text-sm font-bold text-neutral-50">${nft.vaults.total_value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
                           </div>
                         </div>
                       )}
 
-                      <div className="mt-4 flex gap-2">
+                      <div className="mt-4 pt-4 border-t border-neutral-800 flex gap-2">
                         <Button variant="primary" size="sm" className="flex-1" onClick={() => { setSelectedNft(nft); setShowListModal(true); }}>
-                          List for Sale
+                          List on Marketplace
                         </Button>
                         <Button variant="outline" size="sm" onClick={() => { const data = JSON.stringify(nft, null, 2); const uri = 'data:application/json;charset=utf-8,' + encodeURIComponent(data); const a = document.createElement('a'); a.href = uri; a.download = `nft-${nft.nft_id}.json`; a.click(); }}>
                           Export
                         </Button>
                       </div>
 
-                      <div className="mt-4 pt-4 border-t border-default text-xs text-neutral-500">
-                        Minted {new Date(nft.minted_at).toLocaleDateString()}
+                      <div className="mt-3 pt-3 border-t border-neutral-800 flex items-center justify-between text-xs">
+                        <span className="text-neutral-500">Minted</span>
+                        <span className="text-neutral-400 font-medium">{new Date(nft.minted_at).toLocaleDateString()}</span>
                       </div>
                     </div>
                   </Card>
@@ -297,9 +298,9 @@ const NFTs = () => {
 
       {/* Mint Modal */}
       {showMintModal && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <motion.div initial={{ opacity: 0, scale: 0.98 }} animate={{ opacity: 1, scale: 1 }} className="bg-card border border-default rounded-lg max-w-lg w-full p-6">
-            <h3 className="text-lg font-bold text-neutral-50 mb-3">Mint Vault NFT</h3>
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <motion.div initial={{ opacity: 0, scale: 0.98 }} animate={{ opacity: 1, scale: 1 }} className="bg-neutral-900 border border-neutral-700 rounded-lg max-w-lg w-full p-6 shadow-2xl">
+            <h3 className="text-xl font-bold text-neutral-50 mb-4">Mint Vault NFT</h3>
             <MintNFT vaultId="" vaultName="" vaultPerformance={0} onMintSuccess={handleMintSuccess} />
             <Button variant="outline" className="w-full mt-4" onClick={() => setShowMintModal(false)}>Cancel</Button>
           </motion.div>
@@ -308,9 +309,9 @@ const NFTs = () => {
 
       {/* List Modal */}
       {showListModal && selectedNft && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <motion.div initial={{ opacity: 0, scale: 0.98 }} animate={{ opacity: 1, scale: 1 }} className="bg-card border border-default rounded-lg max-w-lg w-full p-6">
-            <h3 className="text-lg font-bold text-neutral-50 mb-3">Create Marketplace Listing</h3>
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => { setShowListModal(false); setSelectedNft(null); }}>
+          <motion.div initial={{ opacity: 0, scale: 0.98 }} animate={{ opacity: 1, scale: 1 }} className="bg-neutral-900 border border-neutral-700 rounded-lg max-w-lg w-full p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-xl font-bold text-neutral-50 mb-4">Create Marketplace Listing</h3>
             <CreateListing nftId={selectedNft.nft_id} onListingCreated={handleListSuccess} />
             <Button variant="outline" className="w-full mt-4" onClick={() => { setShowListModal(false); setSelectedNft(null); }}>Cancel</Button>
           </motion.div>

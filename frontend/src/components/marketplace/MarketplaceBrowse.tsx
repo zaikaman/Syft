@@ -401,7 +401,7 @@ export function MarketplaceBrowse({ onSelectListing }: MarketplaceBrowseProps) {
                     </span>
                   </div>
 
-                  {listing.vault_nfts?.vaults?.performance && (
+                  {listing.vault_nfts?.vaults?.performance !== undefined && listing.vault_nfts?.vaults?.performance !== null && (
                     <div className="flex items-center justify-between p-2 bg-neutral-900 rounded-lg">
                       <div className="flex items-center gap-2">
                         <TrendingUp className="w-3.5 h-3.5 text-success-400" />
@@ -418,7 +418,7 @@ export function MarketplaceBrowse({ onSelectListing }: MarketplaceBrowseProps) {
                     </div>
                   )}
 
-                  {listing.vault_nfts?.vaults?.total_value && (
+                  {listing.vault_nfts?.vaults?.total_value !== undefined && listing.vault_nfts?.vaults?.total_value !== null && (
                     <div className="flex items-center justify-between p-2 bg-neutral-900 rounded-lg">
                       <div className="flex items-center gap-2">
                         <DollarSign className="w-3.5 h-3.5 text-primary-500" />
