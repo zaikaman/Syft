@@ -572,13 +572,13 @@ export async function getPortfolioAnalytics(
 
       bestPerformingVault = bestVault ? {
         vaultId: sortedByAPY[0].vaultId,
-        name: bestVault.config?.name || 'Unnamed Vault',
+        name: bestVault.name || bestVault.config?.name || 'Unnamed Vault',
         apy: sortedByAPY[0].apy,
       } : null;
 
       worstPerformingVault = worstVault ? {
         vaultId: sortedByAPY[sortedByAPY.length - 1].vaultId,
-        name: worstVault.config?.name || 'Unnamed Vault',
+        name: worstVault.name || worstVault.config?.name || 'Unnamed Vault',
         apy: sortedByAPY[sortedByAPY.length - 1].apy,
       } : null;
     }
