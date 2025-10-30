@@ -460,13 +460,11 @@ async function calculateCurrentAPY(_vaultId: string, vaultUUID: string): Promise
     }
 
     // Fallback: snapshot-based method
-    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
-    
+    // IMPORTANT: Use the same baseline calculation as earnings for consistency
     const { data: snapshots } = await supabase
       .from('vault_performance')
       .select('*')
       .eq('vault_id', vaultUUID)
-      .gte('timestamp', thirtyDaysAgo)
       .order('timestamp', { ascending: true });
 
     if (!snapshots || snapshots.length < 2) return 0;
@@ -474,20 +472,37 @@ async function calculateCurrentAPY(_vaultId: string, vaultUUID: string): Promise
     const validSnapshots = snapshots.filter(s => s.total_value > 0 && s.total_value < 1_000_000_000);
     if (validSnapshots.length < 2) return 0;
 
-    const firstSnapshot = validSnapshots[0];
+    // Get the latest snapshot
     const lastSnapshot = validSnapshots[validSnapshots.length - 1];
-
-    const initialValue = firstSnapshot.total_value;
     const currentValue = lastSnapshot.total_value;
 
-    if (initialValue <= 0) return 0;
+    // Get net deposits using the SAME method as earnings calculation
+    // This ensures APY and earnings are always consistent
+    const deposits = transactions?.filter(tx => tx.type === 'deposit') || [];
+    const withdrawals = transactions?.filter(tx => tx.type === 'withdrawal') || [];
+    
+    let netDeposits = 0;
+    if (deposits.length > 0 || withdrawals.length > 0) {
+      const totalDeposited = deposits.reduce((sum, tx) => sum + tx.amount_usd, 0);
+      const totalWithdrawn = withdrawals.reduce((sum, tx) => sum + tx.amount_usd, 0);
+      netDeposits = totalDeposited - totalWithdrawn;
+    } else {
+      // If no transaction data, use minimum snapshot value as baseline
+      const minValue = Math.min(...validSnapshots.map(s => s.total_value));
+      netDeposits = minValue;
+    }
 
+    if (netDeposits <= 0) return 0;
+
+    // Calculate time period: use first snapshot timestamp
+    const firstSnapshot = validSnapshots[0];
     const timeDiff = new Date(lastSnapshot.timestamp).getTime() - new Date(firstSnapshot.timestamp).getTime();
     const days = timeDiff / (1000 * 60 * 60 * 24);
 
     if (days <= 0) return 0;
 
-    const simpleReturn = (currentValue - initialValue) / initialValue;
+    // Calculate return using net deposits as baseline (same as earnings!)
+    const simpleReturn = (currentValue - netDeposits) / netDeposits;
     
     // For very new vaults (< 1 day), don't annualize - just show the actual return
     if (days < 1) {

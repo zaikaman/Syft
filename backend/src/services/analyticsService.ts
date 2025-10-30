@@ -132,7 +132,7 @@ async function calculateAPY(vaultId: string): Promise<number> {
     }
 
     // METHOD 2: Fallback to snapshot-based APY (less accurate for trading vaults)
-    // IMPORTANT: Use ALL snapshots from inception to match the earnings calculation timeframe
+    // IMPORTANT: This should match the earnings calculation methodology
     console.log(`[calculateAPY] ${vaultId} - Using snapshot-based method (no transaction data)`);
     
     const { data: snapshots } = await supabase
@@ -171,29 +171,40 @@ async function calculateAPY(vaultId: string): Promise<number> {
       return 0;
     }
 
-    // IMPORTANT FIX: Use MINIMUM snapshot value as initial, not first chronologically
-    // This matches how earnings are calculated (TVL - min deposits)
-    // The deposit might have happened before first snapshot, and gains occurred before monitoring started
-    const minSnapshot = filteredSnapshots.reduce((min, s) => 
-      s.total_value < min.total_value ? s : min
-    );
+    // Get current TVL from latest snapshot
     const lastSnapshot = filteredSnapshots[filteredSnapshots.length - 1];
-
-    const initialValue = minSnapshot.total_value;
     const currentValue = lastSnapshot.total_value;
-    
-    console.log(`[calculateAPY] ${vaultId} - Using MIN snapshot as baseline: $${initialValue.toFixed(2)} (not first: $${filteredSnapshots[0].total_value.toFixed(2)})`);
 
-    if (initialValue <= 0) return 0;
+    // Get the deposit baseline using the SAME method as earnings calculation
+    // This ensures APY and earnings are always consistent
+    const { totalDeposits, totalWithdrawals } = await getTransactionTotals(vaultId, currentValue);
+    const netDeposits = totalDeposits - totalWithdrawals;
 
-    // Calculate time period in days from minimum value to current
-    const timeDiff = new Date(lastSnapshot.timestamp).getTime() - new Date(minSnapshot.timestamp).getTime();
+    if (netDeposits <= 0) {
+      console.warn(`[calculateAPY] ${vaultId} - Net deposits <= 0, cannot calculate APY`);
+      return 0;
+    }
+
+    // Calculate time period: use earliest snapshot as start time
+    const firstSnapshot = filteredSnapshots[0];
+    const timeDiff = new Date(lastSnapshot.timestamp).getTime() - new Date(firstSnapshot.timestamp).getTime();
     const days = timeDiff / (1000 * 60 * 60 * 24);
 
-    if (days <= 0) return 0;
+    if (days <= 0) {
+      console.warn(`[calculateAPY] ${vaultId} - Invalid time period`);
+      return 0;
+    }
 
-    // Calculate simple return
-    const simpleReturn = (currentValue - initialValue) / initialValue;
+    // Calculate simple return using net deposits as baseline (same as earnings!)
+    const simpleReturn = (currentValue - netDeposits) / netDeposits;
+
+    console.log(`[calculateAPY] ${vaultId} - SNAPSHOT METHOD (consistent with earnings):`, {
+      netDeposits: `$${netDeposits.toFixed(2)}`,
+      currentValue: `$${currentValue.toFixed(2)}`,
+      profit: `$${(currentValue - netDeposits).toFixed(2)}`,
+      return: `${(simpleReturn * 100).toFixed(2)}%`,
+      days: days.toFixed(2),
+    });
 
     // Annualize the return (APY = (1 + return) ^ (365 / days) - 1)
     // BUT: For very new vaults (< 1 day), don't annualize to avoid unrealistic extrapolations
@@ -201,12 +212,12 @@ async function calculateAPY(vaultId: string): Promise<number> {
     
     if (days < 1) {
       // For vaults less than 1 day old, show actual return percentage
-      console.log(`[calculateAPY] ${vaultId} - SNAPSHOT METHOD (${(days * 24).toFixed(1)} hours): Initial: $${initialValue.toFixed(2)}, Current: $${currentValue.toFixed(2)}, Return: ${(simpleReturn * 100).toFixed(2)}% (not annualized)`);
+      console.log(`[calculateAPY] ${vaultId} - Vault is very new (${(days * 24).toFixed(1)} hours), showing actual return (not annualized)`);
       apy = simpleReturn * 100;
     } else {
       // For vaults 1 day or older, annualize the return
       apy = (Math.pow(1 + simpleReturn, 365 / days) - 1) * 100;
-      console.log(`[calculateAPY] ${vaultId} - SNAPSHOT METHOD: Initial: $${initialValue.toFixed(2)}, Current: $${currentValue.toFixed(2)}, Days: ${days.toFixed(1)}, APY: ${apy.toFixed(2)}%`);
+      console.log(`[calculateAPY] ${vaultId} - Annualized APY: ${apy.toFixed(2)}%`);
     }
 
     // Cap APY at reasonable bounds (-100% to 10000%)
