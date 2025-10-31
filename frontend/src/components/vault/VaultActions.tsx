@@ -61,6 +61,15 @@ export const VaultActions: React.FC<VaultActionsProps> = ({
       const normalizedNetwork = normalizeNetwork(network, networkPassphrase);
       console.log(`[VaultActions] Using network: ${normalizedNetwork} (raw: ${network}, passphrase: ${networkPassphrase})`);
       
+      // Get XLM token address for the network (user is depositing XLM)
+      const xlmAddresses: { [key: string]: string } = {
+        'testnet': 'CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC',
+        'futurenet': 'CB64D3G7SM2RTH6JSGG34DDTFTQ5CFDKVDZJZSODMCX4NJ2HV2KN7OHT',
+        'mainnet': 'CAS3J7GYLGXMF6TDJBBYYSE3HQ6BBSMLNUQ34T6TZMYMW2EVH34XOWMA',
+      };
+      const depositToken = xlmAddresses[normalizedNetwork] || xlmAddresses['testnet'];
+      console.log(`[VaultActions] Depositing with token: ${depositToken} (XLM)`);
+      
       // Step 1: Build unsigned transaction from backend
       console.log(`[VaultActions] Building unsigned deposit transaction...`);
       const buildResponse = await fetch(
@@ -74,6 +83,7 @@ export const VaultActions: React.FC<VaultActionsProps> = ({
             userAddress: address,
             amount: amountInStroops,
             network: normalizedNetwork,
+            depositToken: depositToken,
           }),
         }
       );

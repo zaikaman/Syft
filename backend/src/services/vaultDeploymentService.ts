@@ -893,11 +893,26 @@ export async function deployVault(
     console.log(`[Vault Deployment] ✓ Stored vault metadata in database`);
 
     // AUTO-SET ROUTER: Configure DEX router for the vault automatically
-    // Note: Skip router setup for now until we have the real contract address
-    // We'll need to add this after we can properly extract the address from the factory result
-    console.log(`[Router Setup] Router address configured: ${routerAddress}`);
-    console.log(`[Router Setup] To manually set router after deployment:`);
-    console.log(`[Router Setup] stellar contract invoke --id ${contractAddress} --source-account <keypair> -- set_router --router ${routerAddress}`);
+    console.log(`[Router Setup] Setting router address: ${routerAddress}`);
+    try {
+      const routerResult = await invokeVaultMethod(
+        contractAddress,
+        'set_router',
+        [routerAddress],
+        sourceKeypair,
+        network
+      );
+      
+      if (routerResult.success) {
+        console.log(`[Router Setup] ✅ Router configured successfully`);
+        console.log(`[Router Setup] TX: ${routerResult.hash}`);
+      }
+    } catch (routerError) {
+      console.error(`[Router Setup] ⚠️  Failed to set router:`, routerError);
+      console.warn(`[Router Setup] Vault deployed but router not configured - auto-swap will not work`);
+      console.warn(`[Router Setup] To manually set router:`);
+      console.warn(`[Router Setup] stellar contract invoke --id ${contractAddress} --source-account <keypair> -- set_router --router ${routerAddress}`);
+    }
 
     return {
       vaultId,

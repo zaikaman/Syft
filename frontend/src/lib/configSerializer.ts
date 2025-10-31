@@ -39,16 +39,17 @@ export class ConfigSerializer {
         };
       }
 
-      // For USDC (assume Circle's USDC on Stellar)
+      // For USDC - use the contract address from assetIssuer if provided
+      // The frontend should populate this from the token service based on network
       if (assetType === 'USDC') {
         return {
           code: 'USDC',
-          issuer: 'GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN', // Circle's USDC issuer
+          issuer: typeof assetIssuer === 'string' && assetIssuer ? assetIssuer : undefined,
           allocation: typeof allocation === 'number' ? allocation : 0,
         };
       }
 
-      // For custom tokens
+      // For custom tokens - require both code and issuer
       return {
         code: typeof assetCode === 'string' ? assetCode : 'UNKNOWN',
         issuer: typeof assetIssuer === 'string' ? assetIssuer : '',

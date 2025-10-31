@@ -1,7 +1,7 @@
 import { motion, AnimatePresence } from 'framer-motion';
 import { useState, useCallback, useEffect } from 'react';
 import type { Node, Edge } from '@xyflow/react';
-import { Save, Play, Undo2, Redo2, FileText, AlertCircle, FolderOpen, X, Clock, CheckCircle, ShoppingBag, Eye, EyeOff } from 'lucide-react';
+import { Save, Play, Undo2, Redo2, FileText, AlertCircle, FolderOpen, X, Clock, CheckCircle, Eye, EyeOff } from 'lucide-react';
 import { Button, useModal } from '../components/ui';
 import BlockPalette from '../components/builder/BlockPalette';
 import VaultCanvas from '../components/builder/VaultCanvas';
@@ -53,7 +53,6 @@ const VaultBuilder = () => {
     contractAddress: string;
     transactionHash: string;
   } | null>(null);
-  const [profitSharePercentage, setProfitSharePercentage] = useState('10');
 
   const { address, network, networkPassphrase } = useWallet();
   const navigate = useNavigate();
@@ -267,7 +266,11 @@ const VaultBuilder = () => {
         name: vaultName,
         description: vaultDescription,
         isPublic,
-        assets: config.assets.map(asset => asset.code),
+        assets: config.assets.map(asset => {
+          // If issuer exists (contract address or classic issuer), use it; otherwise use code
+          // Backend accepts contract addresses (C...) or known symbols (XLM, USDC, etc.)
+          return asset.issuer || asset.code;
+        }),
         rules: config.rules.map(rule => ({
           condition_type: rule.condition.type,
           threshold: rule.condition.parameters.threshold || 0,
@@ -451,7 +454,72 @@ const VaultBuilder = () => {
           return;
         }
 
-        // Success - both deployment and initialization complete
+        // Step 5: Set router address for auto-swap functionality
+        try {
+          console.log(`[VaultBuilder] Setting up router for auto-swap...`);
+          
+          // Build set_router transaction
+          const routerBuildResponse = await fetch(`${backendUrl}/api/vaults/build-set-router`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              contractAddress,
+              ownerAddress: address,
+              network: normalizedNetwork,
+            }),
+          });
+
+          const routerBuildData = await routerBuildResponse.json();
+
+          if (!routerBuildData.success) {
+            console.warn(`[VaultBuilder] ⚠️ Router setup failed:`, routerBuildData.error);
+            // Don't fail the deployment, just warn the user
+            modal.message(
+              `Vault deployed successfully but router setup failed. Auto-swap may not work.\n\nYou can set the router manually later.`,
+              'Router Setup Failed',
+              'warning'
+            );
+          } else {
+            console.log(`[VaultBuilder] Router transaction built, requesting wallet signature...`);
+
+            // Sign router transaction
+            const { wallet } = await import('../util/wallet');
+            const { signedTxXdr: signedRouterXdr } = await wallet.signTransaction(routerBuildData.data.xdr, {
+              networkPassphrase: networkPassphrase || 'Test SDF Network ; September 2015',
+            });
+
+            console.log(`[VaultBuilder] Router transaction signed, submitting...`);
+
+            // Submit router transaction
+            const routerSubmitResponse = await fetch(`${backendUrl}/api/vaults/submit-set-router`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                signedXDR: signedRouterXdr,
+                contractAddress,
+                network: normalizedNetwork,
+              }),
+            });
+
+            const routerSubmitData = await routerSubmitResponse.json();
+
+            if (routerSubmitData.success) {
+              console.log(`[VaultBuilder] ✅ Router configured successfully! Auto-swap enabled.`);
+            } else {
+              console.warn(`[VaultBuilder] ⚠️ Router submission failed:`, routerSubmitData.error);
+            }
+          }
+        } catch (routerError) {
+          console.error(`[VaultBuilder] Error setting up router:`, routerError);
+          // Don't fail the deployment if router setup fails
+          console.warn(`[VaultBuilder] Continuing without router - auto-swap will not work`);
+        }
+
+        // Success - deployment, initialization, and router setup complete
         setDeployedVaultData({
           vaultId,
           contractAddress,
@@ -891,118 +959,20 @@ const VaultBuilder = () => {
 
               {/* Actions */}
               <div className="space-y-3">
-                {isPublic && (
-                  <>
-                    {/* Profit Share Input */}
-                    <div className="p-4 bg-neutral-900 rounded-lg border border-neutral-700">
-                      <label className="block text-sm font-medium text-neutral-200 mb-2">
-                        Profit Share Percentage
-                      </label>
-                      <div className="flex gap-2 items-center">
-                        <input
-                          type="number"
-                          value={profitSharePercentage}
-                          onChange={(e) => setProfitSharePercentage(e.target.value)}
-                          placeholder="10"
-                          step="1"
-                          min="1"
-                          max="100"
-                          className="flex-1 px-3 py-2 bg-neutral-800 border border-neutral-700 rounded-md text-neutral-50 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-                        />
-                        <span className="text-neutral-400 text-sm font-medium">%</span>
-                      </div>
-                      <p className="text-xs text-neutral-500 mt-2">
-                        Subscribers will share this percentage of their profits with you
-                      </p>
-                    </div>
-
-                    {/* Mint & List Button */}
-                    <Button
-                      variant="outline"
-                      size="lg"
-                      className="w-full"
-                      onClick={async () => {
-                        try {
-                          // Validate profit share percentage
-                          const profitShareNum = parseFloat(profitSharePercentage);
-                          if (isNaN(profitShareNum) || profitShareNum < 1 || profitShareNum > 100) {
-                            modal.message(
-                              'Please enter a valid profit share percentage between 1 and 100',
-                              'Invalid Input',
-                              'error'
-                            );
-                            return;
-                          }
-
-                          setShowSuccessModal(false);
-                          
-                          // Create NFT for this vault
-                          const backendUrl = import.meta.env.PUBLIC_BACKEND_URL || 'http://localhost:3001';
-                          
-                          const nftResponse = await fetch(`${backendUrl}/api/nfts/mint`, {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({
-                              vaultId: deployedVaultData.vaultId,
-                              ownerAddress: address,
-                              ownershipPercentage: 10000, // 100% ownership
-                              metadata: {
-                                name: vaultName,
-                                description: vaultDescription,
-                              },
-                            }),
-                          });
-
-                          const nftData = await nftResponse.json();
-
-                          if (!nftData.success) {
-                            throw new Error(nftData.error || 'Failed to create NFT');
-                          }
-
-                          // Create marketplace listing with profit sharing
-                          const listingResponse = await fetch(`${backendUrl}/api/marketplace/listings`, {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({
-                              nftId: nftData.data.nftId,
-                              profitSharePercentage: profitShareNum,
-                              sellerAddress: address,
-                            }),
-                          });
-
-                          const listingData = await listingResponse.json();
-
-                          if (!listingData.success) {
-                            throw new Error(listingData.error || 'Failed to create listing');
-                          }
-
-                          modal.message(
-                            `Your vault NFT has been minted and listed on the marketplace with ${profitShareNum}% profit sharing!\n\nYou can view and edit your listing in the Marketplace or My NFTs section.`,
-                            'Listed Successfully!',
-                            'success'
-                          );
-                          
-                          // Navigate to marketplace after success
-                          setTimeout(() => {
-                            navigate('/app/marketplace');
-                          }, 2000);
-                        } catch (error) {
-                          modal.message(
-                            `Failed to create marketplace listing: ${error instanceof Error ? error.message : 'Unknown error'}`,
-                            'Error',
-                            'error'
-                          );
-                        }
-                      }}
-                    >
-                      <ShoppingBag className="w-4 h-4 mr-2" />
-                      Mint NFT & List on Marketplace
-                    </Button>
-                  </>
-                )}
-                
                 <Button
                   variant="primary"
+                  size="lg"
+                  className="w-full"
+                  onClick={() => {
+                    setShowSuccessModal(false);
+                    navigate(`/app/vaults/${deployedVaultData.vaultId}`);
+                  }}
+                >
+                  View Vault Details
+                </Button>
+                
+                <Button
+                  variant="outline"
                   size="lg"
                   className="w-full"
                   onClick={() => {

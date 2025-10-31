@@ -182,7 +182,7 @@ router.post('/:vaultId/nft', async (req: Request, res: Response) => {
     const { data: existingNFTs } = await supabase
       .from('vault_nfts')
       .select('ownership_percentage')
-      .eq('vault_id', vaultId);
+      .eq('vault_id', vault.id); // Use UUID from vault record
 
     const totalExistingOwnership = existingNFTs?.reduce(
       (sum, nft) => sum + (nft.ownership_percentage || 0),
@@ -199,19 +199,24 @@ router.post('/:vaultId/nft', async (req: Request, res: Response) => {
       });
     }
 
-    // Generate NFT ID
-    const nftId = `nft_${vaultId}_${Date.now()}`;
+    // Generate NFT ID and token ID
+    const timestamp = Date.now();
+    const nftId = `nft_${vaultId}_${timestamp}`;
+    const tokenId = `token_${vaultId}_${timestamp}`;
 
-    // Store NFT in database
+    // Store NFT in database (use vault.id which is the UUID)
     const { data: nft, error: nftError } = await supabase
       .from('vault_nfts')
       .insert({
         nft_id: nftId,
-        vault_id: vaultId,
+        token_id: tokenId,
+        vault_id: vault.id, // Use UUID instead of vault_id string
+        contract_address: vault.contract_address || `pending_${vaultId}`,
         // store as percentage (0-100) in DB
         ownership_percentage: ownershipPctPercent,
         // schema uses `current_holder` for the holder address
         current_holder: walletAddress,
+        original_owner: walletAddress,
         metadata: metadata,
         minted_at: new Date().toISOString(),
       })

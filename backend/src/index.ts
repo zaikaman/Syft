@@ -11,6 +11,21 @@ import { executeRebalance } from './services/vaultActionService.js';
 // Load environment variables
 dotenv.config();
 
+// Filter out verbose logs to reduce noise
+const originalLog = console.log;
+console.log = (...args: any[]) => {
+  const message = args.join(' ');
+  // Skip these verbose logs
+  if (message.includes('[getVaultAnalytics]') || 
+      message.includes('[calculateAPY]') ||
+      message.includes('[getTransactionTotals]') ||
+      message.includes('[monitorVaultState]') ||
+      message.includes('[getUserPosition]')) {
+    return;
+  }
+  originalLog.apply(console, args);
+};
+
 // Add BigInt serialization support for JSON
 // This allows BigInt values to be serialized as strings in JSON responses
 (BigInt.prototype as any).toJSON = function () {

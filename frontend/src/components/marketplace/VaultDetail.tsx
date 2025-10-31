@@ -3,11 +3,14 @@
 
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { TrendingUp, DollarSign, Percent, Activity, Clock, Copy, ExternalLink, Package } from 'lucide-react';
+import { TrendingUp, DollarSign, Percent, Activity, Clock, Copy, ExternalLink, Package, ShoppingBag, Image } from 'lucide-react';
 import { Card } from '../ui/Card';
 import { Button } from '../ui/Button';
 import { VaultActions } from '../vault/VaultActions';
 import { useWallet } from '../../providers/WalletProvider';
+import { useModal } from '../ui';
+import { MintNFTModal } from './MintNFTModal';
+import { ListingModal } from './ListingModal';
 
 interface VaultDetailProps {
   vaultId: string;
@@ -67,6 +70,9 @@ export function VaultDetail({ vaultId, listingId }: VaultDetailProps) {
   const [xlmPrice, setXlmPrice] = useState<number>(0.10); // Fallback price
   const [vaultAnalytics, setVaultAnalytics] = useState<any>(null);
   const { address } = useWallet();
+  const modal = useModal();
+  const [showMintModal, setShowMintModal] = useState(false);
+  const [showListingModal, setShowListingModal] = useState(false);
 
   useEffect(() => {
     loadVaultDetails(true); // Initial load with loading state
@@ -213,6 +219,30 @@ export function VaultDetail({ vaultId, listingId }: VaultDetailProps) {
   };
 
   const tvlValue = calculateTVL();
+
+  // NFT minting handler
+  const handleMintNFT = () => {
+    if (!vault) return;
+    setShowMintModal(true);
+  };
+
+  // List on marketplace handler
+  const handleListOnMarketplace = () => {
+    if (!vault) return;
+    setShowListingModal(true);
+  };
+
+  // Handle successful NFT mint
+  const handleMintSuccess = () => {
+    modal.message('Success', 'NFT minted successfully!', 'success');
+    loadVaultDetails(false); // Refresh vault data
+    fetchUserPosition(); // Refresh position
+  };
+
+  // Handle successful listing
+  const handleListingSuccess = () => {
+    modal.message('Success', 'Vault listed on marketplace successfully!', 'success');
+  };
 
   // Copy to clipboard helper
   const copyToClipboard = (text: string) => {
@@ -605,7 +635,7 @@ export function VaultDetail({ vaultId, listingId }: VaultDetailProps) {
                   </div>
                   <div className="text-right">
                     <p className="font-bold text-primary-500 text-lg">
-                      {(holder.ownership_pct / 100).toFixed(1)}%
+                      {holder.ownership_pct.toFixed(1)}%
                     </p>
                     <p className="text-xs text-neutral-500">ownership</p>
                   </div>
@@ -619,12 +649,12 @@ export function VaultDetail({ vaultId, listingId }: VaultDetailProps) {
             <div className="mt-5 pt-5 border-t border-default">
               <div className="flex justify-between text-sm mb-2">
                 <span className="text-neutral-400">Total Tokenized</span>
-                <span className="font-medium text-neutral-50">{(totalOwnership / 100).toFixed(1)}%</span>
+                <span className="font-medium text-neutral-50">{totalOwnership.toFixed(1)}%</span>
               </div>
               <div className="w-full bg-neutral-900 rounded-full h-2.5">
                 <div
                   className="bg-gradient-to-r from-primary-500 to-primary-600 h-2.5 rounded-full transition-all"
-                  style={{ width: `${Math.min(totalOwnership / 100, 100)}%` }}
+                  style={{ width: `${Math.min(totalOwnership, 100)}%` }}
                 />
               </div>
             </div>
@@ -650,6 +680,44 @@ export function VaultDetail({ vaultId, listingId }: VaultDetailProps) {
         />
       </motion.div>
 
+      {/* Owner Actions - Mint NFT & List on Marketplace */}
+      {address && vault.owner === address && (
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.6 }}
+        >
+          <Card className="bg-secondary border-default">
+            <div className="p-6">
+              <h3 className="text-lg font-semibold text-neutral-50 mb-4">Vault Owner Actions</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <Button 
+                  variant="outline" 
+                  size="lg"
+                  onClick={handleMintNFT}
+                  className="flex items-center justify-center gap-2"
+                >
+                  <Image className="w-5 h-5" />
+                  Mint NFT
+                </Button>
+                <Button 
+                  variant="primary" 
+                  size="lg"
+                  onClick={handleListOnMarketplace}
+                  className="flex items-center justify-center gap-2"
+                >
+                  <ShoppingBag className="w-5 h-5" />
+                  List on Marketplace
+                </Button>
+              </div>
+              <p className="text-xs text-neutral-500 mt-3">
+                As the vault owner, you can mint NFTs representing shares and list your vault on the marketplace.
+              </p>
+            </div>
+          </Card>
+        </motion.div>
+      )}
+
       {/* Action Button */}
       {listingId && (
         <motion.div
@@ -662,6 +730,30 @@ export function VaultDetail({ vaultId, listingId }: VaultDetailProps) {
             View Listing Details
           </Button>
         </motion.div>
+      )}
+
+      {/* Mint NFT Modal */}
+      {vault && (
+        <MintNFTModal
+          isOpen={showMintModal}
+          onClose={() => setShowMintModal(false)}
+          vaultId={vaultId}
+          vaultName={vault.name || 'Vault'}
+          onSuccess={handleMintSuccess}
+        />
+      )}
+
+      {/* Listing Modal */}
+      {vault && (
+        <ListingModal
+          isOpen={showListingModal}
+          onClose={() => setShowListingModal(false)}
+          vaultId={vaultId}
+          vaultName={vault.name || 'Vault'}
+          vaultDescription={vault.description}
+          contractAddress={vault.contractAddress}
+          onSuccess={handleListingSuccess}
+        />
       )}
     </div>
   );

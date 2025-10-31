@@ -4,6 +4,45 @@
 
 import { supabase } from '../lib/supabase.js';
 
+// Cache for resolved asset names to avoid repeated API calls
+const assetNameCache = new Map<string, { name: string; timestamp: number }>();
+const CACHE_TTL = 3600000; // 1 hour
+
+/**
+ * Resolve a contract address to its token symbol
+ * Uses Soroswap API to fetch token information
+ */
+async function resolveAssetName(contractAddress: string, network: string): Promise<string> {
+  // Check cache first
+  const cached = assetNameCache.get(contractAddress);
+  if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
+    return cached.name;
+  }
+
+  try {
+    // Fetch from Soroswap API
+    const response = await fetch('https://api.soroswap.finance/api/tokens');
+    if (response.ok) {
+      const data = await response.json() as any;
+      const networkData = data.find((n: any) => n.network === network.toLowerCase());
+      
+      if (networkData && networkData.assets) {
+        const token = networkData.assets.find((asset: any) => asset.contract === contractAddress);
+        if (token) {
+          const name = token.code || token.name;
+          assetNameCache.set(contractAddress, { name, timestamp: Date.now() });
+          return name;
+        }
+      }
+    }
+  } catch (error) {
+    console.warn(`[resolveAssetName] Failed to resolve ${contractAddress}:`, error);
+  }
+
+  // If resolution fails, return shortened address
+  return `${contractAddress.slice(0, 4)}...${contractAddress.slice(-4)}`;
+}
+
 interface VaultAnalytics {
   vaultId: string;
   tvl: number; // Current TVL in USD
@@ -828,7 +867,7 @@ export async function getPortfolioAllocation(
 
     if (totalTVL === 0) return [];
 
-    // Calculate asset allocation based on vault TVL and their asset holdings
+    // Calculate asset allocation based on vault TVL and their configured asset allocations
     const assetMap = new Map<string, number>();
 
     for (let i = 0; i < vaults.length; i++) {
@@ -837,15 +876,57 @@ export async function getPortfolioAllocation(
       const vaultTVL = analytics.tvl;
       const assets = vault.config?.assets || [];
 
-      // For each asset in the vault, distribute TVL equally (simplified approach)
-      // In a more sophisticated version, we would query actual asset balances
-      const valuePerAsset = vaultTVL / (assets.length || 1);
+      // Get target allocations from asset configuration (allocation percentages from vault builder)
+      const targetAllocations = new Map<string, number>();
+      
+      console.log(`[getPortfolioAllocation] Processing vault ${vault.vault_id}:`, {
+        assetsCount: assets.length,
+        assetsRaw: assets,
+      });
+      
+      for (const asset of assets) {
+        // Extract asset key and allocation percentage
+        let assetKey: string;
+        let allocation: number = 0;
+        
+        if (typeof asset === 'string') {
+          assetKey = asset;
+          allocation = 100 / assets.length; // Equal distribution if no allocation specified
+          console.log(`[getPortfolioAllocation] String asset: ${assetKey}, allocation: ${allocation}%`);
+        } else if (asset && typeof asset === 'object') {
+          assetKey = asset.code || asset.issuer || 'UNKNOWN';
+          allocation = asset.allocation || (100 / assets.length);
+          console.log(`[getPortfolioAllocation] Object asset: ${assetKey}, allocation: ${allocation}%`, asset);
+        } else {
+          continue;
+        }
+        
+        targetAllocations.set(assetKey, allocation);
+      }
 
       for (const asset of assets) {
-        // Assets can be either strings (e.g., "XLM") or objects with code property
-        const assetCode = typeof asset === 'string' ? asset : (asset.code || 'UNKNOWN');
+        // Assets can be either strings (e.g., "XLM" or contract address) or objects with code property
+        let assetKey = typeof asset === 'string' ? asset : (asset.code || 'UNKNOWN');
+        let assetCode = assetKey;
+        
+        // If it looks like a contract address (starts with C and is 56 chars), try to resolve it
+        if (typeof assetCode === 'string' && assetCode.startsWith('C') && assetCode.length === 56) {
+          assetCode = await resolveAssetName(assetCode, network);
+        }
+        // If it's a classic issuer (starts with G), extract from issuer if available
+        else if (typeof assetCode === 'string' && assetCode.startsWith('G') && assetCode.length === 56) {
+          assetCode = 'CLASSIC_ASSET'; // Fallback for unresolved classic assets
+        }
+
+        // Calculate value based on target allocation or equal distribution
+        const allocation = targetAllocations.size > 0
+          ? (targetAllocations.get(assetKey) || 0) 
+          : (100 / assets.length);
+        
+        const assetValue = (vaultTVL * allocation) / 100;
+        
         const currentValue = assetMap.get(assetCode) || 0;
-        assetMap.set(assetCode, currentValue + valuePerAsset);
+        assetMap.set(assetCode, currentValue + assetValue);
       }
     }
 

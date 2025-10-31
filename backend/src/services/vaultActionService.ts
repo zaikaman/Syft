@@ -5,13 +5,52 @@ import { invokeVaultMethod } from './vaultDeploymentService.js';
 import { invalidateVaultCache } from './vaultMonitorService.js';
 
 /**
+ * Helper to get asset contract address from asset code
+ */
+function getAssetAddressFromCode(assetCode: string, network?: string): string {
+  const normalizedNetwork = (network || 'testnet').toLowerCase();
+  
+  const nativeXLMAddresses: { [key: string]: string } = {
+    'testnet': 'CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC',
+    'futurenet': 'CB64D3G7SM2RTH6JSGG34DDTFTQ5CFDKVDZJZSODMCX4NJ2HV2KN7OHT',
+    'mainnet': 'CAS3J7GYLGXMF6TDJBBYYSE3HQ6BBSMLNUQ34T6TZMYMW2EVH34XOWMA',
+    'public': 'CAS3J7GYLGXMF6TDJBBYYSE3HQ6BBSMLNUQ34T6TZMYMW2EVH34XOWMA',
+  };
+  
+  const tokenAddresses: { [key: string]: { [key: string]: string } } = {
+    'XLM': nativeXLMAddresses,
+    'USDC': {
+      'testnet': 'CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA',
+      'futurenet': process.env.FUTURENET_USDC_ADDRESS || nativeXLMAddresses['futurenet'],
+      'mainnet': '',
+      'public': '',
+    },
+  };
+  
+  const assetSymbol = assetCode.toUpperCase();
+  const networkAddresses = tokenAddresses[assetSymbol];
+  
+  if (!networkAddresses) {
+    // If unknown, assume it's already an address or fallback to XLM
+    if (assetCode.startsWith('C') && assetCode.length === 56) {
+      return assetCode;
+    }
+    return nativeXLMAddresses[normalizedNetwork] || nativeXLMAddresses['testnet'];
+  }
+  
+  return networkAddresses[normalizedNetwork] || nativeXLMAddresses[normalizedNetwork] || nativeXLMAddresses['testnet'];
+}
+
+/**
  * Build unsigned deposit transaction for user to sign
+ * @param depositToken - The token address the user is depositing (will be auto-swapped if not base token)
  */
 export async function buildDepositTransaction(
   vaultId: string,
   userAddress: string,
   amount: string,
-  network?: string
+  network?: string,
+  depositToken?: string
 ): Promise<{ xdr: string; contractAddress: string }> {
   try {
     // Get vault from database
@@ -34,11 +73,31 @@ export async function buildDepositTransaction(
     // Create contract instance
     const contract = new StellarSdk.Contract(vault.contract_address);
 
-    // Build deposit operation
+    // Determine deposit token address
+    // If not provided, use the first asset in the vault config as default
+    let tokenAddress = depositToken;
+    if (!tokenAddress) {
+      // Parse vault config to get base asset
+      const vaultConfig = vault.config;
+      if (vaultConfig?.assets && vaultConfig.assets.length > 0) {
+        const firstAsset = vaultConfig.assets[0];
+        // Asset can be {code: "XLM", ...} or just "XLM"
+        const assetCode = typeof firstAsset === 'string' ? firstAsset : firstAsset.code;
+        tokenAddress = getAssetAddressFromCode(assetCode, network);
+      } else {
+        // Fallback to native XLM
+        tokenAddress = getAssetAddressFromCode('XLM', network);
+      }
+    }
+
+    console.log(`[Build Deposit TX] Using deposit token: ${tokenAddress}`);
+
+    // Build deposit operation using deposit_with_token to enable auto-swap
     const operation = contract.call(
-      'deposit',
+      'deposit_with_token',
       StellarSdk.Address.fromString(userAddress).toScVal(),
-      StellarSdk.nativeToScVal(BigInt(amount), { type: 'i128' })
+      StellarSdk.nativeToScVal(BigInt(amount), { type: 'i128' }),
+      StellarSdk.Address.fromString(tokenAddress).toScVal()
     );
 
     // Build transaction
@@ -60,19 +119,18 @@ export async function buildDepositTransaction(
     const simulationResponse = await servers.sorobanServer.simulateTransaction(transaction);
     
     if (StellarSdk.rpc.Api.isSimulationError(simulationResponse)) {
-      // Check for various deposit errors
-      const errorMsg = JSON.stringify(simulationResponse);
+      console.error(`[Build Deposit TX] Simulation error details:`, simulationResponse);
       
+      // Provide helpful error message
+      const errorMsg = JSON.stringify(simulationResponse);
       if (errorMsg.includes('trustline entry is missing') || errorMsg.includes('does not exist')) {
         throw new Error(
-          `Insufficient balance: This vault requires multiple assets (e.g., USDC + XLM). ` +
-          `You need to have ALL vault assets in your wallet before depositing. ` +
-          `Please get test tokens from a faucet or swap for the required assets first.`
+          `Token trustline missing: Please ensure you have added a trustline for the deposit token in your wallet, ` +
+          `or the token contract may not exist on this network. Try depositing with XLM instead.`
         );
       }
       
-      console.error(`[Build Deposit TX] Simulation error details:`, simulationResponse);
-      throw new Error(`Deposit failed: ${simulationResponse.error || 'Simulation error'}`);
+      throw new Error(`Deposit simulation failed: ${simulationResponse.error || 'Unknown error'}`);
     }
 
     // Assemble transaction with simulation results

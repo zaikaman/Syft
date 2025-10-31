@@ -1,7 +1,9 @@
 import { Handle, Position, useReactFlow } from '@xyflow/react';
-import { Repeat, Lock, Droplet, ArrowLeftRight } from 'lucide-react';
+import { Repeat, Lock, Droplet, ArrowLeftRight, ChevronDown } from 'lucide-react';
 import { useState, useEffect, useCallback } from 'react';
 import type { ActionBlock as ActionBlockType } from '../../../types/blocks';
+import { getProtocolsByType, type ProtocolInfo } from '../../../services/protocolService';
+import { useWallet } from '../../../providers/WalletProvider';
 
 interface ActionBlockProps {
   id: string;
@@ -12,16 +14,35 @@ interface ActionBlockProps {
 const ActionBlock = ({ id, data, selected }: ActionBlockProps) => {
   const { actionType, targetAsset, targetAllocation, protocol } = data;
   const { updateNodeData } = useReactFlow();
+  const { network } = useWallet();
 
   const [localTargetAsset, setLocalTargetAsset] = useState(targetAsset || '');
   const [localTargetAllocation, setLocalTargetAllocation] = useState(targetAllocation || 0);
   const [localProtocol, setLocalProtocol] = useState(protocol || '');
+  const [availableProtocols, setAvailableProtocols] = useState<ProtocolInfo[]>([]);
 
   useEffect(() => {
     setLocalTargetAsset(targetAsset || '');
     setLocalTargetAllocation(targetAllocation || 0);
     setLocalProtocol(protocol || '');
   }, [targetAsset, targetAllocation, protocol]);
+
+  // Load protocols based on action type and network
+  useEffect(() => {
+    const loadProtocols = async () => {
+      if (actionType === 'stake') {
+        const protocols = await getProtocolsByType('staking', network as any);
+        setAvailableProtocols(protocols);
+      } else if (actionType === 'provide_liquidity') {
+        const protocols = await getProtocolsByType('liquidity', network as any);
+        setAvailableProtocols(protocols);
+      } else if (actionType === 'swap') {
+        const protocols = await getProtocolsByType('dex', network as any);
+        setAvailableProtocols(protocols);
+      }
+    };
+    loadProtocols();
+  }, [actionType, network]);
 
   const handleTargetAssetChange = useCallback((value: string) => {
     setLocalTargetAsset(value);
@@ -128,13 +149,31 @@ const ActionBlock = ({ id, data, selected }: ActionBlockProps) => {
               <label className="text-xs text-gray-600 dark:text-gray-400 block mb-1">
                 Protocol
               </label>
-              <input
-                type="text"
-                value={localProtocol}
-                onChange={(e) => handleProtocolChange(e.target.value)}
-                placeholder="e.g. Aqua, Soroswap"
-                className="w-full px-2 py-1 text-sm bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded focus:outline-none focus:ring-2 focus:ring-orange-500 text-gray-900 dark:text-white"
-              />
+              {availableProtocols.length > 0 ? (
+                <div className="relative">
+                  <select
+                    value={localProtocol}
+                    onChange={(e) => handleProtocolChange(e.target.value)}
+                    className="w-full px-2 py-1 text-sm bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded focus:outline-none focus:ring-2 focus:ring-orange-500 text-gray-900 dark:text-white appearance-none pr-8"
+                  >
+                    <option value="">Select a protocol</option>
+                    {availableProtocols.map((proto) => (
+                      <option key={proto.id} value={proto.name}>
+                        {proto.name}
+                      </option>
+                    ))}
+                  </select>
+                  <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3 h-3 text-gray-500 pointer-events-none" />
+                </div>
+              ) : (
+                <input
+                  type="text"
+                  value={localProtocol}
+                  onChange={(e) => handleProtocolChange(e.target.value)}
+                  placeholder="e.g. Aqua, Soroswap"
+                  className="w-full px-2 py-1 text-sm bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded focus:outline-none focus:ring-2 focus:ring-orange-500 text-gray-900 dark:text-white"
+                />
+              )}
             </div>
             {actionType === 'stake' && (
               <div>
@@ -170,15 +209,33 @@ const ActionBlock = ({ id, data, selected }: ActionBlockProps) => {
             </div>
             <div>
               <label className="text-xs text-gray-600 dark:text-gray-400 block mb-1">
-                Protocol (Optional)
+                DEX Protocol (Optional)
               </label>
-              <input
-                type="text"
-                value={localProtocol}
-                onChange={(e) => handleProtocolChange(e.target.value)}
-                placeholder="e.g. Soroswap"
-                className="w-full px-2 py-1 text-sm bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded focus:outline-none focus:ring-2 focus:ring-orange-500 text-gray-900 dark:text-white"
-              />
+              {availableProtocols.length > 0 ? (
+                <div className="relative">
+                  <select
+                    value={localProtocol}
+                    onChange={(e) => handleProtocolChange(e.target.value)}
+                    className="w-full px-2 py-1 text-sm bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded focus:outline-none focus:ring-2 focus:ring-orange-500 text-gray-900 dark:text-white appearance-none pr-8"
+                  >
+                    <option value="">Auto-select best DEX</option>
+                    {availableProtocols.map((proto) => (
+                      <option key={proto.id} value={proto.name}>
+                        {proto.name}
+                      </option>
+                    ))}
+                  </select>
+                  <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3 h-3 text-gray-500 pointer-events-none" />
+                </div>
+              ) : (
+                <input
+                  type="text"
+                  value={localProtocol}
+                  onChange={(e) => handleProtocolChange(e.target.value)}
+                  placeholder="e.g. Soroswap"
+                  className="w-full px-2 py-1 text-sm bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded focus:outline-none focus:ring-2 focus:ring-orange-500 text-gray-900 dark:text-white"
+                />
+              )}
             </div>
           </div>
         );

@@ -555,6 +555,11 @@ router.post('/submit-deployment', async (req: Request, res: Response) => {
       deployed_at: new Date().toISOString(),
     });
 
+    // NOTE: Router setup is now handled by the frontend after deployment
+    // The owner must sign the set_router transaction for proper authorization
+    console.log(`[Vault Deployed] Vault deployed and initialized successfully`);
+    console.log(`[Vault Deployed] Frontend will handle router setup with owner authorization`);
+
     return res.json({
       success: true,
       data: {
@@ -777,13 +782,136 @@ router.post('/submit-initialize', async (req: Request, res: Response) => {
 });
 
 /**
+ * POST /api/vaults/build-set-router
+ * Build unsigned set_router transaction for vault owner to sign
+ */
+router.post('/build-set-router', async (req: Request, res: Response) => {
+  try {
+    const { contractAddress, ownerAddress, network } = req.body;
+
+    if (!contractAddress || !ownerAddress) {
+      return res.status(400).json({
+        success: false,
+        error: 'Missing required fields: contractAddress, ownerAddress',
+      });
+    }
+
+    console.log(`[Build Set Router] Building set_router transaction for ${contractAddress}`);
+    
+    const servers = getNetworkServers(network);
+    
+    // Load owner account
+    const ownerAccount = await servers.horizonServer.loadAccount(ownerAddress);
+    
+    // Router address (Soroswap testnet)
+    const routerAddress = 'CCMAPXWVZD4USEKDWRYS7DA4Y3D7E2SDMGBFJUCEXTC7VN6CUBGWPFUS';
+    
+    // Create contract instance
+    const vaultContract = new StellarSdk.Contract(contractAddress);
+    
+    // Build set_router operation
+    const operation = vaultContract.call(
+      'set_router',
+      StellarSdk.Address.fromString(routerAddress).toScVal()
+    );
+    
+    // Build transaction
+    let transaction = new StellarSdk.TransactionBuilder(ownerAccount, {
+      fee: StellarSdk.BASE_FEE,
+      networkPassphrase: servers.networkPassphrase,
+    })
+      .addOperation(operation)
+      .setTimeout(300)
+      .build();
+    
+    console.log(`[Build Set Router] Simulating transaction...`);
+    
+    // Simulate transaction
+    const simulationResponse = await servers.sorobanServer.simulateTransaction(transaction);
+    
+    if (StellarSdk.rpc.Api.isSimulationError(simulationResponse)) {
+      console.error(`[Build Set Router] Simulation failed:`, simulationResponse);
+      throw new Error(`Simulation failed: ${simulationResponse.error}`);
+    }
+    
+    // Assemble transaction with simulation results
+    transaction = StellarSdk.rpc.assembleTransaction(transaction, simulationResponse).build();
+    
+    console.log(`[Build Set Router] Transaction built successfully`);
+    
+    return res.json({
+      success: true,
+      data: {
+        xdr: transaction.toXDR(),
+        routerAddress,
+      },
+    });
+  } catch (error) {
+    console.error('Error in POST /api/vaults/build-set-router:', error);
+    return res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Internal server error',
+    });
+  }
+});
+
+/**
+ * POST /api/vaults/submit-set-router
+ * Submit signed set_router transaction
+ */
+router.post('/submit-set-router', async (req: Request, res: Response) => {
+  try {
+    const { signedXDR, contractAddress, network } = req.body;
+
+    if (!signedXDR || !contractAddress) {
+      return res.status(400).json({
+        success: false,
+        error: 'Missing required fields: signedXDR, contractAddress',
+      });
+    }
+
+    console.log(`[Submit Set Router] Submitting set_router transaction for ${contractAddress}`);
+    
+    const servers = getNetworkServers(network);
+    
+    // Parse signed transaction
+    const transaction = StellarSdk.TransactionBuilder.fromXDR(
+      signedXDR,
+      servers.networkPassphrase
+    );
+    
+    console.log(`[Submit Set Router] Submitting to network...`);
+    
+    // Submit transaction
+    const submitResult = await servers.horizonServer.submitTransaction(transaction);
+    const txHash = submitResult.hash;
+    
+    console.log(`[Submit Set Router] ✅ Router configured successfully! TX: ${txHash}`);
+    
+    return res.json({
+      success: true,
+      data: {
+        transactionHash: txHash,
+        contractAddress,
+      },
+    });
+  } catch (error) {
+    console.error('Error in POST /api/vaults/submit-set-router:', error);
+    return res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Internal server error',
+    });
+  }
+});
+
+/**
  * POST /api/vaults/:vaultId/build-deposit
  * Build unsigned deposit transaction for user to sign
  */
 router.post('/:vaultId/build-deposit', async (req: Request, res: Response) => {
   try {
     const { vaultId } = req.params;
-    const { userAddress, amount, network } = req.body;
+    const { userAddress, amount, network, depositToken } = req.body;
 
     if (!userAddress || !amount) {
       return res.status(400).json({
@@ -792,12 +920,13 @@ router.post('/:vaultId/build-deposit', async (req: Request, res: Response) => {
       });
     }
 
-    // Build unsigned transaction
+    // Build unsigned transaction with optional depositToken for auto-swap
     const { xdr, contractAddress } = await buildDepositTransaction(
       vaultId,
       userAddress,
       amount,
-      network
+      network,
+      depositToken
     );
 
     return res.json({
@@ -855,8 +984,8 @@ router.post('/:vaultId/submit-deposit', async (req: Request, res: Response) => {
       try {
         // The contract returns the shares amount as the result
         // Parse it from the transaction metadata
-        if (submitResult.returnValue) {
-          const returnValue = StellarSdk.scValToNative(submitResult.returnValue);
+        if ((submitResult as any).returnValue) {
+          const returnValue = StellarSdk.scValToNative((submitResult as any).returnValue);
           if (returnValue && typeof returnValue === 'bigint') {
             receivedShares = returnValue.toString();
             console.log(`[Submit Deposit] Extracted received shares: ${receivedShares}`);
@@ -1002,8 +1131,8 @@ router.post('/:vaultId/submit-withdraw', async (req: Request, res: Response) => 
       try {
         // The contract returns the withdrawn amount as the result
         // Parse it from the transaction metadata
-        if (submitResult.returnValue) {
-          const returnValue = StellarSdk.scValToNative(submitResult.returnValue);
+        if ((submitResult as any).returnValue) {
+          const returnValue = StellarSdk.scValToNative((submitResult as any).returnValue);
           if (returnValue && typeof returnValue === 'bigint') {
             withdrawnAmount = returnValue.toString();
             console.log(`[Submit Withdrawal] Extracted withdrawn amount: ${withdrawnAmount} stroops`);

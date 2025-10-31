@@ -1,5 +1,5 @@
 // Vault core contract functionality
-use soroban_sdk::{contract, contractimpl, Address, Env, Symbol, symbol_short, token};
+use soroban_sdk::{contract, contractimpl, Address, Env, Symbol, symbol_short, token, log};
 
 use crate::types::{VaultConfig, VaultState, UserPosition};
 use crate::errors::VaultError;
@@ -107,25 +107,29 @@ impl VaultContract {
 
         // Check if we need to swap to base token
         let final_amount = if deposit_token != base_token {
-            // User deposited a different token, need to swap to base token
+            // User deposited a different token, check if we can swap
             env.events().publish((symbol_short!("debug"),), symbol_short!("swap_req"));
             
-            // Get router address
-            let router_address = config.router_address.clone()
-                .ok_or(VaultError::RouterNotSet)?;
-            
-            // Execute swap from deposit_token to base_token
-            let swapped_amount = crate::swap_router::swap_via_router(
-                &env,
-                &router_address,
-                &deposit_token,
-                &base_token,
-                amount,
-                0, // No minimum for now (in production, calculate slippage tolerance)
-            )?;
-            
-            env.events().publish((symbol_short!("debug"),), symbol_short!("swap_ok"));
-            swapped_amount
+            // Check if router is configured
+            if let Some(router_address) = config.router_address.clone() {
+                // Router available, execute swap from deposit_token to base_token
+                let swapped_amount = crate::swap_router::swap_via_router(
+                    &env,
+                    &router_address,
+                    &deposit_token,
+                    &base_token,
+                    amount,
+                    0, // No minimum for now (in production, calculate slippage tolerance)
+                )?;
+                
+                env.events().publish((symbol_short!("debug"),), symbol_short!("swap_ok"));
+                swapped_amount
+            } else {
+                // No router configured - cannot swap between different tokens
+                // This happens on networks without DEX (like futurenet)
+                env.events().publish((symbol_short!("debug"),), symbol_short!("no_router"));
+                return Err(VaultError::RouterNotSet);
+            }
         } else {
             // Already in base token, no swap needed
             amount
@@ -162,6 +166,23 @@ impl VaultContract {
 
         // Emit event with final amount (after swap)
         emit_deposit(&env, &user, final_amount, shares);
+
+        // Auto-rebalance vault to target allocations after deposit
+        // This ensures deposited funds are immediately distributed across all configured assets
+        if config.assets.len() > 1 && !config.rules.is_empty() {
+            // Only auto-rebalance if vault has multiple assets and rebalance rules configured
+            match crate::rebalance::execute_rebalance(&env) {
+                Ok(_) => {
+                    env.events().publish((symbol_short!("rebalance"),), symbol_short!("auto_ok"));
+                },
+                Err(e) => {
+                    // Log rebalance failure but don't fail the deposit
+                    // Deposit succeeded, rebalance can be retried later
+                    env.events().publish((symbol_short!("rebalance"),), symbol_short!("auto_err"));
+                    log!(&env, "Auto-rebalance after deposit failed: {:?}", e);
+                }
+            }
+        }
 
         Ok(shares)
     }

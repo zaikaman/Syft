@@ -1,15 +1,33 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Coins, TrendingUp, Repeat, ChevronDown, ChevronUp } from 'lucide-react';
 import type { PaletteItem } from '../../types/blocks';
+import { getTokenBySymbol } from '../../services/assetService';
+import { useWallet } from '../../providers/WalletProvider';
 
 interface BlockPaletteProps {
   onBlockSelect: (item: PaletteItem) => void;
 }
 
 const BlockPalette = ({ onBlockSelect }: BlockPaletteProps) => {
+  const { network } = useWallet();
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(
     new Set(['assets', 'conditions', 'actions'])
   );
+  const [xlmAddress, setXlmAddress] = useState<string>('');
+  const [usdcAddress, setUsdcAddress] = useState<string>('');
+
+  // Load network-specific asset addresses
+  useEffect(() => {
+    const loadAssetAddresses = async () => {
+      const xlmToken = await getTokenBySymbol('XLM', network as any);
+      const usdcToken = await getTokenBySymbol('USDC', network as any);
+      
+      if (xlmToken) setXlmAddress(xlmToken.address || '');
+      if (usdcToken) setUsdcAddress(usdcToken.address || '');
+    };
+    
+    loadAssetAddresses();
+  }, [network]);
 
   const toggleCategory = (category: string) => {
     setExpandedCategories((prev) => {
@@ -33,6 +51,8 @@ const BlockPalette = ({ onBlockSelect }: BlockPaletteProps) => {
       category: 'assets',
       defaultData: {
         assetType: 'XLM',
+        assetCode: 'XLM',
+        assetIssuer: xlmAddress,
         allocation: 50,
       },
     },
@@ -44,6 +64,8 @@ const BlockPalette = ({ onBlockSelect }: BlockPaletteProps) => {
       category: 'assets',
       defaultData: {
         assetType: 'USDC',
+        assetCode: 'USDC',
+        assetIssuer: usdcAddress,
         allocation: 50,
       },
     },
