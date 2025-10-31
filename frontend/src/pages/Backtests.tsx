@@ -76,6 +76,8 @@ interface BacktestMetrics {
   numRebalances: number;
   finalValue: number;
   buyAndHoldReturn: number;
+  usingMockData?: boolean;
+  dataSourceWarning?: string;
 }
 
 interface BacktestResult {
@@ -265,7 +267,7 @@ const Backtests = () => {
       console.log('[Backtests] Selected vault config:', selectedVault.config);
       
       // Handle both old format (strings) and new format (objects)
-      const normalizeAsset = (asset: any, index: number, total: number) => {
+      const normalizeAsset = (asset: any, _index: number, total: number) => {
         // If asset is a string (old format), convert to object
         if (typeof asset === 'string') {
           return {

@@ -12,7 +12,7 @@ import {
 
 export const getWasmContractData = async (wasmBytes: Buffer) => {
   try {
-    const mod = await WebAssembly.compile(wasmBytes);
+    const mod = await WebAssembly.compile(wasmBytes.buffer as ArrayBuffer);
 
     const result: Record<ContractSectionName, ContractData> = {
       contractmetav0: {},

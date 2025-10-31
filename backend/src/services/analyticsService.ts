@@ -78,7 +78,10 @@ async function calculateAPY(vaultId: string): Promise<number> {
 
       if (netInvested <= 0) return 0;
 
-      // Get current TVL
+      // Get current TVL - try snapshot first, fallback to live vault state
+      let currentValue = 0;
+      let referenceTimestamp = new Date().toISOString();
+      
       const { data: latestSnapshot } = await supabase
         .from('vault_performance')
         .select('total_value, timestamp')
@@ -87,15 +90,35 @@ async function calculateAPY(vaultId: string): Promise<number> {
         .limit(1)
         .single();
 
-      if (!latestSnapshot) return 0;
+      if (latestSnapshot) {
+        currentValue = latestSnapshot.total_value;
+        referenceTimestamp = latestSnapshot.timestamp;
+      } else {
+        // No snapshot yet - get live vault state
+        console.log(`[calculateAPY] ${vaultId} - No performance snapshot found, using live vault state`);
+        const { data: vaultData } = await supabase
+          .from('vaults')
+          .select('config, contract_address')
+          .eq('vault_id', vaultId)
+          .single();
+        
+        if (vaultData?.config?.current_state?.totalValue) {
+          // Convert stroops to USD
+          const { stroopsToUSD } = await import('./priceService.js');
+          const stroopsValue = parseFloat(vaultData.config.current_state.totalValue);
+          currentValue = await stroopsToUSD(stroopsValue);
+          console.log(`[calculateAPY] ${vaultId} - Using live TVL: $${currentValue.toFixed(2)}`);
+        } else {
+          console.warn(`[calculateAPY] ${vaultId} - No TVL data available (no snapshot and no current_state)`);
+          return 0;
+        }
+      }
 
       // Get first deposit timestamp
       const firstDeposit = deposits[0];
-      const daysInvested = (new Date(latestSnapshot.timestamp).getTime() - new Date(firstDeposit.timestamp).getTime()) / (1000 * 60 * 60 * 24);
+      const daysInvested = (new Date(referenceTimestamp).getTime() - new Date(firstDeposit.timestamp).getTime()) / (1000 * 60 * 60 * 24);
 
       if (daysInvested < 0.01) return 0; // Less than 15 minutes, too early
-
-      const currentValue = latestSnapshot.total_value;
       const totalReturn = (currentValue - netInvested) / netInvested;
 
       // Annualize: APY = (1 + return)^(365/days) - 1
@@ -402,12 +425,32 @@ export async function getVaultAnalytics(vaultId: string): Promise<VaultAnalytics
       .order('timestamp', { ascending: false })
       .limit(1);
 
-    // If no snapshots, TVL is 0
-    const tvl = latestSnapshot && latestSnapshot.length > 0 
-      ? latestSnapshot[0].total_value 
-      : 0;
-
-    console.log(`[getVaultAnalytics] ${vaultId} - Current TVL from latest snapshot: $${tvl.toFixed(2)}`);
+    // Get TVL - try snapshot first, fallback to live vault state
+    let tvl = 0;
+    
+    if (latestSnapshot && latestSnapshot.length > 0) {
+      tvl = latestSnapshot[0].total_value;
+      console.log(`[getVaultAnalytics] ${vaultId} - Current TVL from snapshot: $${tvl.toFixed(2)}`);
+    } else {
+      // No snapshot yet - get live vault state
+      console.log(`[getVaultAnalytics] ${vaultId} - No performance snapshot, using live vault state`);
+      const { data: vaultData } = await supabase
+        .from('vaults')
+        .select('config')
+        .eq('vault_id', vaultId)
+        .single();
+      
+      if (vaultData?.config?.current_state?.totalValue) {
+        // Convert stroops to USD
+        const { stroopsToUSD } = await import('./priceService.js');
+        const stroopsValue = parseFloat(vaultData.config.current_state.totalValue);
+        tvl = await stroopsToUSD(stroopsValue);
+        console.log(`[getVaultAnalytics] ${vaultId} - Current TVL from live state: $${tvl.toFixed(2)}`);
+      } else {
+        console.warn(`[getVaultAnalytics] ${vaultId} - No TVL data available (no snapshot and no current_state)`);
+        tvl = 0;
+      }
+    }
 
     // ALWAYS calculate APY fresh to ensure consistency with earnings calculation
     // Don't use pre-calculated snapshot APY as it may use different methodology

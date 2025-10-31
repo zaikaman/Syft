@@ -106,6 +106,8 @@ export const VaultActions: React.FC<VaultActionsProps> = ({
           body: JSON.stringify({
             signedXDR: signedTxXdr,
             network: normalizedNetwork,
+            userAddress: address,
+            amount: amountInStroops,
           }),
         }
       );
@@ -211,6 +213,8 @@ export const VaultActions: React.FC<VaultActionsProps> = ({
           body: JSON.stringify({
             signedXDR: signedTxXdr,
             network: normalizedNetwork,
+            userAddress: address,
+            shares: sharesInStroops,
           }),
         }
       );

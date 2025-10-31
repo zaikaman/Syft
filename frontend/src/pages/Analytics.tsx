@@ -33,6 +33,9 @@ interface VaultBreakdown {
     maxDrawdown: number;
     volatility: number;
   };
+  config?: {
+    name?: string;
+  };
 }
 
 const Analytics = () => {

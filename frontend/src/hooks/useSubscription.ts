@@ -49,11 +49,7 @@ export function useSubscription(
           paging[id].lastLedgerStart = latestLedgerState.sequence;
         }
 
-        const response = await server.getEvents({
-          startLedger: !paging[id].pagingToken
-            ? paging[id].lastLedgerStart
-            : undefined,
-          cursor: paging[id].pagingToken,
+        const requestParams: any = {
           filters: [
             {
               contractIds: [contractId],
@@ -62,7 +58,16 @@ export function useSubscription(
             },
           ],
           limit: 10,
-        });
+        };
+        
+        // Use either cursor OR startLedger, not both
+        if (paging[id].pagingToken) {
+          requestParams.cursor = paging[id].pagingToken;
+        } else if (paging[id].lastLedgerStart) {
+          requestParams.startLedger = paging[id].lastLedgerStart;
+        }
+        
+        const response = await server.getEvents(requestParams);
 
         paging[id].pagingToken = undefined;
         if (response.latestLedger) {
@@ -78,7 +83,8 @@ export function useSubscription(
                 error,
               );
             } finally {
-              paging[id].pagingToken = event.pagingToken;
+              // Store cursor for next iteration (property might be 'cursor' or 'pagingToken')
+              paging[id].pagingToken = (event as any).pagingToken || (event as any).cursor;
             }
           });
         }

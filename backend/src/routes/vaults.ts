@@ -845,10 +845,26 @@ router.post('/:vaultId/submit-deposit', async (req: Request, res: Response) => {
 
     // Submit transaction via Horizon (fast, no polling needed)
     let txHash: string;
+    let receivedShares: string = amount; // fallback to amount if parsing fails
     try {
       const submitResult = await servers.horizonServer.submitTransaction(transaction);
       txHash = submitResult.hash;
       console.log(`[Submit Deposit] ✅ Transaction submitted successfully: ${txHash}`);
+      
+      // Try to extract the actual shares received from the transaction result
+      try {
+        // The contract returns the shares amount as the result
+        // Parse it from the transaction metadata
+        if (submitResult.returnValue) {
+          const returnValue = StellarSdk.scValToNative(submitResult.returnValue);
+          if (returnValue && typeof returnValue === 'bigint') {
+            receivedShares = returnValue.toString();
+            console.log(`[Submit Deposit] Extracted received shares: ${receivedShares}`);
+          }
+        }
+      } catch (parseError) {
+        console.warn('[Submit Deposit] Could not parse shares from transaction result, using amount as fallback');
+      }
     } catch (submitError: any) {
       console.error(`[Submit Deposit] Error submitting transaction:`, submitError);
       return res.status(500).json({
@@ -863,15 +879,13 @@ router.post('/:vaultId/submit-deposit', async (req: Request, res: Response) => {
       try {
         const { recordVaultTransaction } = await import('../services/transactionService.js');
         
-        // We need to get the shares from the transaction result
-        // For now, use amount as shares (1:1 ratio for initial deposit)
-        // In production, should parse the transaction result to get actual shares
+        // Use the actual shares received from the contract
         await recordVaultTransaction({
           vaultId,
           userAddress,
           type: 'deposit',
           amountStroops: amount,
-          shares: amount, // TODO: Extract actual shares from transaction result
+          shares: receivedShares,
           transactionHash: txHash,
           network,
         });
@@ -978,10 +992,26 @@ router.post('/:vaultId/submit-withdraw', async (req: Request, res: Response) => 
 
     // Submit transaction via Horizon (fast, no polling needed)
     let txHash: string;
+    let withdrawnAmount: string = shares; // fallback to shares if parsing fails
     try {
       const submitResult = await servers.horizonServer.submitTransaction(transaction);
       txHash = submitResult.hash;
       console.log(`[Submit Withdrawal] ✅ Transaction submitted successfully: ${txHash}`);
+      
+      // Try to extract the actual withdrawn amount from the transaction result
+      try {
+        // The contract returns the withdrawn amount as the result
+        // Parse it from the transaction metadata
+        if (submitResult.returnValue) {
+          const returnValue = StellarSdk.scValToNative(submitResult.returnValue);
+          if (returnValue && typeof returnValue === 'bigint') {
+            withdrawnAmount = returnValue.toString();
+            console.log(`[Submit Withdrawal] Extracted withdrawn amount: ${withdrawnAmount} stroops`);
+          }
+        }
+      } catch (parseError) {
+        console.warn('[Submit Withdrawal] Could not parse withdrawn amount from transaction result, using shares as fallback');
+      }
     } catch (submitError: any) {
       console.error(`[Submit Withdrawal] Error submitting transaction:`, submitError);
       return res.status(500).json({
@@ -996,13 +1026,12 @@ router.post('/:vaultId/submit-withdraw', async (req: Request, res: Response) => 
       try {
         const { recordVaultTransaction } = await import('../services/transactionService.js');
         
-        // For withdrawals, shares are provided, amount needs to be calculated
-        // For now, use shares as amount (will be calculated based on share price)
+        // Use the actual withdrawn amount (in stroops)
         await recordVaultTransaction({
           vaultId,
           userAddress,
           type: 'withdrawal',
-          amountStroops: shares, // Will be converted based on share price
+          amountStroops: withdrawnAmount,
           shares: shares,
           transactionHash: txHash,
           network,
