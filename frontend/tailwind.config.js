@@ -108,6 +108,7 @@ export default {
       animation: {
         'fade-in': 'fadeIn 0.3s ease-out',
         'slide-in': 'slideIn 0.3s ease-out',
+        'shimmer': 'shimmer 2s linear infinite',
       },
       keyframes: {
         fadeIn: {
@@ -117,6 +118,10 @@ export default {
         slideIn: {
           '0%': { opacity: '0', transform: 'translateX(-10px)' },
           '100%': { opacity: '1', transform: 'translateX(0)' },
+        },
+        shimmer: {
+          '0%': { backgroundPosition: '-200% 0' },
+          '100%': { backgroundPosition: '200% 0' },
         },
       },
     },

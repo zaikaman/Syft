@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { motion } from 'framer-motion';
-import { Card, Button } from '../components/ui';
+import { Card, Button, Skeleton } from '../components/ui';
 import { MintNFT } from '../components/nft/MintNFT';
 import { CreateListing } from '../components/marketplace/CreateListing';
 import {
@@ -135,12 +135,12 @@ const NFTs = () => {
 
   return (
     <div className="h-full bg-app overflow-auto">
-      <div className="container mx-auto px-4 py-8 max-w-7xl">
+      <div className="container mx-auto px-4 py-8 pb-16 max-w-7xl">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5 }}
-          className="space-y-6"
+          className="space-y-6 pb-8"
         >
           {/* Header */}
           <div className="flex flex-col md:flex-row md:justify-between md:items-center gap-4">
@@ -201,7 +201,7 @@ const NFTs = () => {
           {/* Content */}
           {loading ? (
             <div className="text-center py-24">
-              <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-primary-500 mb-4"></div>
+              <Skeleton className="h-12 w-48 mx-auto mb-4" />
               <p className="text-neutral-400">Loading your NFTs...</p>
             </div>
           ) : error ? (

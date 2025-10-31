@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useWallet } from '../../hooks/useWallet';
 import { useWalletBalance } from '../../hooks/useWalletBalance';
-import { useModal } from '../ui';
+import { useModal, Skeleton } from '../ui';
 
 interface VaultActionsProps {
   vaultId: string;
@@ -359,7 +359,7 @@ export const VaultActions: React.FC<VaultActionsProps> = ({
 
       {isProcessing && (
         <div className="mt-6 text-center">
-          <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-primary-500"></div>
+          <Skeleton className="h-8 w-32 mx-auto" />
           <p className="text-neutral-400 mt-2">Processing transaction...</p>
         </div>
       )}

@@ -2,7 +2,7 @@ import { motion } from 'framer-motion';
 import { useState, useEffect } from 'react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import { TrendingUp, DollarSign, Percent, Box, Activity, AlertCircle } from 'lucide-react';
-import { Card, Button } from '../components/ui';
+import { Card, Button, Skeleton } from '../components/ui';
 import { useWallet } from '../providers/WalletProvider';
 import { Link } from 'react-router-dom';
 
@@ -386,7 +386,7 @@ const Dashboard = () => {
 
   return (
     <div className="h-full bg-app overflow-auto">
-      <div className="container mx-auto px-4 py-8 max-w-6xl">
+      <div className="container mx-auto px-4 py-8 pb-16 max-w-6xl">
         {/* Header */}
         <motion.div
           initial={{ opacity: 0, y: 10 }}
@@ -559,6 +559,7 @@ const Dashboard = () => {
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.4 }}
+          className="pb-8"
         >
           <Card className="p-5 bg-card">
             <div className="flex items-center justify-between mb-5">
@@ -573,7 +574,7 @@ const Dashboard = () => {
 
             {loading && isInitialLoad ? (
               <div className="text-center py-12">
-                <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-primary-500"></div>
+                <Skeleton className="h-8 w-32 mx-auto" />
                 <p className="text-neutral-400 mt-4 text-sm">Loading vaults...</p>
               </div>
             ) : error && vaults.length === 0 ? (

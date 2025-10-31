@@ -21,7 +21,7 @@ const VaultDetail = () => {
 
   return (
     <div className="h-full bg-app overflow-auto">
-      <div className="container mx-auto px-4 py-8 max-w-6xl">
+      <div className="container mx-auto px-4 py-8 pb-16 max-w-6xl">
         <VaultDetailComponent vaultId={vaultId} />
       </div>
     </div>

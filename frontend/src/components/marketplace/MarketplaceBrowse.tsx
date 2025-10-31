@@ -5,6 +5,7 @@ import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { Card } from '../ui/Card';
 import { Button } from '../ui/Button';
+import { Skeleton } from '../ui/Skeleton';
 import { Package, TrendingUp, DollarSign, Clock, AlertCircle, RefreshCw } from 'lucide-react';
 import { useWallet } from '../../hooks/useWallet';
 import { useNavigate } from 'react-router-dom';
@@ -263,7 +264,7 @@ export function MarketplaceBrowse({ onSelectListing }: MarketplaceBrowseProps) {
     return (
       <div className="flex justify-center items-center py-20">
         <div className="text-center">
-          <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-primary-500 mb-4"></div>
+          <Skeleton className="h-12 w-48 mx-auto mb-4" />
           <p className="text-neutral-400">Loading marketplace...</p>
         </div>
       </div>

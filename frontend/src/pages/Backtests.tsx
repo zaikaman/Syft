@@ -37,7 +37,7 @@ import {
   Tooltip, 
   ResponsiveContainer
 } from 'recharts';
-import { Card, Button, useModal } from '../components/ui';
+import { Card, Button, useModal, Skeleton } from '../components/ui';
 import { useWallet } from '../providers/WalletProvider';
 import { Link } from 'react-router-dom';
 
@@ -558,12 +558,12 @@ const Backtests = () => {
 
   return (
     <div className="h-full bg-app overflow-auto">
-      <div className="container mx-auto px-4 py-8 max-w-7xl">
+      <div className="container mx-auto px-4 py-8 pb-16 max-w-7xl">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5 }}
-          className="space-y-6"
+          className="space-y-6 pb-8"
         >
           {/* Header */}
           <div className="flex flex-col md:flex-row md:justify-between md:items-start gap-4">
@@ -1462,7 +1462,7 @@ const Backtests = () => {
                   {/* Results List */}
                   {loading ? (
                     <div className="text-center py-12">
-                      <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-primary-500 mb-4"></div>
+                      <Skeleton className="h-8 w-32 mx-auto mb-4" />
                       <p className="text-neutral-400">Loading history...</p>
                     </div>
                   ) : filteredResults.length === 0 ? (

@@ -383,7 +383,7 @@ export const PrettyJson = ({
   if (isLoading) {
     return (
       <div style={styles.loaderContainer}>
-        <Loader />
+        <div style={{ width: '48px', height: '48px', background: '#e0e0e0', borderRadius: '8px', animation: 'pulse 1.5s ease-in-out infinite' }} />
       </div>
     );
   }

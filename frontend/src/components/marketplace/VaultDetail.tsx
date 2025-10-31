@@ -6,6 +6,7 @@ import { motion } from 'framer-motion';
 import { TrendingUp, DollarSign, Percent, Activity, Clock, Copy, ExternalLink, Package, ShoppingBag, Image } from 'lucide-react';
 import { Card } from '../ui/Card';
 import { Button } from '../ui/Button';
+import { Skeleton } from '../ui/Skeleton';
 import { VaultActions } from '../vault/VaultActions';
 import { useWallet } from '../../providers/WalletProvider';
 import { useModal } from '../ui';
@@ -252,7 +253,7 @@ export function VaultDetail({ vaultId, listingId }: VaultDetailProps) {
   if (isLoading) {
     return (
       <div className="flex justify-center py-12">
-        <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-primary-500"></div>
+        <Skeleton className="h-8 w-32 mx-auto" />
         <p className="text-neutral-400 mt-4 text-sm">Loading vault details...</p>
       </div>
     );

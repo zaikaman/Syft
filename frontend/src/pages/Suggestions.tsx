@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Card, Button } from '../components/ui';
+import { Card, Button, Skeleton } from '../components/ui';
 import { Lightbulb, Sparkles, AlertCircle, RefreshCw, X, CheckCircle, TrendingUp, Shield, Zap } from 'lucide-react';
 import { useWallet } from '../providers/WalletProvider';
 
@@ -252,10 +252,110 @@ const Suggestions = () => {
 
   if (loading) {
     return (
-      <div className="h-full bg-app flex items-center justify-center">
-        <div className="text-center">
-          <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-primary-500 mb-4"></div>
-          <p className="text-neutral-400">Loading vaults...</p>
+      <div className="h-full bg-app overflow-auto">
+        <div className="container mx-auto px-4 py-8 pb-16 max-w-7xl">
+          <div className="space-y-6 pb-8">
+            {/* Header Skeleton */}
+            <div className="flex items-center justify-between mb-6">
+              <div>
+                <div className="flex items-center gap-3 mb-2">
+                  <Skeleton className="w-8 h-8 rounded-lg" />
+                  <Skeleton className="h-9 w-80" />
+                </div>
+                <Skeleton className="h-5 w-96" />
+              </div>
+              <Skeleton className="h-10 w-24" />
+            </div>
+
+            {/* Vault Selector Skeleton */}
+            <Card className="p-6 bg-card border border-default">
+              <div className="mb-5">
+                <Skeleton className="h-6 w-32 mb-1" />
+                <Skeleton className="h-4 w-96" />
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                {[...Array(3)].map((_, i) => (
+                  <Card key={i} className="p-4 bg-neutral-900 border border-default">
+                    <div className="flex items-start justify-between mb-3">
+                      <div className="flex-1">
+                        <Skeleton className="h-5 w-32 mb-2" />
+                        <Skeleton className="h-4 w-24" />
+                      </div>
+                    </div>
+                    
+                    <div className="grid grid-cols-2 gap-2 mb-2">
+                      <div>
+                        <Skeleton className="h-3 w-20 mb-1" />
+                        <Skeleton className="h-5 w-16" />
+                      </div>
+                      <div>
+                        <Skeleton className="h-3 w-12 mb-1" />
+                        <Skeleton className="h-5 w-20" />
+                      </div>
+                    </div>
+                    
+                    <div className="flex items-center gap-2">
+                      <Skeleton className="w-1.5 h-1.5 rounded-full" />
+                      <Skeleton className="h-3 w-16" />
+                    </div>
+                  </Card>
+                ))}
+              </div>
+            </Card>
+
+            {/* AI Suggestions Skeleton */}
+            <Card className="p-6 bg-card border border-default">
+              <div className="flex items-center justify-between mb-6">
+                <div className="flex items-center gap-3">
+                  <Skeleton className="w-10 h-10 rounded-lg" />
+                  <div>
+                    <Skeleton className="h-6 w-64 mb-2" />
+                    <Skeleton className="h-4 w-96" />
+                  </div>
+                </div>
+                <Skeleton className="h-10 w-48" />
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {[...Array(6)].map((_, i) => (
+                  <Card key={i} className="p-5 bg-secondary border border-default">
+                    <div className="flex items-start justify-between mb-4">
+                      <div className="flex items-center gap-3">
+                        <Skeleton className="w-10 h-10 rounded-lg" />
+                        <div>
+                          <Skeleton className="h-5 w-32 mb-2" />
+                          <Skeleton className="h-4 w-20" />
+                        </div>
+                      </div>
+                    </div>
+                    
+                    <Skeleton className="h-4 w-full mb-2" />
+                    <Skeleton className="h-4 w-5/6 mb-4" />
+                    
+                    <div className="space-y-2 mb-4">
+                      <Skeleton className="h-4 w-full" />
+                      <Skeleton className="h-4 w-4/5" />
+                    </div>
+                    
+                    <div className="grid grid-cols-3 gap-2 mb-4">
+                      {[...Array(3)].map((_, j) => (
+                        <div key={j}>
+                          <Skeleton className="h-3 w-16 mb-1" />
+                          <Skeleton className="h-5 w-12" />
+                        </div>
+                      ))}
+                    </div>
+                    
+                    <div className="flex gap-2">
+                      <Skeleton className="h-9 flex-1" />
+                      <Skeleton className="h-9 w-9" />
+                    </div>
+                  </Card>
+                ))}
+              </div>
+            </Card>
+          </div>
         </div>
       </div>
     );
@@ -295,12 +395,12 @@ const Suggestions = () => {
 
   return (
     <div className="h-full bg-app overflow-auto">
-      <div className="container mx-auto px-4 py-8 max-w-7xl">
+      <div className="container mx-auto px-4 py-8 pb-16 max-w-7xl">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5 }}
-          className="space-y-6"
+          className="space-y-6 pb-8"
         >
           {/* Header */}
           <div className="flex items-center justify-between mb-6">
@@ -436,7 +536,7 @@ const Suggestions = () => {
 
                 {loadingSuggestions ? (
                   <div className="text-center py-12">
-                    <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-primary-500 mb-4"></div>
+                    <Skeleton className="h-8 w-32 mx-auto mb-4" />
                     <p className="text-neutral-400">Generating AI suggestions...</p>
                   </div>
                 ) : suggestionsError ? (

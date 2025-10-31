@@ -17,11 +17,8 @@ const BacktestProgress: React.FC<BacktestProgressProps> = ({
   return (
     <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-8">
       <div className="flex flex-col items-center justify-center space-y-6">
-        {/* Animated spinner */}
-        <div className="relative">
-          <div className="w-20 h-20 border-4 border-blue-200 dark:border-blue-900 rounded-full"></div>
-          <div className="absolute top-0 left-0 w-20 h-20 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
-        </div>
+        {/* Animated skeleton loader */}
+        <div className="w-20 h-20 bg-gray-300 dark:bg-gray-700 rounded-lg animate-pulse"></div>
 
         {/* Main message */}
         <div className="text-center space-y-2">

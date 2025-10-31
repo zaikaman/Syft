@@ -10,7 +10,7 @@ import {
   RefreshCw, ChevronDown, ChevronUp, ExternalLink,
   Clock, Package, Zap
 } from 'lucide-react';
-import { Card, Button } from '../components/ui';
+import { Card, Button, Skeleton } from '../components/ui';
 import { useWallet } from '../providers/WalletProvider';
 import { Link } from 'react-router-dom';
 
@@ -187,10 +187,100 @@ const Analytics = () => {
 
   if (loading) {
     return (
-      <div className="h-full bg-app flex items-center justify-center">
-        <div className="text-center">
-          <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-primary-500 mb-4"></div>
-          <p className="text-neutral-400">Loading analytics...</p>
+      <div className="h-full bg-app overflow-auto">
+        <div className="container mx-auto px-4 py-8 pb-16 max-w-7xl">
+          <div className="space-y-6 pb-8">
+            {/* Header Skeleton */}
+            <div className="flex flex-col md:flex-row md:justify-between md:items-center gap-4">
+              <div>
+                <Skeleton className="h-9 w-64 mb-2" />
+                <Skeleton className="h-5 w-96" />
+              </div>
+              <div className="flex items-center gap-3">
+                <Skeleton className="h-10 w-64" />
+                <Skeleton className="h-10 w-24" />
+              </div>
+            </div>
+
+            {/* Key Metrics Skeleton */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              {[...Array(4)].map((_, i) => (
+                <Card key={i} className="p-5 bg-card border border-default">
+                  <div className="flex items-start justify-between mb-3">
+                    <Skeleton className="w-10 h-10 rounded-lg" />
+                    <Skeleton className="h-4 w-16" />
+                  </div>
+                  <div className="space-y-2">
+                    <Skeleton className="h-8 w-32" />
+                    <Skeleton className="h-4 w-40" />
+                  </div>
+                </Card>
+              ))}
+            </div>
+
+            {/* Performance Chart and Allocation Skeleton */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              {/* Chart Skeleton */}
+              <Card className="lg:col-span-2 p-6 bg-card border border-default">
+                <div className="flex justify-between items-start mb-6">
+                  <div>
+                    <Skeleton className="h-6 w-48 mb-2" />
+                    <Skeleton className="h-4 w-64" />
+                  </div>
+                </div>
+                <Skeleton className="h-64 w-full rounded-lg" />
+              </Card>
+
+              {/* Allocation Skeleton */}
+              <Card className="p-6 bg-card border border-default">
+                <Skeleton className="h-6 w-40 mb-6" />
+                <Skeleton className="h-48 w-48 mx-auto mb-4 rounded-full" />
+                <div className="space-y-3">
+                  {[...Array(3)].map((_, i) => (
+                    <div key={i} className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Skeleton className="w-3 h-3 rounded-full" />
+                        <Skeleton className="h-4 w-20" />
+                      </div>
+                      <Skeleton className="h-4 w-16" />
+                    </div>
+                  ))}
+                </div>
+              </Card>
+            </div>
+
+            {/* Vault Breakdown Skeleton */}
+            <Card className="p-6 bg-card border border-default">
+              <div className="flex justify-between items-center mb-6">
+                <Skeleton className="h-6 w-48" />
+                <Skeleton className="h-10 w-32" />
+              </div>
+              <div className="space-y-4">
+                {[...Array(3)].map((_, i) => (
+                  <div key={i} className="p-4 bg-secondary rounded-lg">
+                    <div className="flex items-center justify-between mb-4">
+                      <div className="flex items-center gap-3">
+                        <Skeleton className="w-12 h-12 rounded-lg" />
+                        <div>
+                          <Skeleton className="h-5 w-32 mb-2" />
+                          <Skeleton className="h-4 w-24" />
+                        </div>
+                      </div>
+                      <Skeleton className="h-8 w-20" />
+                    </div>
+                    <div className="grid grid-cols-4 gap-4">
+                      {[...Array(4)].map((_, j) => (
+                        <div key={j}>
+                          <Skeleton className="h-4 w-16 mb-1" />
+                          <Skeleton className="h-6 w-20" />
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </Card>
+          </div>
         </div>
       </div>
     );
@@ -218,12 +308,12 @@ const Analytics = () => {
 
   return (
     <div className="h-full bg-app overflow-auto">
-      <div className="container mx-auto px-4 py-8 max-w-7xl">
+      <div className="container mx-auto px-4 py-8 pb-16 max-w-7xl">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5 }}
-          className="space-y-6"
+          className="space-y-6 pb-8"
         >
           {/* Header */}
           <div className="flex flex-col md:flex-row md:justify-between md:items-center gap-4">
