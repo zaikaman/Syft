@@ -21,10 +21,7 @@ export function ListingModal({
   vaultName,
   onSuccess 
 }: ListingModalProps) {
-  const [listingType, setListingType] = useState<'profit_share' | 'fixed_price'>('profit_share');
   const [profitSharePct, setProfitSharePct] = useState(5);
-  const [price, setPrice] = useState('');
-  const [currency, setCurrency] = useState('XLM');
   const [nfts, setNfts] = useState<any[]>([]);
   const [selectedNftId, setSelectedNftId] = useState<string>('');
   const [isListing, setIsListing] = useState(false);
@@ -73,15 +70,9 @@ export function ListingModal({
         throw new Error('Wallet not connected');
       }
 
-      // Validate based on listing type
-      if (listingType === 'fixed_price') {
-        if (!price || parseFloat(price) <= 0) {
-          throw new Error('Valid price is required');
-        }
-      } else {
-        if (profitSharePct <= 0 || profitSharePct > 100) {
-          throw new Error('Profit share percentage must be between 1 and 100');
-        }
+      // Validate profit share percentage
+      if (profitSharePct <= 0 || profitSharePct > 100) {
+        throw new Error('Profit share percentage must be between 1 and 100');
       }
 
       // Check if NFT is selected
@@ -94,18 +85,12 @@ export function ListingModal({
       // Prepare listing data
       const listingData: any = {
         sellerAddress: walletAddress,
+        profitSharePercentage: profitSharePct,
       };
 
       // If NFT selected, list the NFT
       if (selectedNftId) {
         listingData.nftId = selectedNftId;
-      }
-
-      if (listingType === 'fixed_price') {
-        listingData.price = parseFloat(price);
-        listingData.currency = currency;
-      } else {
-        listingData.profitSharePercentage = profitSharePct;
       }
 
       const response = await fetch(`${backendUrl}/api/marketplace/listings`, {
@@ -123,7 +108,6 @@ export function ListingModal({
       }
 
       // Success
-      setPrice('');
       setProfitSharePct(5);
       setSelectedNftId('');
       onSuccess();
@@ -191,89 +175,28 @@ export function ListingModal({
               </div>
             )}
 
-            {/* Listing Type */}
+            {/* Profit Share Input */}
             <div>
               <label className="block text-sm font-medium text-neutral-300 mb-2">
-                Listing Type
+                Profit Share Percentage
               </label>
-              <div className="grid grid-cols-2 gap-3">
-                <button
-                  onClick={() => setListingType('profit_share')}
-                  className={`p-3 rounded-lg border transition-all ${
-                    listingType === 'profit_share'
-                      ? 'border-primary-500 bg-primary-500/10'
-                      : 'border-default bg-app hover:border-primary-500/50'
-                  }`}
-                >
-                  <p className="font-medium text-neutral-50 text-sm">Profit Share</p>
-                  <p className="text-xs text-neutral-500 mt-1">Share future profits</p>
-                </button>
-                <button
-                  onClick={() => setListingType('fixed_price')}
-                  className={`p-3 rounded-lg border transition-all ${
-                    listingType === 'fixed_price'
-                      ? 'border-primary-500 bg-primary-500/10'
-                      : 'border-default bg-app hover:border-primary-500/50'
-                  }`}
-                >
-                  <p className="font-medium text-neutral-50 text-sm">Fixed Price</p>
-                  <p className="text-xs text-neutral-500 mt-1">Sell for set amount</p>
-                </button>
+              <div className="flex items-center gap-4">
+                <input
+                  type="range"
+                  min="1"
+                  max="100"
+                  value={profitSharePct}
+                  onChange={(e) => setProfitSharePct(Number(e.target.value))}
+                  className="flex-1"
+                />
+                <div className="w-20 px-3 py-2 bg-app border border-default rounded-lg text-center">
+                  <span className="text-lg font-bold text-primary-500">{profitSharePct}%</span>
+                </div>
               </div>
+              <p className="text-xs text-neutral-500 mt-2">
+                Creator will receive {profitSharePct}% of future vault profits
+              </p>
             </div>
-
-            {/* Profit Share Input */}
-            {listingType === 'profit_share' && (
-              <div>
-                <label className="block text-sm font-medium text-neutral-300 mb-2">
-                  Profit Share Percentage
-                </label>
-                <div className="flex items-center gap-4">
-                  <input
-                    type="range"
-                    min="1"
-                    max="100"
-                    value={profitSharePct}
-                    onChange={(e) => setProfitSharePct(Number(e.target.value))}
-                    className="flex-1"
-                  />
-                  <div className="w-20 px-3 py-2 bg-app border border-default rounded-lg text-center">
-                    <span className="text-lg font-bold text-primary-500">{profitSharePct}%</span>
-                  </div>
-                </div>
-                <p className="text-xs text-neutral-500 mt-2">
-                  Buyers will receive {profitSharePct}% of vault profits
-                </p>
-              </div>
-            )}
-
-            {/* Fixed Price Input */}
-            {listingType === 'fixed_price' && (
-              <div>
-                <label className="block text-sm font-medium text-neutral-300 mb-2">
-                  Price
-                </label>
-                <div className="flex gap-3">
-                  <input
-                    type="number"
-                    value={price}
-                    onChange={(e) => setPrice(e.target.value)}
-                    placeholder="0.00"
-                    step="0.01"
-                    min="0"
-                    className="flex-1 px-4 py-2 bg-app border border-default rounded-lg text-neutral-50 placeholder-neutral-500 focus:outline-none focus:border-primary-500"
-                  />
-                  <select
-                    value={currency}
-                    onChange={(e) => setCurrency(e.target.value)}
-                    className="w-24 px-3 py-2 bg-app border border-default rounded-lg text-neutral-50 focus:outline-none focus:border-primary-500"
-                  >
-                    <option value="XLM">XLM</option>
-                    <option value="USDC">USDC</option>
-                  </select>
-                </div>
-              </div>
-            )}
           </div>
 
           <div className="flex gap-3 mt-6">
