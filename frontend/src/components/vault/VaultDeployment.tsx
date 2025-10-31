@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { useWallet } from '../../hooks/useWallet';
 import { FeeEstimator } from './FeeEstimator';
+import { PromptModal } from '../ui/Modal/PromptModal';
+import { useNotification } from '../../hooks/useNotification';
 
 interface VaultConfig {
   name: string;
@@ -25,14 +27,32 @@ export const VaultDeployment: React.FC<VaultDeploymentProps> = ({
   onDeployError,
 }) => {
   const { address } = useWallet();
+  const { addNotification } = useNotification();
   const [isDeploying, setIsDeploying] = useState(false);
   const [deploymentStatus, setDeploymentStatus] = useState<string>('');
   const [error, setError] = useState<string>('');
+  const [showPrivateKeyModal, setShowPrivateKeyModal] = useState(false);
 
   const handleDeploy = async () => {
     if (!address) {
       const errorMsg = 'Please connect your wallet first';
       setError(errorMsg);
+      addNotification(errorMsg, 'warning');
+      onDeployError?.(errorMsg);
+      return;
+    }
+
+    // Show prompt modal for private key
+    setShowPrivateKeyModal(true);
+  };
+
+  const handlePrivateKeySubmit = async (key: string) => {
+    setShowPrivateKeyModal(false);
+
+    if (!key) {
+      const errorMsg = 'Private key required for deployment';
+      setError(errorMsg);
+      addNotification(errorMsg, 'error');
       onDeployError?.(errorMsg);
       return;
     }
@@ -42,15 +62,6 @@ export const VaultDeployment: React.FC<VaultDeploymentProps> = ({
     setDeploymentStatus('Preparing deployment...');
 
     try {
-      // Get private key from user (in production, this would use wallet signing)
-      const privateKey = prompt(
-        'Enter your private key (for MVP demo only - in production this will use wallet signing):'
-      );
-
-      if (!privateKey) {
-        throw new Error('Private key required for deployment');
-      }
-
       setDeploymentStatus('Deploying vault contract...');
 
       // Call backend API to deploy vault
@@ -66,7 +77,7 @@ export const VaultDeployment: React.FC<VaultDeploymentProps> = ({
             assets: config.assets,
             rules: config.rules,
           },
-          privateKey,
+          privateKey: key,
         }),
       });
 
@@ -155,6 +166,17 @@ export const VaultDeployment: React.FC<VaultDeploymentProps> = ({
           </p>
         )}
       </div>
+
+      {/* Private Key Prompt Modal */}
+      <PromptModal
+        isOpen={showPrivateKeyModal}
+        title="Enter Private Key"
+        message="Enter your private key (for MVP demo only - in production this will use wallet signing):"
+        placeholder="S..."
+        type="password"
+        onSubmit={handlePrivateKeySubmit}
+        onCancel={() => setShowPrivateKeyModal(false)}
+      />
     </div>
   );
 };

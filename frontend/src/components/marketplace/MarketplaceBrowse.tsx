@@ -9,6 +9,8 @@ import { Skeleton } from '../ui/Skeleton';
 import { Package, TrendingUp, DollarSign, Clock, AlertCircle, RefreshCw } from 'lucide-react';
 import { useWallet } from '../../hooks/useWallet';
 import { useNavigate } from 'react-router-dom';
+import { useNotification } from '../../hooks/useNotification';
+import { AlertModal } from '../ui/Modal/AlertModal';
 
 interface Listing {
   listing_id: string;
@@ -45,11 +47,20 @@ interface MarketplaceBrowseProps {
 export function MarketplaceBrowse({ onSelectListing }: MarketplaceBrowseProps) {
   const { address, signTransaction, network } = useWallet();
   const navigate = useNavigate();
+  const { addNotification } = useNotification();
   const [listings, setListings] = useState<Listing[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isInitialLoad, setIsInitialLoad] = useState(true);
   const [error, setError] = useState('');
   const [subscribing, setSubscribing] = useState<string | null>(null);
+
+  // Modal state
+  const [alertModal, setAlertModal] = useState<{
+    isOpen: boolean;
+    message: string;
+    variant: 'info' | 'success' | 'warning' | 'error';
+    title?: string;
+  }>({ isOpen: false, message: '', variant: 'info' });
 
   // Filters
   const [sortBy, setSortBy] = useState('created_at');
@@ -121,17 +132,17 @@ export function MarketplaceBrowse({ onSelectListing }: MarketplaceBrowseProps) {
 
   const handleSubscribe = async (listing: Listing) => {
     if (!address) {
-      alert('Please connect your wallet first');
+      addNotification('Please connect your wallet first', 'warning');
       return;
     }
 
     if (!signTransaction) {
-      alert('Wallet does not support transaction signing');
+      addNotification('Wallet does not support transaction signing', 'error');
       return;
     }
 
     if (!network) {
-      alert('Unable to detect wallet network. Please reconnect your wallet.');
+      addNotification('Unable to detect wallet network. Please reconnect your wallet.', 'error');
       return;
     }
 
@@ -168,9 +179,10 @@ export function MarketplaceBrowse({ onSelectListing }: MarketplaceBrowseProps) {
       }
 
       const data = await response.json();
-      const { deploymentXdr, vaultId: newVaultId, profitSharePercentage } = data.data;
+      const { deploymentXdr, vaultId: newVaultId, profitSharePercentage, clonedConfig } = data.data;
       
       console.log(`[Subscribe] Got deployment data - vaultId:`, newVaultId);
+      console.log(`[Subscribe] Cloned config:`, clonedConfig);
 
       console.log(`[Subscribe] Received XDR from backend (first 100 chars):`, deploymentXdr.substring(0, 100));
       console.log(`[Subscribe] XDR length:`, deploymentXdr.length);
@@ -206,10 +218,10 @@ export function MarketplaceBrowse({ onSelectListing }: MarketplaceBrowseProps) {
         body: JSON.stringify({
           signedXDR: signedXdr, // Note: backend expects signedXDR with capital letters
           vaultId: newVaultId,
-          config: {
+          config: clonedConfig || {
             owner: address,
             name: `Subscribed ${listing.vault_nfts?.vaults?.name || 'Vault'}`,
-            assets: ['XLM'], // Will be properly set from cloned config
+            assets: ['XLM'],
             rules: [],
           },
           network: effectiveNetwork,
@@ -223,7 +235,65 @@ export function MarketplaceBrowse({ onSelectListing }: MarketplaceBrowseProps) {
       }
 
       const submitData = await submitResponse.json();
-      const { vaultId, transactionHash } = submitData.data;
+      const { vaultId, contractAddress, transactionHash } = submitData.data;
+
+      console.log(`[Subscribe] ✅ Vault deployed! Contract: ${contractAddress}`);
+
+      // Set up router for auto-swap functionality (critical for multi-asset vaults)
+      try {
+        console.log(`[Subscribe] Setting up router for auto-swap...`);
+        
+        const routerBuildResponse = await fetch(`${backendUrl}/api/vaults/build-set-router`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contractAddress,
+            ownerAddress: address,
+            network: effectiveNetwork,
+          }),
+        });
+
+        const routerBuildData = await routerBuildResponse.json();
+
+        if (routerBuildData.success) {
+          console.log(`[Subscribe] Router transaction built, requesting wallet signature...`);
+
+          // Sign router transaction
+          const routerSignResult = await signTransaction(routerBuildData.data.xdr);
+          const signedRouterXdr = routerSignResult.signedTxXdr;
+
+          if (signedRouterXdr) {
+            console.log(`[Subscribe] Router transaction signed, submitting...`);
+
+            // Submit router transaction
+            const routerSubmitResponse = await fetch(`${backendUrl}/api/vaults/submit-set-router`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                signedXDR: signedRouterXdr,
+                contractAddress,
+                network: effectiveNetwork,
+              }),
+            });
+
+            const routerSubmitData = await routerSubmitResponse.json();
+
+            if (routerSubmitData.success) {
+              console.log(`[Subscribe] ✅ Router configured successfully! Auto-swap enabled.`);
+            } else {
+              console.warn(`[Subscribe] ⚠️ Router submission failed:`, routerSubmitData.error);
+              addNotification('Vault deployed but router setup failed. Auto-swap may not work.', 'warning');
+            }
+          }
+        } else {
+          console.warn(`[Subscribe] ⚠️ Router setup failed:`, routerBuildData.error);
+          addNotification('Vault deployed but router setup failed. Auto-swap may not work.', 'warning');
+        }
+      } catch (routerError) {
+        console.error(`[Subscribe] Error setting up router:`, routerError);
+        // Don't fail the subscription if router setup fails - vault is still usable
+        addNotification('Vault deployed but router setup failed. Auto-swap may not work.', 'warning');
+      }
 
       // Complete subscription
       await fetch(`${backendUrl}/api/marketplace/subscribe/complete`, {
@@ -237,7 +307,7 @@ export function MarketplaceBrowse({ onSelectListing }: MarketplaceBrowseProps) {
         }),
       });
 
-      alert(`Successfully subscribed! You're sharing ${profitSharePercentage}% of profits with the creator.`);
+      addNotification(`Successfully subscribed! You're sharing ${profitSharePercentage}% of profits with the creator.`, 'success');
       navigate(`/app/vaults/${vaultId}`);
     } catch (error) {
       console.error('Subscription error:', error);
@@ -245,15 +315,14 @@ export function MarketplaceBrowse({ onSelectListing }: MarketplaceBrowseProps) {
       
       // Check if it's an account not funded error
       if (errorMessage.includes('Wallet account not found') || errorMessage.includes('Not Found')) {
-        alert(
-          `❌ Your wallet is not funded on this network.\n\n` +
-          `Please fund your wallet first:\n` +
-          `• Testnet: Visit https://laboratory.stellar.org/#account-creator?network=test\n` +
-          `• Futurenet: Visit https://laboratory.stellar.org/#account-creator?network=futurenet\n\n` +
-          `Then try subscribing again.`
-        );
+        setAlertModal({
+          isOpen: true,
+          variant: 'error',
+          title: 'Wallet Not Funded',
+          message: `Your wallet is not funded on this network.\n\nPlease fund your wallet first:\n• Testnet: Visit https://laboratory.stellar.org/#account-creator?network=test\n• Futurenet: Visit https://laboratory.stellar.org/#account-creator?network=futurenet\n\nThen try subscribing again.`
+        });
       } else {
-        alert(`Failed to subscribe: ${errorMessage}`);
+        addNotification(`Failed to subscribe: ${errorMessage}`, 'error');
       }
     } finally {
       setSubscribing(null);
@@ -474,6 +543,15 @@ export function MarketplaceBrowse({ onSelectListing }: MarketplaceBrowseProps) {
           </motion.div>
         ))}
       </div>
+
+      {/* Alert Modal */}
+      <AlertModal
+        isOpen={alertModal.isOpen}
+        title={alertModal.title}
+        message={alertModal.message}
+        variant={alertModal.variant}
+        onClose={() => setAlertModal({ isOpen: false, message: '', variant: 'info' })}
+      />
     </div>
   );
 }

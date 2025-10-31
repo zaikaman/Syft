@@ -605,6 +605,7 @@ router.post('/subscribe', async (req: Request, res: Response) => {
         vaultId: deploymentResult.vaultId,
         profitSharePercentage: listing.profit_share_percentage,
         originalVaultId: originalVault.id,
+        clonedConfig: clonedConfig,
         message: 'Sign this transaction to deploy your own instance of this vault strategy',
       },
     });
