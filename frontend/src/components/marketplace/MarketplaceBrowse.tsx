@@ -439,7 +439,7 @@ export function MarketplaceBrowse({ onSelectListing }: MarketplaceBrowseProps) {
                   />
                   <div className="absolute top-3 right-3 bg-black/70 backdrop-blur-sm px-3 py-1 rounded-full">
                     <span className="text-xs font-semibold text-primary-500">
-                      {listing.vault_nfts.ownership_percentage ? (listing.vault_nfts.ownership_percentage / 100).toFixed(2) : 'N/A'}%
+                      {listing.vault_nfts.ownership_percentage ? listing.vault_nfts.ownership_percentage.toFixed(2) : 'N/A'}%
                     </span>
                   </div>
                 </div>
@@ -467,7 +467,7 @@ export function MarketplaceBrowse({ onSelectListing }: MarketplaceBrowseProps) {
                       <span className="text-xs text-neutral-400">Ownership</span>
                     </div>
                     <span className="text-sm font-semibold text-primary-500">
-                      {listing.vault_nfts?.ownership_percentage ? (listing.vault_nfts.ownership_percentage / 100).toFixed(2) : 'N/A'}%
+                      {listing.vault_nfts?.ownership_percentage ? listing.vault_nfts.ownership_percentage.toFixed(2) : 'N/A'}%
                     </span>
                   </div>
 
