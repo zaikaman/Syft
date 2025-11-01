@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useWallet } from '../../hooks/useWallet';
 import { useWalletBalance } from '../../hooks/useWalletBalance';
 import { useModal, Skeleton } from '../ui';
+import { resolveAssetNames } from '../../services/tokenService';
 
 interface VaultActionsProps {
   vaultId: string;
@@ -25,6 +26,24 @@ export const VaultActions: React.FC<VaultActionsProps> = ({
     type: 'success' | 'error';
     text: string;
   } | null>(null);
+  const [resolvedBaseToken, setResolvedBaseToken] = useState<string>('');
+
+  // Resolve base token name
+  useEffect(() => {
+    if (vaultConfig?.assets && vaultConfig.assets.length > 0) {
+      const baseAsset = typeof vaultConfig.assets[0] === 'string' 
+        ? vaultConfig.assets[0] 
+        : vaultConfig.assets[0].code || vaultConfig.assets[0].assetCode;
+      
+      if (baseAsset) {
+        resolveAssetNames([baseAsset], network || 'testnet').then(resolved => {
+          if (resolved[0]) {
+            setResolvedBaseToken(resolved[0]);
+          }
+        });
+      }
+    }
+  }, [vaultConfig, network]);
 
   // Map Freighter network names to our backend format
   const normalizeNetwork = (net?: string, passphrase?: string): string => {
@@ -371,9 +390,9 @@ export const VaultActions: React.FC<VaultActionsProps> = ({
         <div className="mb-6 p-4 bg-primary-500/5 border border-primary-500/20 rounded-lg">
           <p className="text-sm text-neutral-300">
             <strong className="text-primary-400">Base Token:</strong>{' '}
-            {typeof vaultConfig.assets[0] === 'string' 
+            {resolvedBaseToken || (typeof vaultConfig.assets[0] === 'string' 
               ? vaultConfig.assets[0] 
-              : vaultConfig.assets[0].code || vaultConfig.assets[0].assetCode || 'Unknown'}
+              : vaultConfig.assets[0].code || vaultConfig.assets[0].assetCode || 'Unknown')}
           </p>
           <p className="text-xs text-neutral-400 mt-1">
             You can deposit any token with a liquidity pool. It will be automatically swapped to the base token.

@@ -95,65 +95,80 @@ export function generateVaultPrompt(
   vaultDescription?: string,
   ownershipPercentage?: number
 ): string {
-  // Create a dynamic prompt based on vault characteristics
-  const themes = [
-    'digital financial asset',
-    'blockchain vault visualization',
-    'cryptocurrency portfolio representation',
-    'DeFi investment illustration',
-    'smart contract visualization',
-    'tokenized asset artwork',
-    'financial technology art',
+  // Vault-specific imagery themes
+  const vaultTypes = [
+    'futuristic digital bank vault with glowing security panels',
+    'high-tech crypto vault with holographic locks',
+    'massive treasure vault filled with digital gold coins',
+    'secure underground vault with reinforced steel doors',
+    'cyberpunk vault with neon security systems',
+    'elegant safe deposit vault with golden accents',
+    'modern vault interior with digital security screens',
+    'ancient-meets-future vault with blockchain patterns',
   ];
 
-  const styles = [
-    'modern minimalist',
-    'futuristic abstract',
-    'geometric pattern',
-    'holographic gradient',
-    'neon cyberpunk',
-    'elegant professional',
-    'clean tech aesthetic',
+  const vaultDetails = [
+    'heavy circular vault door with combination locks',
+    'biometric security scanners and LED displays',
+    'stacked crypto tokens and digital assets inside',
+    'laser security grids and holographic barriers',
+    'reinforced titanium walls with glowing circuits',
+    'secure storage compartments with digital interfaces',
+    'blockchain symbols etched on vault surfaces',
+    'rotating vault mechanisms and security keys',
+  ];
+
+  const atmospheres = [
+    'dramatic lighting from above',
+    'cool blue security lights',
+    'golden warm glow from treasure inside',
+    'neon cyan and purple accents',
+    'high contrast dramatic shadows',
+    'clean professional lighting',
+    'mystical ethereal glow',
+    'electric energy radiating outward',
   ];
 
   const colors = [
-    'blue and purple tones',
-    'gold and cyan accents',
-    'emerald and sapphire hues',
-    'orange and teal gradient',
-    'violet and mint colors',
-    'rose gold and silver',
-    'electric blue and magenta',
+    'metallic silver and gold',
+    'deep blue with electric cyan highlights',
+    'dark grey with golden accents',
+    'black with neon green security lights',
+    'bronze and copper tones',
+    'chrome and holographic rainbow',
+    'midnight blue with white LEDs',
+    'gunmetal grey with orange alerts',
   ];
 
   // Pick random elements for variety
-  const theme = themes[Math.floor(Math.random() * themes.length)];
-  const style = styles[Math.floor(Math.random() * styles.length)];
+  const vaultType = vaultTypes[Math.floor(Math.random() * vaultTypes.length)];
+  const detail = vaultDetails[Math.floor(Math.random() * vaultDetails.length)];
+  const atmosphere = atmospheres[Math.floor(Math.random() * atmospheres.length)];
   const color = colors[Math.floor(Math.random() * colors.length)];
 
-  let prompt = `${style} ${theme} with ${color}`;
+  let prompt = `${vaultType}, featuring ${detail}, ${atmosphere}, ${color}`;
 
   // Add ownership context if provided
   if (ownershipPercentage && ownershipPercentage > 0) {
     if (ownershipPercentage >= 50) {
-      prompt += ', prominent and bold design';
+      prompt += ', wide open vault door showing abundant wealth';
     } else if (ownershipPercentage >= 25) {
-      prompt += ', balanced composition';
+      prompt += ', partially open vault revealing valuable contents';
     } else {
-      prompt += ', refined and subtle details';
+      prompt += ', secure locked vault with subtle glow';
     }
   }
 
   // Add additional context from vault name/description
   if (vaultDescription && vaultDescription.toLowerCase().includes('stable')) {
-    prompt += ', stable and secure appearance';
+    prompt += ', fortress-like stability and strength';
   } else if (vaultDescription && vaultDescription.toLowerCase().includes('growth')) {
-    prompt += ', dynamic and ascending elements';
+    prompt += ', overflowing with increasing assets';
   } else if (vaultDescription && vaultDescription.toLowerCase().includes('risk')) {
-    prompt += ', bold and energetic composition';
+    prompt += ', high-security vault with alert systems active';
   }
 
-  prompt += ', high quality, professional artwork, 8k resolution';
+  prompt += ', cinematic composition, ultra detailed, 8k quality, professional digital art';
 
   return prompt;
 }

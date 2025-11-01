@@ -4,6 +4,7 @@
 // regardless of user's execution network (testnet/futurenet/mainnet)
 
 import { fetchHistoricalPrices } from './historicalDataService';
+import { getTokenSymbol } from './tokenService.js';
 
 // Import types from shared - using relative path to avoid rootDir issues
 interface AssetAllocation {
@@ -310,29 +311,127 @@ async function fetchAllAssetPrices(
       continue; // Skip fetching - we have the data
     }
 
+    // Check if assetCode is actually a Soroban contract address (starts with 'C')
+    if (asset.assetCode.startsWith('C') && asset.assetCode.length > 50) {
+      console.log(`[Backtest] Asset ${asset.assetCode} appears to be a Soroban contract address.`);
+      
+      // Strategy: Try multiple approaches in priority order
+      // 1. Try CoinGecko with common token symbols first (fast, no contract calls)
+      // 2. Resolve contract symbol and try CoinGecko with that
+      // 3. Fallback to mock data
+      
+      const { getHistoricalPricesFromCoinGecko } = await import('./priceService.js');
+      let foundData = false;
+      
+      // First, try common Soroban tokens that might match this contract
+      const commonTokens = ['USDC', 'EURC', 'AQUA', 'BLND', 'yXLM', 'yUSDC'];
+      
+      for (const symbol of commonTokens) {
+        console.log(`[Backtest] Trying CoinGecko with known symbol: ${symbol}...`);
+        const coinGeckoPrices = await getHistoricalPricesFromCoinGecko(
+          symbol,
+          startTime,
+          endTime,
+          resolution
+        );
+        
+        if (coinGeckoPrices && coinGeckoPrices.length > 0) {
+          console.log(`[Backtest] ✓ Using CoinGecko historical data for ${symbol} (${asset.assetCode.slice(0, 12)}...)`);
+          priceData.set(asset.assetCode, coinGeckoPrices);
+          foundData = true;
+          break;
+        }
+      }
+      
+      // If common tokens didn't work, try to resolve the actual token symbol
+      if (!foundData) {
+        console.log(`[Backtest] No match with common tokens, attempting to resolve contract symbol...`);
+        const tokenSymbol = await getTokenSymbol(asset.assetCode, 'mainnet');
+        
+        if (tokenSymbol) {
+          console.log(`[Backtest] ✓ Resolved to token symbol: ${tokenSymbol}`);
+          
+          const coinGeckoPrices = await getHistoricalPricesFromCoinGecko(
+            tokenSymbol,
+            startTime,
+            endTime,
+            resolution
+          );
+
+          if (coinGeckoPrices && coinGeckoPrices.length > 0) {
+            console.log(`[Backtest] ✓ Using CoinGecko historical data for ${tokenSymbol}`);
+            priceData.set(asset.assetCode, coinGeckoPrices);
+            foundData = true;
+          }
+        }
+      }
+      
+      // Last resort: use mock data
+      if (!foundData) {
+        console.warn(`[Backtest] No price data available from CoinGecko, using mock data for ${asset.assetCode.slice(0, 12)}...`);
+        const mockPrices = generateMockPriceData(asset.assetCode, new Date(startTime).getTime(), new Date(endTime).getTime(), resolution);
+        priceData.set(asset.assetCode, mockPrices);
+        usedMockData = true;
+      }
+      
+      continue;
+    }
+
     if (asset.assetCode === 'XLM' || asset.assetCode === 'native') {
-      const data = await fetchHistoricalPrices({
-        assetCode: 'XLM',
-        counterAssetCode: 'USDC',
-        counterAssetIssuer: USDC_ISSUER,
+      // Try CoinGecko first for more reliable data
+      const { getHistoricalPricesFromCoinGecko } = await import('./priceService.js');
+      const coinGeckoPrices = await getHistoricalPricesFromCoinGecko(
+        'XLM',
         startTime,
         endTime,
-        resolution,
-      });
-      priceData.set('XLM', data.dataPoints.map((p) => ({ timestamp: p.timestamp, price: p.close })));
-      if (data.usingMockData) usedMockData = true;
+        resolution
+      );
+
+      if (coinGeckoPrices && coinGeckoPrices.length > 0) {
+        console.log('[Backtest] ✓ Using CoinGecko historical data for XLM');
+        priceData.set('XLM', coinGeckoPrices);
+      } else {
+        // Fallback to Horizon data
+        console.log('[Backtest] Falling back to Horizon API for XLM data');
+        const data = await fetchHistoricalPrices({
+          assetCode: 'XLM',
+          counterAssetCode: 'USDC',
+          counterAssetIssuer: USDC_ISSUER,
+          startTime,
+          endTime,
+          resolution,
+        });
+        priceData.set('XLM', data.dataPoints.map((p) => ({ timestamp: p.timestamp, price: p.close })));
+        if (data.usingMockData) usedMockData = true;
+      }
     } else {
-      const data = await fetchHistoricalPrices({
-        assetCode: asset.assetCode,
-        assetIssuer: asset.assetIssuer,
-        counterAssetCode: 'USDC',
-        counterAssetIssuer: USDC_ISSUER,
+      // Try CoinGecko first for known assets
+      const { getHistoricalPricesFromCoinGecko } = await import('./priceService.js');
+      const coinGeckoPrices = await getHistoricalPricesFromCoinGecko(
+        asset.assetCode,
         startTime,
         endTime,
-        resolution,
-      });
-      priceData.set(asset.assetCode, data.dataPoints.map((p) => ({ timestamp: p.timestamp, price: p.close })));
-      if (data.usingMockData) usedMockData = true;
+        resolution
+      );
+
+      if (coinGeckoPrices && coinGeckoPrices.length > 0) {
+        console.log(`[Backtest] ✓ Using CoinGecko historical data for ${asset.assetCode}`);
+        priceData.set(asset.assetCode, coinGeckoPrices);
+      } else {
+        // Fallback to Horizon API for classic Stellar assets
+        console.log(`[Backtest] No CoinGecko data, trying Horizon API for ${asset.assetCode}`);
+        const data = await fetchHistoricalPrices({
+          assetCode: asset.assetCode,
+          assetIssuer: asset.assetIssuer,
+          counterAssetCode: 'USDC',
+          counterAssetIssuer: USDC_ISSUER,
+          startTime,
+          endTime,
+          resolution,
+        });
+        priceData.set(asset.assetCode, data.dataPoints.map((p) => ({ timestamp: p.timestamp, price: p.close })));
+        if (data.usingMockData) usedMockData = true;
+      }
     }
   }
 
@@ -361,6 +460,52 @@ function generateStablecoinPrices(
   }
 
   return prices;
+}
+
+/**
+ * Generate mock price data for testing when real data is unavailable
+ * This is useful for Soroban tokens that don't have Horizon trade history yet
+ */
+function generateMockPriceData(
+  assetCode: string,
+  startTime: number,
+  endTime: number,
+  resolution: number
+): { timestamp: string; price: number }[] {
+  const dataPoints: { timestamp: string; price: number }[] = [];
+  
+  // Base prices for common assets (simulated)
+  const basePrices: { [key: string]: number } = {
+    'XLM': 0.12,    // XLM around $0.12
+    'USDC': 1.00,   // USDC is $1
+    'BTC': 45000,   // BTC around $45k
+    'ETH': 2500,    // ETH around $2.5k
+  };
+  
+  let basePrice = basePrices[assetCode] || 1.0;
+  let currentPrice = basePrice;
+  let currentTime = startTime;
+  
+  // Generate realistic price movement with random walk
+  while (currentTime <= endTime) {
+    // Add some volatility (±2% per period)
+    const change = (Math.random() - 0.5) * 0.04; // -2% to +2%
+    currentPrice = currentPrice * (1 + change);
+    
+    // Keep price within reasonable bounds (±30% from base)
+    const minPrice = basePrice * 0.7;
+    const maxPrice = basePrice * 1.3;
+    currentPrice = Math.max(minPrice, Math.min(maxPrice, currentPrice));
+    
+    dataPoints.push({
+      timestamp: new Date(currentTime).toISOString(),
+      price: currentPrice,
+    });
+    
+    currentTime += resolution;
+  }
+  
+  return dataPoints;
 }
 
 /**

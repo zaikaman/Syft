@@ -13,6 +13,7 @@ import {
 import { Card, Button, Skeleton } from '../components/ui';
 import { useWallet } from '../providers/WalletProvider';
 import { Link } from 'react-router-dom';
+import { resolveAssetNames } from '../services/tokenService';
 
 interface VaultBreakdown {
   vaultId: string;
@@ -50,6 +51,7 @@ const Analytics = () => {
   const [sortBy, setSortBy] = useState<'tvl' | 'apy' | 'earnings'>('tvl');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
   const [refreshing, setRefreshing] = useState(false);
+  const [resolvedTokenNames, setResolvedTokenNames] = useState<Record<string, string>>({}); // Cache for resolved token names
   const { address, network, networkPassphrase } = useWallet();
 
   const normalizeNetwork = (net?: string, passphrase?: string): string => {
@@ -654,7 +656,41 @@ const Analytics = () => {
                                 </span>
                               </div>
                               <p className="text-sm text-neutral-400">
-                                {vault.assets.map((a: any) => typeof a === 'string' ? a : a.code).join(' / ')}
+                                {(() => {
+                                  // Get resolved token names from cache or use fallback
+                                  const vaultKey = vault.vaultId;
+                                  const cachedNames = resolvedTokenNames[vaultKey];
+                                  
+                                  // Resolve token names asynchronously if not cached
+                                  if (!cachedNames && vault.assets) {
+                                    resolveAssetNames(vault.assets, network || 'testnet')
+                                      .then(names => {
+                                        setResolvedTokenNames(prev => ({
+                                          ...prev,
+                                          [vaultKey]: names.join(' / ')
+                                        }));
+                                      })
+                                      .catch(err => {
+                                        console.error('Error resolving token names:', err);
+                                        // Fallback to showing codes/addresses
+                                        const fallback = vault.assets
+                                          .map((a: any) => {
+                                            if (typeof a === 'string') {
+                                              return a.startsWith('C') && a.length > 20 ? `${a.slice(0, 8)}...` : a;
+                                            }
+                                            return a.code || a.assetCode || 'Unknown';
+                                          })
+                                          .join(' / ');
+                                        setResolvedTokenNames(prev => ({
+                                          ...prev,
+                                          [vaultKey]: fallback
+                                        }));
+                                      });
+                                    return 'Loading...';
+                                  }
+                                  
+                                  return cachedNames || vault.assets.map((a: any) => typeof a === 'string' ? a : a.code).join(' / ');
+                                })()}
                               </p>
                             </div>
                             

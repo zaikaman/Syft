@@ -40,6 +40,7 @@ import {
 import { Card, Button, useModal, Skeleton } from '../components/ui';
 import { useWallet } from '../providers/WalletProvider';
 import { Link } from 'react-router-dom';
+import { resolveAssetNames } from '../services/tokenService';
 
 interface BacktestConfig {
   startTime: string;
@@ -125,6 +126,7 @@ const Backtests = () => {
   });
 
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [resolvedTokenNames, setResolvedTokenNames] = useState<Record<string, string>>({});
 
   useEffect(() => {
     if (address) {
@@ -176,11 +178,13 @@ const Backtests = () => {
       const backendUrl = import.meta.env.PUBLIC_BACKEND_URL || 'http://localhost:3001';
       const normalizedNetwork = normalizeNetwork(network, networkPassphrase);
       
-      const response = await fetch(`${backendUrl}/api/backtests/vault/${address}?network=${normalizedNetwork}`);
+      // Use the user endpoint to get all backtests for this user
+      const response = await fetch(`${backendUrl}/api/backtests/user/${address}?network=${normalizedNetwork}`);
       
       if (response.ok) {
         const data = await response.json();
         setBacktestResults(data.backtests || []);
+        console.log(`[Backtests] Loaded ${data.backtests?.length || 0} backtest results from history`);
       }
     } catch (err) {
       console.error('[Backtests] Failed to fetch history:', err);
@@ -732,12 +736,30 @@ const Backtests = () => {
                                         ? Math.round(100 / vault.config.assets.length) 
                                         : asset.percentage;
                                       
+                                      // Resolve token name asynchronously
+                                      const cacheKey = `${vault.vault_id}-${idx}`;
+                                      const cachedName = resolvedTokenNames[cacheKey];
+                                      
+                                      if (!cachedName && assetCode) {
+                                        resolveAssetNames([assetCode], network || 'testnet')
+                                          .then(resolved => {
+                                            if (resolved[0] !== assetCode) {
+                                              setResolvedTokenNames(prev => ({
+                                                ...prev,
+                                                [cacheKey]: resolved[0]
+                                              }));
+                                            }
+                                          });
+                                      }
+                                      
+                                      const displayName = cachedName || assetCode;
+                                      
                                       return (
                                         <span
                                           key={idx}
                                           className="px-2 py-1 bg-neutral-800 rounded text-xs text-neutral-300"
                                         >
-                                          {assetCode} ({percentage}%)
+                                          {displayName} ({percentage}%)
                                         </span>
                                       );
                                     })}
@@ -934,9 +956,27 @@ const Backtests = () => {
                                   ? Math.round(100 / selectedVault.config.assets.length) 
                                   : asset.percentage;
                                 
+                                // Resolve token name asynchronously
+                                const cacheKey = `selected-${idx}`;
+                                const cachedName = resolvedTokenNames[cacheKey];
+                                
+                                if (!cachedName && assetCode) {
+                                  resolveAssetNames([assetCode], network || 'testnet')
+                                    .then(resolved => {
+                                      if (resolved[0] !== assetCode) {
+                                        setResolvedTokenNames(prev => ({
+                                          ...prev,
+                                          [cacheKey]: resolved[0]
+                                        }));
+                                      }
+                                    });
+                                }
+                                
+                                const displayName = cachedName || assetCode;
+                                
                                 return (
                                   <div key={idx} className="flex justify-between text-xs">
-                                    <span className="text-neutral-400">{assetCode}</span>
+                                    <span className="text-neutral-400">{displayName}</span>
                                     <span className="text-neutral-300">{percentage}%</span>
                                   </div>
                                 );
@@ -1522,7 +1562,9 @@ const Backtests = () => {
                                     </span>
                                     <span className="flex items-center gap-1">
                                       <Calendar className="w-3 h-3" />
-                                      {Math.ceil((new Date(result.timeframe.end).getTime() - new Date(result.timeframe.start).getTime()) / (1000 * 60 * 60 * 24))} days
+                                      {result.timeframe?.start && result.timeframe?.end 
+                                        ? Math.ceil((new Date(result.timeframe.end).getTime() - new Date(result.timeframe.start).getTime()) / (1000 * 60 * 60 * 24))
+                                        : 'N/A'} days
                                     </span>
                                   </div>
                                 </div>
@@ -1531,26 +1573,26 @@ const Backtests = () => {
                                 <div className="hidden md:grid grid-cols-4 gap-6">
                                   <div>
                                     <div className="text-xs text-neutral-500 mb-0.5">Return</div>
-                                    <div className={`text-sm font-semibold ${result.results.metrics.totalReturn >= 0 ? 'text-success-400' : 'text-error-400'}`}>
-                                      {formatPercent(result.results.metrics.totalReturn)}
+                                    <div className={`text-sm font-semibold ${result.results?.metrics?.totalReturn >= 0 ? 'text-success-400' : 'text-error-400'}`}>
+                                      {formatPercent(result.results?.metrics?.totalReturn || 0)}
                                     </div>
                                   </div>
                                   <div>
                                     <div className="text-xs text-neutral-500 mb-0.5">Sharpe</div>
                                     <div className="text-sm font-semibold text-neutral-50">
-                                      {result.results.metrics.sharpeRatio.toFixed(2)}
+                                      {(result.results?.metrics?.sharpeRatio || 0).toFixed(2)}
                                     </div>
                                   </div>
                                   <div>
                                     <div className="text-xs text-neutral-500 mb-0.5">Drawdown</div>
                                     <div className="text-sm font-semibold text-error-400">
-                                      {formatPercent(-Math.abs(result.results.metrics.maxDrawdown))}
+                                      {formatPercent(-Math.abs(result.results?.metrics?.maxDrawdown || 0))}
                                     </div>
                                   </div>
                                   <div>
                                     <div className="text-xs text-neutral-500 mb-0.5">Win Rate</div>
                                     <div className="text-sm font-semibold text-neutral-50">
-                                      {formatPercent(result.results.metrics.winRate)}
+                                      {formatPercent(result.results?.metrics?.winRate || 0)}
                                     </div>
                                   </div>
                                 </div>

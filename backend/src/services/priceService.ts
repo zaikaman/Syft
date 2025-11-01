@@ -180,23 +180,214 @@ export async function xlmToUSD(xlm: string | number): Promise<number> {
 }
 
 /**
+ * Fetch price for any token from CoinGecko by contract address or symbol
+ */
+export async function getTokenPrice(assetCodeOrAddress: string): Promise<number | null> {
+  try {
+    // Check cache first
+    const cached = priceCache.get(assetCodeOrAddress);
+    if (cached && Date.now() - cached.lastUpdated < CACHE_TTL) {
+      console.log(`[PriceService] Using cached ${assetCodeOrAddress} price: $${cached.price.toFixed(4)}`);
+      return cached.price;
+    }
+
+    // Handle known symbols
+    const symbolToCoinGeckoId: Record<string, string> = {
+      'XLM': 'stellar',
+      'USDC': 'usd-coin',
+      'USDT': 'tether',
+      'DAI': 'dai',
+      'BTC': 'bitcoin',
+      'ETH': 'ethereum',
+      'AQUA': 'aquarius',
+      'yXLM': 'yxlm',
+      'native': 'stellar',
+      // Add more common Stellar/Soroban tokens as they become available on CoinGecko
+      'EURC': 'euro-coin',
+      'yUSDC': 'yusd-stablecoin',
+      'BLND': 'blend', // if available
+    };
+
+    let coinGeckoId = symbolToCoinGeckoId[assetCodeOrAddress.toUpperCase()];
+
+    // If it's a Soroban contract address (starts with C), try to find it on CoinGecko
+    // For now, we don't have a reliable way to map Soroban addresses to CoinGecko IDs
+    // So we'll return null for unmapped tokens
+    if (!coinGeckoId && assetCodeOrAddress.startsWith('C')) {
+      console.warn(`[PriceService] No CoinGecko mapping for Soroban token: ${assetCodeOrAddress}`);
+      return null;
+    }
+
+    // If still no ID found, return null
+    if (!coinGeckoId) {
+      console.warn(`[PriceService] No CoinGecko ID found for: ${assetCodeOrAddress}`);
+      return null;
+    }
+
+    // Fetch from CoinGecko
+    const response = await fetch(
+      `https://api.coingecko.com/api/v3/simple/price?ids=${coinGeckoId}&vs_currencies=usd`
+    );
+
+    if (!response.ok) {
+      console.error(`[PriceService] CoinGecko API error for ${assetCodeOrAddress}:`, response.status);
+      return null;
+    }
+
+    const data = await response.json() as any;
+    const price = data[coinGeckoId]?.usd || null;
+
+    if (price) {
+      // Cache the result
+      priceCache.set(assetCodeOrAddress, {
+        price,
+        lastUpdated: Date.now(),
+      });
+      console.log(`[PriceService] Fetched ${assetCodeOrAddress} price from CoinGecko: $${price.toFixed(4)}`);
+    }
+
+    return price;
+  } catch (error) {
+    console.error(`[PriceService] Error fetching price for ${assetCodeOrAddress}:`, error);
+    return null;
+  }
+}
+
+/**
  * Get multiple asset prices at once (for future multi-asset support)
  */
 export async function getAssetPrices(assets: string[]): Promise<Record<string, number>> {
   const prices: Record<string, number> = {};
   
-  // For now, only support XLM
-  // In the future, extend this to support other Stellar assets
   for (const asset of assets) {
-    if (asset === 'XLM' || asset === 'native') {
-      prices[asset] = await getXLMPrice();
+    const price = await getTokenPrice(asset);
+    if (price !== null) {
+      prices[asset] = price;
     } else {
-      // For other assets, would need to implement proper price feeds
       prices[asset] = 0;
     }
   }
   
   return prices;
+}
+
+/**
+ * Fetch historical price data from CoinGecko
+ * @param assetCodeOrAddress - Asset symbol or contract address
+ * @param startTime - Start timestamp in ISO format
+ * @param endTime - End timestamp in ISO format
+ * @param resolution - Time resolution in milliseconds
+ * @returns Array of price points with timestamp and price
+ */
+export async function getHistoricalPricesFromCoinGecko(
+  assetCodeOrAddress: string,
+  startTime: string,
+  endTime: string,
+  resolution: number
+): Promise<{ timestamp: string; price: number }[] | null> {
+  try {
+    // Map symbols to CoinGecko IDs
+    const symbolToCoinGeckoId: Record<string, string> = {
+      'XLM': 'stellar',
+      'USDC': 'usd-coin',
+      'USDT': 'tether',
+      'DAI': 'dai',
+      'BTC': 'bitcoin',
+      'ETH': 'ethereum',
+      'AQUA': 'aquarius',
+      'yXLM': 'yxlm',
+      'native': 'stellar',
+      'EURC': 'euro-coin',
+      'yUSDC': 'yusd-stablecoin',
+      'BLND': 'blend',
+    };
+
+    const coinGeckoId = symbolToCoinGeckoId[assetCodeOrAddress.toUpperCase()];
+
+    if (!coinGeckoId) {
+      console.warn(`[PriceService] No CoinGecko mapping for historical data: ${assetCodeOrAddress}`);
+      return null;
+    }
+
+    const start = Math.floor(new Date(startTime).getTime() / 1000);
+    const end = Math.floor(new Date(endTime).getTime() / 1000);
+
+    // CoinGecko's market_chart/range endpoint
+    const url = `https://api.coingecko.com/api/v3/coins/${coinGeckoId}/market_chart/range?vs_currency=usd&from=${start}&to=${end}`;
+    
+    console.log(`[PriceService] Fetching historical data from CoinGecko for ${assetCodeOrAddress}...`);
+    
+    const response = await fetch(url);
+
+    if (!response.ok) {
+      console.error(`[PriceService] CoinGecko historical API error for ${assetCodeOrAddress}:`, response.status);
+      return null;
+    }
+
+    const data = await response.json() as any;
+    
+    if (!data.prices || data.prices.length === 0) {
+      console.warn(`[PriceService] No historical data available from CoinGecko for ${assetCodeOrAddress}`);
+      return null;
+    }
+
+    // CoinGecko returns [timestamp_ms, price] pairs
+    const prices = data.prices.map(([timestamp, price]: [number, number]) => ({
+      timestamp: new Date(timestamp).toISOString(),
+      price: price,
+    }));
+
+    console.log(`[PriceService] ✓ Fetched ${prices.length} historical price points from CoinGecko for ${assetCodeOrAddress}`);
+
+    // Resample to match requested resolution if needed
+    return resamplePrices(prices, resolution);
+  } catch (error) {
+    console.error(`[PriceService] Error fetching historical prices for ${assetCodeOrAddress}:`, error);
+    return null;
+  }
+}
+
+/**
+ * Resample price data to match requested resolution
+ */
+function resamplePrices(
+  prices: { timestamp: string; price: number }[],
+  targetResolution: number
+): { timestamp: string; price: number }[] {
+  if (prices.length === 0) return [];
+
+  const resampled: { timestamp: string; price: number }[] = [];
+  const startTime = new Date(prices[0].timestamp).getTime();
+  const endTime = new Date(prices[prices.length - 1].timestamp).getTime();
+  
+  let currentTime = startTime;
+  let priceIndex = 0;
+
+  while (currentTime <= endTime) {
+    // Find the closest price point
+    let closestPrice = prices[priceIndex];
+    let closestDiff = Math.abs(new Date(closestPrice.timestamp).getTime() - currentTime);
+
+    for (let i = priceIndex; i < prices.length; i++) {
+      const diff = Math.abs(new Date(prices[i].timestamp).getTime() - currentTime);
+      if (diff < closestDiff) {
+        closestPrice = prices[i];
+        closestDiff = diff;
+        priceIndex = i;
+      } else {
+        break; // Prices are sorted, so we can stop
+      }
+    }
+
+    resampled.push({
+      timestamp: new Date(currentTime).toISOString(),
+      price: closestPrice.price,
+    });
+
+    currentTime += targetResolution;
+  }
+
+  return resampled;
 }
 
 /**

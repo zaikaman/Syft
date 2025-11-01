@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Card, Button, Skeleton } from '../components/ui';
 import { Lightbulb, Sparkles, AlertCircle, RefreshCw, X, CheckCircle, TrendingUp, Shield, Zap } from 'lucide-react';
 import { useWallet } from '../providers/WalletProvider';
+import { resolveAssetNames } from '../services/tokenService';
 
 interface Vault {
   vault_id: string;
@@ -59,6 +60,7 @@ const Suggestions = () => {
   const [suggestionsMessage, setSuggestionsMessage] = useState<string | null>(null);
   const [selectedSuggestion, setSelectedSuggestion] = useState<Suggestion | null>(null);
   const [showImplementationModal, setShowImplementationModal] = useState(false);
+  const [resolvedTokenNames, setResolvedTokenNames] = useState<Record<string, string>>({}); // Cache for resolved token names
   const { address, network, networkPassphrase } = useWallet();
 
   const normalizeNetwork = (net?: string, passphrase?: string): string => {
@@ -435,7 +437,38 @@ const Suggestions = () => {
               {vaults.map((vault) => {
                 const perfValue = vault.performance?.returns30d ?? vault.performance?.apyCurrent ?? vault.performance?.returns7d ?? 0;
                 const tvl = vault.performance?.tvl ?? 0;
-                const assets = vault.config?.assets?.map((a: any) => typeof a === 'string' ? a : a.code).join(' / ') || 'Unknown';
+                
+                // Get resolved token names from cache or use fallback
+                const vaultKey = vault.vault_id;
+                const cachedNames = resolvedTokenNames[vaultKey];
+                let assets = cachedNames || 'Loading...';
+                
+                // Resolve token names asynchronously if not cached
+                if (!cachedNames && vault.config?.assets) {
+                  resolveAssetNames(vault.config.assets, network || 'testnet')
+                    .then(names => {
+                      setResolvedTokenNames(prev => ({
+                        ...prev,
+                        [vaultKey]: names.join(' / ')
+                      }));
+                    })
+                    .catch(err => {
+                      console.error('Error resolving token names:', err);
+                      // Fallback
+                      const fallback = vault.config?.assets
+                        ?.map((a: any) => {
+                          if (typeof a === 'string') {
+                            return a.startsWith('C') && a.length > 20 ? `${a.slice(0, 8)}...` : a;
+                          }
+                          return a.code || a.assetCode || 'Unknown';
+                        })
+                        .join(' / ') || 'Unknown';
+                      setResolvedTokenNames(prev => ({
+                        ...prev,
+                        [vaultKey]: fallback
+                      }));
+                    });
+                }
 
                 return (
                   <motion.div

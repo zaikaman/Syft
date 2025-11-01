@@ -12,6 +12,7 @@ import { useWallet } from '../../providers/WalletProvider';
 import { useModal } from '../ui';
 import { MintNFTModal } from './MintNFTModal';
 import { ListingModal } from './ListingModal';
+import { resolveAssetNames } from '../../services/tokenService';
 
 interface VaultDetailProps {
   vaultId: string;
@@ -70,6 +71,7 @@ export function VaultDetail({ vaultId, listingId }: VaultDetailProps) {
   const [error, setError] = useState('');
   const [xlmPrice, setXlmPrice] = useState<number>(0.10); // Fallback price
   const [vaultAnalytics, setVaultAnalytics] = useState<any>(null);
+  const [resolvedAssets, setResolvedAssets] = useState<string>(''); // Cache for resolved token names
   const { address } = useWallet();
   const modal = useModal();
   const [showMintModal, setShowMintModal] = useState(false);
@@ -174,6 +176,13 @@ export function VaultDetail({ vaultId, listingId }: VaultDetailProps) {
       }
 
       setVault(vaultData.data);
+
+      // Resolve token names for assets
+      if (vaultData.data?.config?.assets) {
+        resolveAssetNames(vaultData.data.config.assets, 'testnet').then(resolved => {
+          setResolvedAssets(resolved.join(' / '));
+        });
+      }
 
       // Load NFT holders
       const nftResponse = await fetch(`${backendUrl}/api/vaults/${vaultId}/nfts`);
@@ -352,7 +361,8 @@ export function VaultDetail({ vaultId, listingId }: VaultDetailProps) {
     );
   }
 
-  const assets = vault.config.assets?.map((a: any) => typeof a === 'string' ? a : a.code).join(' / ') || 'Unknown';
+  // Use resolved assets if available, otherwise fallback to original logic
+  const assets = resolvedAssets || vault.config.assets?.map((a: any) => typeof a === 'string' ? a : a.code).join(' / ') || 'Unknown';
 
   return (
     <div className="space-y-4">
