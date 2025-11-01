@@ -26,6 +26,7 @@ import { supabase } from '../lib/supabase.js';
 import { syncVaultState } from '../services/vaultSyncService.js';
 import { getNetworkServers } from '../lib/horizonClient.js';
 import suggestionsRoutes from './suggestions.js';
+import { naturalLanguageVaultGenerator } from '../services/naturalLanguageVaultGenerator.js';
 
 const router = Router();
 
@@ -163,6 +164,53 @@ async function initializeVaultContract(
 
 // Mount suggestions routes at /vaults/:vaultId/suggestions
 router.use('/', suggestionsRoutes);
+
+/**
+ * POST /api/vaults/generate-from-prompt
+ * Generate vault configuration from natural language
+ */
+router.post('/generate-from-prompt', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { userPrompt, conversationHistory, currentVault, network } = req.body;
+
+    if (!userPrompt || typeof userPrompt !== 'string') {
+      res.status(400).json({
+        success: false,
+        error: 'Missing or invalid userPrompt',
+      });
+      return;
+    }
+
+    console.log('[Generate From Prompt] User prompt:', userPrompt);
+    console.log('[Generate From Prompt] Conversation history length:', conversationHistory?.length || 0);
+    console.log('[Generate From Prompt] Has current vault:', !!currentVault);
+
+    // Generate vault using AI
+    const result = await naturalLanguageVaultGenerator.generateVault({
+      userPrompt,
+      conversationHistory: conversationHistory || [],
+      currentVault: currentVault || undefined,
+      network: network || 'testnet',
+    });
+
+    console.log('[Generate From Prompt] Generated vault:', {
+      nodeCount: result.nodes.length,
+      edgeCount: result.edges.length,
+      responseType: result.responseType,
+    });
+
+    res.json({
+      success: true,
+      data: result,
+    });
+  } catch (error) {
+    console.error('Error generating vault from prompt:', error);
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to generate vault',
+    });
+  }
+});
 
 /**
  * POST /api/vaults

@@ -1,12 +1,13 @@
 import { motion, AnimatePresence } from 'framer-motion';
 import { useState, useCallback, useEffect } from 'react';
 import type { Node, Edge } from '@xyflow/react';
-import { Save, Box, Play, Undo2, Redo2, FileText, AlertCircle, FolderOpen, X, Clock, CheckCircle, Eye, EyeOff } from 'lucide-react';
+import { Save, Box, Play, Undo2, Redo2, FileText, AlertCircle, FolderOpen, X, Clock, CheckCircle, Eye, EyeOff, Sparkles, Grid3x3 } from 'lucide-react';
 import { Button, useModal } from '../components/ui';
 import BlockPalette from '../components/builder/BlockPalette';
 import VaultCanvas from '../components/builder/VaultCanvas';
 import ValidationFeedback from '../components/builder/ValidationFeedback';
 import StrategyPreview from '../components/builder/StrategyPreview';
+import { NaturalLanguageBuilder } from '../components/builder/NaturalLanguageBuilder';
 import { BlockValidator } from '../lib/blockValidator';
 import { ConfigSerializer } from '../lib/configSerializer';
 import { useBuilderHistory } from '../hooks/useBuilderHistory';
@@ -40,6 +41,7 @@ const VaultBuilder = () => {
   const [showLoadModal, setShowLoadModal] = useState(false);
   const [savedVaults, setSavedVaults] = useState<SavedVault[]>([]);
   const [loadingVaults, setLoadingVaults] = useState(false);
+  const [builderMode, setBuilderMode] = useState<'visual' | 'chat'>('visual');
   
   // Vault metadata state
   const [vaultName, setVaultName] = useState('');
@@ -606,6 +608,21 @@ const VaultBuilder = () => {
     pushState(template.nodes, template.edges);
   }, [pushState]);
 
+  // Handle vault generated from AI chat
+  const handleVaultGenerated = useCallback((newNodes: Node[], newEdges: Edge[], explanation: string) => {
+    console.log('[VaultBuilder] AI generated vault:', { nodeCount: newNodes.length, edgeCount: newEdges.length });
+    setNodes(newNodes);
+    setEdges(newEdges);
+    pushState(newNodes, newEdges);
+    
+    // Auto-fill description with AI explanation
+    if (explanation && !vaultDescription) {
+      setVaultDescription(explanation);
+    }
+    
+    modal.message('Vault generated successfully! You can now review, edit, or deploy it.', 'Success', 'success');
+  }, [pushState, vaultDescription, modal]);
+
   return (
     <div className="h-full bg-app flex flex-col">
       {/* Header */}
@@ -618,6 +635,38 @@ const VaultBuilder = () => {
                 <Box className="w-8 h-8 text-primary-500" />
                 Vault Builder
               </h1>
+              <div className="h-6 w-px bg-default"></div>
+              
+              {/* Builder Mode Toggle */}
+              <div className="flex items-center gap-2 bg-neutral-900 border border-default rounded-md p-1">
+                <button
+                  onClick={() => setBuilderMode('visual')}
+                  className={`
+                    flex items-center gap-2 px-3 py-1.5 text-sm rounded transition-all
+                    ${builderMode === 'visual'
+                      ? 'bg-primary-500 text-dark-950 font-semibold'
+                      : 'text-neutral-400 hover:text-neutral-300'
+                    }
+                  `}
+                >
+                  <Grid3x3 className="w-4 h-4" />
+                  <span>Visual Builder</span>
+                </button>
+                <button
+                  onClick={() => setBuilderMode('chat')}
+                  className={`
+                    flex items-center gap-2 px-3 py-1.5 text-sm rounded transition-all
+                    ${builderMode === 'chat'
+                      ? 'bg-primary-500 text-dark-950 font-semibold'
+                      : 'text-neutral-400 hover:text-neutral-300'
+                    }
+                  `}
+                >
+                  <Sparkles className="w-4 h-4" />
+                  <span>AI Chat</span>
+                </button>
+              </div>
+              
               <div className="h-6 w-px bg-default"></div>
               <input
                 type="text"
@@ -687,158 +736,260 @@ const VaultBuilder = () => {
 
       {/* Main Content */}
       <div className="flex-1 overflow-hidden flex">
-        {/* Left Sidebar - Block Palette */}
-        <div className="w-72 flex-shrink-0 border-r border-default bg-card overflow-hidden flex flex-col">
-          {/* <div className="p-4 border-b border-default">
-            <h2 className="text-sm font-semibold text-neutral-50 mb-1">Block Palette</h2>
-            <p className="text-xs text-neutral-500">Drag blocks to canvas</p>
-          </div> */}
-          <div className="flex-1 overflow-y-auto">
-            <BlockPalette onBlockSelect={handleBlockSelect} />
-          </div>
-          
-          {/* Quick Templates */}
-          <div className="border-t border-default p-3 bg-neutral-900">
-            <h3 className="text-xs font-semibold text-neutral-400 mb-2">Quick Start Templates</h3>
-            <div className="space-y-1.5">
-              {vaultTemplates.map((template) => (
-                <button
-                  key={template.id}
-                  onClick={() => handleLoadTemplate(template.id)}
-                  className="w-full px-2.5 py-1.5 text-xs rounded-md bg-neutral-800 hover:bg-neutral-700 border border-default transition-colors text-neutral-300 text-left"
-                >
-                  {template.name}
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-
-        {/* Center - Canvas Area */}
-        <div className="flex-1 flex flex-col overflow-hidden">
-          <VaultCanvas
-            initialNodes={nodes}
-            initialEdges={edges}
-            onNodesChange={handleNodesChange}
-            onEdgesChange={handleEdgesChange}
-          />
-        </div>
-
-        {/* Right Sidebar - Vault Settings & Validation */}
-        <div className="w-80 flex-shrink-0 border-l border-default bg-card overflow-hidden flex flex-col">
-          {/* Vault Settings */}
-          <div className="border-b border-default">
-            <div className="p-4 bg-neutral-900">
-              <h2 className="text-sm font-semibold text-neutral-50 mb-3">Vault Settings</h2>
+        {builderMode === 'visual' ? (
+          <>
+            {/* Left Sidebar - Block Palette */}
+            <div className="w-72 flex-shrink-0 border-r border-default bg-card overflow-hidden flex flex-col">
+              <div className="flex-1 overflow-y-auto">
+                <BlockPalette onBlockSelect={handleBlockSelect} />
+              </div>
               
-              {/* Description */}
-              <div className="mb-3">
-                <label className="block text-xs font-medium text-neutral-400 mb-1.5">
-                  Description
-                </label>
-                <textarea
-                  value={vaultDescription}
-                  onChange={(e) => setVaultDescription(e.target.value)}
-                  placeholder="Describe your vault strategy..."
-                  maxLength={500}
-                  rows={3}
-                  className="w-full px-3 py-2 bg-neutral-800 border border-default rounded-md text-neutral-50 placeholder-neutral-500 text-xs focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent resize-none"
-                />
-                <div className="flex justify-end mt-1">
-                  <span className="text-xs text-neutral-500">
-                    {vaultDescription.length}/500
-                  </span>
+              {/* Quick Templates */}
+              <div className="border-t border-default p-3 bg-neutral-900">
+                <h3 className="text-xs font-semibold text-neutral-400 mb-2">Quick Start Templates</h3>
+                <div className="space-y-1.5">
+                  {vaultTemplates.map((template) => (
+                    <button
+                      key={template.id}
+                      onClick={() => handleLoadTemplate(template.id)}
+                      className="w-full px-2.5 py-1.5 text-xs rounded-md bg-neutral-800 hover:bg-neutral-700 border border-default transition-colors text-neutral-300 text-left"
+                    >
+                      {template.name}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* Center - Canvas Area */}
+            <div className="flex-1 flex flex-col overflow-hidden">
+              <VaultCanvas
+                initialNodes={nodes}
+                initialEdges={edges}
+                onNodesChange={handleNodesChange}
+                onEdgesChange={handleEdgesChange}
+              />
+            </div>
+
+            {/* Right Sidebar - Vault Settings & Validation */}
+            <div className="w-80 flex-shrink-0 border-l border-default bg-card overflow-hidden flex flex-col">
+              {/* Vault Settings */}
+              <div className="border-b border-default">
+                <div className="p-4 bg-neutral-900">
+                  <h2 className="text-sm font-semibold text-neutral-50 mb-3">Vault Settings</h2>
+                  
+                  {/* Description */}
+                  <div className="mb-3">
+                    <label className="block text-xs font-medium text-neutral-400 mb-1.5">
+                      Description
+                    </label>
+                    <textarea
+                      value={vaultDescription}
+                      onChange={(e) => setVaultDescription(e.target.value)}
+                      placeholder="Describe your vault strategy..."
+                      maxLength={500}
+                      rows={3}
+                      className="w-full px-3 py-2 bg-neutral-800 border border-default rounded-md text-neutral-50 placeholder-neutral-500 text-xs focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent resize-none"
+                    />
+                    <div className="flex justify-end mt-1">
+                      <span className="text-xs text-neutral-500">
+                        {vaultDescription.length}/500
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Visibility */}
+                  <div>
+                    <label className="block text-xs font-medium text-neutral-400 mb-1.5">
+                      Visibility
+                    </label>
+                    <button
+                      onClick={() => setIsPublic(!isPublic)}
+                      className={`
+                        w-full px-3 py-2.5 rounded-md text-sm font-medium transition-all flex items-center justify-between
+                        ${isPublic 
+                          ? 'bg-primary-500/20 text-primary-400 border border-primary-500/50 hover:bg-primary-500/30' 
+                          : 'bg-neutral-800 text-neutral-400 border border-default hover:bg-neutral-700'
+                        }
+                      `}
+                    >
+                      <div className="flex items-center gap-2">
+                        {isPublic ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
+                        <span>{isPublic ? 'Public' : 'Private'}</span>
+                      </div>
+                      <span className="text-xs opacity-70">
+                        {isPublic ? 'Visible on marketplace' : 'Only you can see'}
+                      </span>
+                    </button>
+                  </div>
                 </div>
               </div>
 
-              {/* Visibility */}
-              <div>
-                <label className="block text-xs font-medium text-neutral-400 mb-1.5">
-                  Visibility
-                </label>
-                <button
-                  onClick={() => setIsPublic(!isPublic)}
-                  className={`
-                    w-full px-3 py-2.5 rounded-md text-sm font-medium transition-all flex items-center justify-between
-                    ${isPublic 
-                      ? 'bg-primary-500/20 text-primary-400 border border-primary-500/50 hover:bg-primary-500/30' 
-                      : 'bg-neutral-800 text-neutral-400 border border-default hover:bg-neutral-700'
-                    }
-                  `}
-                >
-                  <div className="flex items-center gap-2">
-                    {isPublic ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
-                    <span>{isPublic ? 'Public' : 'Private'}</span>
+              {/* Validation & Preview Tabs */}
+              <div className="flex-1 flex flex-col overflow-hidden">
+                <div className="flex border-b border-default bg-neutral-900">
+                  <button
+                    onClick={() => setActiveTab('preview')}
+                    className={`
+                      flex-1 flex items-center justify-center gap-2 px-4 py-2.5 text-xs font-medium transition-colors relative
+                      ${activeTab === 'preview' 
+                        ? 'text-primary-500 bg-card' 
+                        : 'text-neutral-400 hover:text-neutral-300 hover:bg-neutral-800'
+                      }
+                    `}
+                  >
+                    <FileText className="w-4 h-4" />
+                    <span>Preview</span>
+                  </button>
+                  <button
+                    onClick={() => setActiveTab('validation')}
+                    className={`
+                      flex-1 flex items-center justify-center gap-2 px-4 py-2.5 text-xs font-medium transition-colors relative
+                      ${activeTab === 'validation' 
+                        ? 'text-primary-500 bg-card' 
+                        : 'text-neutral-400 hover:text-neutral-300 hover:bg-neutral-800'
+                      }
+                    `}
+                  >
+                    <AlertCircle className="w-4 h-4" />
+                    <span>Validation</span>
+                    {(!validation.valid || validation.warnings.length > 0) && (
+                      <span className="w-2 h-2 rounded-full bg-error-500" />
+                    )}
+                  </button>
+                </div>
+
+                <div className="flex-1 overflow-y-auto p-4">
+                  <AnimatePresence mode="wait">
+                    {activeTab === 'preview' ? (
+                      <motion.div
+                        key="preview"
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        transition={{ duration: 0.15 }}
+                      >
+                        <StrategyPreview nodes={nodes} edges={edges} />
+                      </motion.div>
+                    ) : (
+                      <motion.div
+                        key="validation"
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        transition={{ duration: 0.15 }}
+                      >
+                        <ValidationFeedback validation={validation} />
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
+              </div>
+            </div>
+          </>
+        ) : (
+          /* AI Chat Builder Mode */
+          <div className="flex-1 flex overflow-hidden">
+            {/* Chat Interface - Takes most of the space */}
+            <div className="flex-1 overflow-hidden">
+              <NaturalLanguageBuilder 
+                onVaultGenerated={handleVaultGenerated}
+                network={network}
+                currentNodes={nodes}
+                currentEdges={edges}
+              />
+            </div>
+
+            {/* Right Sidebar - Preview & Validation (same as visual mode) */}
+            <div className="w-96 flex-shrink-0 border-l border-default bg-card overflow-hidden flex flex-col">
+              {/* Vault Settings */}
+              <div className="border-b border-default">
+                <div className="p-4 bg-neutral-900">
+                  <h2 className="text-sm font-semibold text-neutral-50 mb-3">Vault Settings</h2>
+                  
+                  {/* Description */}
+                  <div className="mb-3">
+                    <label className="block text-xs font-medium text-neutral-400 mb-1.5">
+                      Description
+                    </label>
+                    <textarea
+                      value={vaultDescription}
+                      onChange={(e) => setVaultDescription(e.target.value)}
+                      placeholder="AI will auto-fill this..."
+                      maxLength={500}
+                      rows={3}
+                      className="w-full px-3 py-2 bg-neutral-800 border border-default rounded-md text-neutral-50 placeholder-neutral-500 text-xs focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent resize-none"
+                    />
+                    <div className="flex justify-end mt-1">
+                      <span className="text-xs text-neutral-500">
+                        {vaultDescription.length}/500
+                      </span>
+                    </div>
                   </div>
-                  <span className="text-xs opacity-70">
-                    {isPublic ? 'Visible on marketplace' : 'Only you can see'}
-                  </span>
-                </button>
+
+                  {/* Visibility */}
+                  <div>
+                    <label className="block text-xs font-medium text-neutral-400 mb-1.5">
+                      Visibility
+                    </label>
+                    <button
+                      onClick={() => setIsPublic(!isPublic)}
+                      className={`
+                        w-full px-3 py-2.5 rounded-md text-sm font-medium transition-all flex items-center justify-between
+                        ${isPublic 
+                          ? 'bg-primary-500/20 text-primary-400 border border-primary-500/50 hover:bg-primary-500/30' 
+                          : 'bg-neutral-800 text-neutral-400 border border-default hover:bg-neutral-700'
+                        }
+                      `}
+                    >
+                      <div className="flex items-center gap-2">
+                        {isPublic ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
+                        <span>{isPublic ? 'Public' : 'Private'}</span>
+                      </div>
+                      <span className="text-xs opacity-70">
+                        {isPublic ? 'Visible on marketplace' : 'Only you can see'}
+                      </span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Canvas Preview - Show generated vault visually */}
+              <div className="flex-1 flex flex-col overflow-hidden border-b border-default">
+                <div className="px-4 py-2 bg-neutral-900 border-b border-default">
+                  <h3 className="text-xs font-semibold text-neutral-400">Visual Preview</h3>
+                </div>
+                <div className="flex-1 overflow-hidden">
+                  <VaultCanvas
+                    initialNodes={nodes}
+                    initialEdges={edges}
+                    onNodesChange={handleNodesChange}
+                    onEdgesChange={handleEdgesChange}
+                  />
+                </div>
+              </div>
+
+              {/* Validation Status */}
+              <div className="flex-shrink-0 p-4 bg-neutral-900">
+                <div className="flex items-center gap-2 mb-2">
+                  <AlertCircle className="w-4 h-4 text-neutral-400" />
+                  <span className="text-xs font-semibold text-neutral-400">Validation Status</span>
+                </div>
+                {validation.valid ? (
+                  <div className="flex items-center gap-2 text-xs text-success-400">
+                    <CheckCircle className="w-4 h-4" />
+                    <span>Ready to deploy</span>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2 text-xs text-error-400">
+                    <AlertCircle className="w-4 h-4" />
+                    <span>{validation.errors.length} error(s) found</span>
+                  </div>
+                )}
               </div>
             </div>
           </div>
-
-          {/* Validation & Preview Tabs */}
-          <div className="flex-1 flex flex-col overflow-hidden">
-            <div className="flex border-b border-default bg-neutral-900">
-              <button
-                onClick={() => setActiveTab('preview')}
-                className={`
-                  flex-1 flex items-center justify-center gap-2 px-4 py-2.5 text-xs font-medium transition-colors relative
-                  ${activeTab === 'preview' 
-                    ? 'text-primary-500 bg-card' 
-                    : 'text-neutral-400 hover:text-neutral-300 hover:bg-neutral-800'
-                  }
-                `}
-              >
-                <FileText className="w-4 h-4" />
-                <span>Preview</span>
-              </button>
-              <button
-                onClick={() => setActiveTab('validation')}
-                className={`
-                  flex-1 flex items-center justify-center gap-2 px-4 py-2.5 text-xs font-medium transition-colors relative
-                  ${activeTab === 'validation' 
-                    ? 'text-primary-500 bg-card' 
-                    : 'text-neutral-400 hover:text-neutral-300 hover:bg-neutral-800'
-                  }
-                `}
-              >
-                <AlertCircle className="w-4 h-4" />
-                <span>Validation</span>
-                {(!validation.valid || validation.warnings.length > 0) && (
-                  <span className="w-2 h-2 rounded-full bg-error-500" />
-                )}
-              </button>
-            </div>
-
-            <div className="flex-1 overflow-y-auto p-4">
-              <AnimatePresence mode="wait">
-                {activeTab === 'preview' ? (
-                  <motion.div
-                    key="preview"
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    exit={{ opacity: 0 }}
-                    transition={{ duration: 0.15 }}
-                  >
-                    <StrategyPreview nodes={nodes} edges={edges} />
-                  </motion.div>
-                ) : (
-                  <motion.div
-                    key="validation"
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    exit={{ opacity: 0 }}
-                    transition={{ duration: 0.15 }}
-                  >
-                    <ValidationFeedback validation={validation} />
-                  </motion.div>
-                )}
-              </AnimatePresence>
-            </div>
-          </div>
-        </div>
+        )}
       </div>
 
       {/* Load Saved Vaults Modal */}
