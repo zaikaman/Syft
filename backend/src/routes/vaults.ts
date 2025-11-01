@@ -171,7 +171,7 @@ router.use('/', suggestionsRoutes);
  */
 router.post('/generate-from-prompt', async (req: Request, res: Response): Promise<void> => {
   try {
-    const { userPrompt, conversationHistory, currentVault, network } = req.body;
+    const { userPrompt, conversationHistory, currentVault, network, sessionId } = req.body;
 
     if (!userPrompt || typeof userPrompt !== 'string') {
       res.status(400).json({
@@ -184,6 +184,21 @@ router.post('/generate-from-prompt', async (req: Request, res: Response): Promis
     console.log('[Generate From Prompt] User prompt:', userPrompt);
     console.log('[Generate From Prompt] Conversation history length:', conversationHistory?.length || 0);
     console.log('[Generate From Prompt] Has current vault:', !!currentVault);
+    console.log('[Generate From Prompt] Session ID:', sessionId);
+
+    // Save user message to chat history if session exists
+    if (sessionId) {
+      try {
+        const { chatHistoryService } = await import('../services/chatHistoryService.js');
+        await chatHistoryService.addMessage({
+          sessionId,
+          role: 'user',
+          content: userPrompt,
+        });
+      } catch (error) {
+        console.warn('[Generate From Prompt] Failed to save user message:', error);
+      }
+    }
 
     // Generate vault using AI
     const result = await naturalLanguageVaultGenerator.generateVault({
@@ -198,6 +213,28 @@ router.post('/generate-from-prompt', async (req: Request, res: Response): Promis
       edgeCount: result.edges.length,
       responseType: result.responseType,
     });
+
+    // Save assistant response to chat history if session exists
+    if (sessionId) {
+      try {
+        const { chatHistoryService } = await import('../services/chatHistoryService.js');
+        await chatHistoryService.addMessage({
+          sessionId,
+          role: 'assistant',
+          content: result.explanation,
+          responseType: result.responseType,
+          vaultSnapshot: result.responseType === 'build' ? { nodes: result.nodes, edges: result.edges } : undefined,
+          marketContext: result.marketContext,
+        });
+
+        // Mark vault as generated if built
+        if (result.responseType === 'build' && result.nodes.length > 0) {
+          await chatHistoryService.markVaultGenerated(sessionId);
+        }
+      } catch (error) {
+        console.warn('[Generate From Prompt] Failed to save assistant message:', error);
+      }
+    }
 
     res.json({
       success: true,

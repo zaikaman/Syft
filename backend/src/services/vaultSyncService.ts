@@ -109,13 +109,18 @@ export async function syncAllVaults(): Promise<{
 export function startVaultSync(): NodeJS.Timeout {
   console.log('Starting vault sync service (every 2 minutes)...');
 
-  // Initial sync
-  syncAllVaults();
+  // Initial sync - run async without blocking startup
+  syncAllVaults().catch(error => {
+    console.error('Error in initial vault sync:', error);
+  });
 
   // Periodic sync - reduced frequency to avoid overwhelming Horizon
-  const interval = setInterval(async () => {
+  const interval = setInterval(() => {
     console.log('Running periodic vault sync...');
-    await syncAllVaults();
+    // Run async without blocking the interval
+    syncAllVaults().catch(error => {
+      console.error('Error in periodic vault sync:', error);
+    });
   }, 120000); // Every 2 minutes (reduced from 5 to be less aggressive)
 
   return interval;

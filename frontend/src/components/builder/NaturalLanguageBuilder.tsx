@@ -5,8 +5,10 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Send, Sparkles, Loader2, AlertCircle, CheckCircle2, Bot, User } from 'lucide-react';
+import { Send, Sparkles, Loader2, AlertCircle, CheckCircle2, Bot, User, History, Plus } from 'lucide-react';
 import type { Node, Edge } from '@xyflow/react';
+import { ChatHistoryPanel } from './ChatHistoryPanel';
+import { useWallet } from '../../providers/WalletProvider';
 
 interface Message {
   id: string;
@@ -29,20 +31,28 @@ interface NaturalLanguageBuilderProps {
 }
 
 export function NaturalLanguageBuilder({ onVaultGenerated, network, currentNodes = [], currentEdges = [] }: NaturalLanguageBuilderProps) {
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      id: 'welcome',
-      role: 'assistant',
-      content: 'Hi! I\'m your AI vault architect for Stellar blockchain. I can help you in three ways:\n\n💬 Chat & Advice: Ask me questions about DeFi strategies, Stellar assets, or vault optimization. I\'ll search the web for current market data when needed.\n\n🏗️ Build Vaults: When you\'re ready, tell me what you want and I\'ll generate a complete vault configuration.\n\n✏️ Edit Vaults: If you have a vault in the visual builder, I can see it and help you modify it!\n\nTry asking:\n• "What are the best performing Stellar assets right now?"\n• "Explain how rebalancing strategies work"\n• "Create a balanced portfolio with 60% USDC and 40% XLM"\n• "Add a weekly rebalancing rule to my vault"\n\nWhat would you like to do?',
-      timestamp: new Date(),
-    },
-  ]);
+  const { address: walletAddress } = useWallet(); // Get connected wallet address
+  
+  console.log('[NaturalLanguageBuilder] Wallet address:', walletAddress);
+  
+  const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
+  const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+  const [isLoadingSession, setIsLoadingSession] = useState(true);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+
+  // Helper to get welcome message
+  const getWelcomeMessage = (): Message => ({
+    id: 'welcome',
+    role: 'assistant',
+    content: 'Hi! I\'m your AI vault architect for Stellar blockchain. I can help you in three ways:\n\n💬 Chat & Advice: Ask me questions about DeFi strategies, Stellar assets, or vault optimization. I\'ll search the web for current market data when needed.\n\n🏗️ Build Vaults: When you\'re ready, tell me what you want and I\'ll generate a complete vault configuration.\n\n✏️ Edit Vaults: If you have a vault in the visual builder, I can see it and help you modify it!\n\nTry asking:\n• "What are the best performing Stellar assets right now?"\n• "Explain how rebalancing strategies work"\n• "Create a balanced portfolio with 60% USDC and 40% XLM"\n• "Add a weekly rebalancing rule to my vault"\n\nWhat would you like to do?',
+    timestamp: new Date(),
+  });
 
   // Helper to summarize current vault for AI context
   const summarizeVault = (nodes: Node[], _edges: Edge[]): string => {
@@ -83,10 +93,148 @@ export function NaturalLanguageBuilder({ onVaultGenerated, network, currentNodes
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
+  // Load current session on mount
+  useEffect(() => {
+    const loadCurrentSession = async () => {
+      setIsLoadingSession(true);
+      
+      try {
+        // Try to get session ID from localStorage
+        const storedSessionId = localStorage.getItem('syft_current_chat_session');
+        const storedWalletAddress = localStorage.getItem('syft_chat_wallet_address');
+        
+        // If wallet address changed, clear the stored session
+        if (storedWalletAddress && storedWalletAddress !== walletAddress) {
+          console.log('[Chat] Wallet address changed, clearing stored session');
+          localStorage.removeItem('syft_current_chat_session');
+          localStorage.removeItem('syft_chat_wallet_address');
+          setMessages([getWelcomeMessage()]);
+        } else if (storedSessionId) {
+          console.log('[Chat] Loading session from localStorage:', storedSessionId);
+          await loadSession(storedSessionId);
+        } else {
+          // No stored session, show welcome message
+          console.log('[Chat] No stored session, showing welcome message');
+          setMessages([getWelcomeMessage()]);
+        }
+        
+        // Store current wallet address for future comparison
+        if (walletAddress) {
+          localStorage.setItem('syft_chat_wallet_address', walletAddress);
+        }
+      } catch (error) {
+        console.error('[Chat] Error loading session:', error);
+        setMessages([getWelcomeMessage()]);
+      } finally {
+        setIsLoadingSession(false);
+      }
+    };
+
+    loadCurrentSession();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [walletAddress]); // Re-run when wallet address changes
+
   // Focus input on mount
   useEffect(() => {
     inputRef.current?.focus();
   }, []);
+
+  // Create a new chat session
+  const createNewSession = async (initialPrompt?: string) => {
+    try {
+      console.log('[Chat] Creating session with wallet:', walletAddress);
+      
+      const backendUrl = import.meta.env.PUBLIC_BACKEND_URL || 'http://localhost:3001';
+      const response = await fetch(`${backendUrl}/api/chat/sessions`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          walletAddress, // Include wallet address
+          network: network || 'testnet',
+          initialPrompt,
+        }),
+      });
+
+      const data = await response.json();
+      console.log('[Chat] Session creation response:', data);
+
+      if (data.success && data.data.sessionId) {
+        const sessionId = data.data.sessionId;
+        setCurrentSessionId(sessionId);
+        // Save to localStorage for persistence
+        localStorage.setItem('syft_current_chat_session', sessionId);
+        console.log('[Chat] Created new session:', sessionId);
+        return sessionId;
+      }
+    } catch (err) {
+      console.error('Error creating session:', err);
+    }
+    return null;
+  };
+
+  // Load a previous chat session
+  const loadSession = async (sessionId: string) => {
+    try {
+      console.log('[Chat] Fetching messages for session:', sessionId);
+      const backendUrl = import.meta.env.PUBLIC_BACKEND_URL || 'http://localhost:3001';
+      const response = await fetch(`${backendUrl}/api/chat/sessions/${sessionId}/messages`);
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const data = await response.json();
+
+      if (data.success && data.data) {
+        console.log('[Chat] Received', data.data.length, 'messages');
+        
+        // Convert backend messages to UI messages
+        const loadedMessages: Message[] = data.data.map((msg: any) => ({
+          id: msg.messageId,
+          role: msg.role,
+          content: msg.content,
+          timestamp: new Date(msg.createdAt),
+          vaultPreview: msg.vaultSnapshot,
+          marketContext: msg.marketContext,
+        }));
+
+        // If no messages, add welcome message
+        if (loadedMessages.length === 0) {
+          console.log('[Chat] No messages in session, adding welcome message');
+          loadedMessages.unshift(getWelcomeMessage());
+        }
+
+        setMessages(loadedMessages);
+        setCurrentSessionId(sessionId);
+        localStorage.setItem('syft_current_chat_session', sessionId);
+        console.log('[Chat] Successfully loaded session with', loadedMessages.length, 'messages');
+      } else {
+        throw new Error('Invalid response format');
+      }
+    } catch (err) {
+      console.error('[Chat] Error loading session:', err);
+      // On error, show welcome message and clear session
+      setMessages([getWelcomeMessage()]);
+      setCurrentSessionId(null);
+      localStorage.removeItem('syft_current_chat_session');
+    }
+  };
+
+  // Start a new chat (reset messages)
+  const handleNewChat = () => {
+    setMessages([getWelcomeMessage()]);
+    setCurrentSessionId(null);
+    setIsHistoryOpen(false);
+    // Clear localStorage
+    localStorage.removeItem('syft_current_chat_session');
+    // Keep wallet address tracking
+    if (walletAddress) {
+      localStorage.setItem('syft_chat_wallet_address', walletAddress);
+    }
+    console.log('[Chat] Started new chat session');
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -106,6 +254,20 @@ export function NaturalLanguageBuilder({ onVaultGenerated, network, currentNodes
     setError(null);
 
     try {
+      // Create session if this is the first message
+      let sessionId = currentSessionId;
+      if (!sessionId) {
+        console.log('[Chat] No session exists, creating new one...');
+        sessionId = await createNewSession(userMessage.content);
+        if (!sessionId) {
+          console.error('[Chat] Failed to create session');
+          throw new Error('Failed to create chat session');
+        }
+        console.log('[Chat] Created session:', sessionId);
+      } else {
+        console.log('[Chat] Using existing session:', sessionId);
+      }
+
       // Build conversation history for context
       const conversationHistory = messages
         .filter(m => m.id !== 'welcome') // Exclude welcome message
@@ -128,6 +290,7 @@ export function NaturalLanguageBuilder({ onVaultGenerated, network, currentNodes
 
       // Call backend API to generate vault
       const backendUrl = import.meta.env.PUBLIC_BACKEND_URL || 'http://localhost:3001';
+      console.log('[Chat] Sending request to backend with sessionId:', sessionId);
       const response = await fetch(`${backendUrl}/api/vaults/generate-from-prompt`, {
         method: 'POST',
         headers: {
@@ -138,10 +301,13 @@ export function NaturalLanguageBuilder({ onVaultGenerated, network, currentNodes
           conversationHistory,
           currentVault: currentVaultContext,
           network: network || 'testnet',
+          sessionId, // Include session ID for history tracking
         }),
       });
 
+      console.log('[Chat] Backend response status:', response.status);
       const data = await response.json();
+      console.log('[Chat] Backend response data:', data);
 
       if (!data.success) {
         throw new Error(data.error || 'Failed to generate vault');
@@ -198,21 +364,47 @@ export function NaturalLanguageBuilder({ onVaultGenerated, network, currentNodes
     <div className="h-full flex flex-col bg-card">
       {/* Header */}
       <div className="flex-shrink-0 border-b border-default bg-neutral-900 px-6 py-4">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-full bg-primary-500/20 flex items-center justify-center">
-            <Sparkles className="w-5 h-5 text-primary-400" />
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-full bg-primary-500/20 flex items-center justify-center">
+              <Sparkles className="w-5 h-5 text-primary-400" />
+            </div>
+            <div>
+              <h2 className="text-lg font-bold text-neutral-50">AI Vault Builder</h2>
+              <p className="text-sm text-neutral-400">Describe your strategy in plain English</p>
+            </div>
           </div>
-          <div>
-            <h2 className="text-lg font-bold text-neutral-50">AI Vault Builder</h2>
-            <p className="text-sm text-neutral-400">Describe your strategy in plain English</p>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleNewChat}
+              className="px-3 py-1.5 bg-neutral-800 hover:bg-neutral-700 border border-default text-neutral-300 hover:text-neutral-50 rounded-lg text-sm font-semibold flex items-center gap-2 transition-colors"
+              title="Start new chat"
+            >
+              <Plus className="w-4 h-4" />
+              New
+            </button>
+            <button
+              onClick={() => setIsHistoryOpen(true)}
+              className="px-3 py-1.5 bg-neutral-800 hover:bg-neutral-700 border border-default text-neutral-300 hover:text-neutral-50 rounded-lg text-sm font-semibold flex items-center gap-2 transition-colors"
+              title="View chat history"
+            >
+              <History className="w-4 h-4" />
+              History
+            </button>
           </div>
         </div>
       </div>
 
       {/* Messages Area */}
       <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
-        <AnimatePresence initial={false}>
-          {messages.map((message) => (
+        {isLoadingSession ? (
+          <div className="flex flex-col items-center justify-center h-full text-neutral-400">
+            <Loader2 className="w-8 h-8 animate-spin mb-3" />
+            <p className="text-sm">Loading conversation...</p>
+          </div>
+        ) : (
+          <AnimatePresence initial={false}>
+            {messages.map((message) => (
             <motion.div
               key={message.id}
               initial={{ opacity: 0, y: 10 }}
@@ -295,6 +487,7 @@ export function NaturalLanguageBuilder({ onVaultGenerated, network, currentNodes
             </motion.div>
           ))}
         </AnimatePresence>
+        )}
 
         {/* Loading Indicator */}
         {isGenerating && (
@@ -308,7 +501,7 @@ export function NaturalLanguageBuilder({ onVaultGenerated, network, currentNodes
             </div>
             <div className="flex items-center gap-2 px-4 py-3 bg-neutral-900 border border-default rounded-lg">
               <Loader2 className="w-4 h-4 text-primary-400 animate-spin" />
-              <span className="text-sm text-neutral-400">Generating your vault...</span>
+              <span className="text-sm text-neutral-400">Thinking...</span>
             </div>
           </motion.div>
         )}
@@ -382,6 +575,16 @@ export function NaturalLanguageBuilder({ onVaultGenerated, network, currentNodes
           ))}
         </div>
       </div>
+
+      {/* Chat History Panel */}
+      <ChatHistoryPanel
+        isOpen={isHistoryOpen}
+        onClose={() => setIsHistoryOpen(false)}
+        onNewChat={handleNewChat}
+        onLoadSession={loadSession}
+        currentSessionId={currentSessionId || undefined}
+        walletAddress={walletAddress || undefined}
+      />
     </div>
   );
 }

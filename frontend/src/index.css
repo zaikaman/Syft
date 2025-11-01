@@ -287,3 +287,35 @@ input[type="number"]::-webkit-outer-spin-button {
   opacity: 1;
 }
 
+/* React Flow Controls Styling */
+.react-flow__controls {
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3) !important;
+}
+
+.react-flow__controls-button {
+  background: var(--color-bg-card) !important;
+  border-color: var(--border-color) !important;
+  color: var(--color-text-primary) !important;
+  fill: var(--color-text-primary) !important;
+}
+
+.react-flow__controls-button:hover {
+  background: var(--color-bg-hover) !important;
+  border-color: var(--border-color-hover) !important;
+}
+
+.react-flow__controls-button svg {
+  fill: var(--color-text-primary) !important;
+}
+
+/* React Flow MiniMap Styling */
+.react-flow__minimap {
+  background: var(--color-bg-card) !important;
+  border: 1px solid var(--border-color) !important;
+}
+
+/* Hide React Flow Attribution */
+.react-flow__attribution {
+  display: none !important;
+}
+

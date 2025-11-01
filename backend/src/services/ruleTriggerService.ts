@@ -306,39 +306,52 @@ export function startRuleMonitoring(
 ): NodeJS.Timeout {
   console.log('Starting rule monitoring service (polling every 60 seconds)...');
 
-  const interval = setInterval(async () => {
-    try {
-      // Get all active vaults
-      const { data: vaults, error } = await supabase
-        .from('vaults')
-        .select('vault_id')
-        .eq('status', 'active');
+  const interval = setInterval(() => {
+    // Run async without blocking the interval
+    (async () => {
+      try {
+        // Get all active vaults
+        const { data: vaults, error } = await supabase
+          .from('vaults')
+          .select('vault_id')
+          .eq('status', 'active');
 
-      if (error) {
-        console.error('Error fetching active vaults:', error);
-        return;
+        if (error) {
+          console.error('Error fetching active vaults:', error);
+          return;
+        }
+
+        if (!vaults || vaults.length === 0) {
+          console.log('No active vaults to monitor');
+          return;
+        }
+
+        console.log(`Monitoring ${vaults.length} active vaults...`);
+
+        // Evaluate rules for each vault in parallel for better performance
+        const evaluationPromises = vaults.map(vault => 
+          evaluateVaultRules(vault.vault_id).catch(error => {
+            console.error(`Error evaluating vault ${vault.vault_id}:`, error);
+            return [];
+          })
+        );
+
+        const allTriggers = await Promise.all(evaluationPromises);
+
+        // Flatten and process all triggers
+        for (const triggers of allTriggers) {
+          if (triggers.length > 0) {
+            // Call callback for each trigger (callback handles async execution)
+            triggers.forEach((trigger) => {
+              console.log(`Rule triggered for vault ${trigger.vaultId}:`, trigger);
+              onTrigger(trigger);
+            });
+          }
+        }
+      } catch (error) {
+        console.error('Error in rule monitoring loop:', error);
       }
-
-      if (!vaults || vaults.length === 0) {
-        console.log('No active vaults to monitor');
-        return;
-      }
-
-      console.log(`Monitoring ${vaults.length} active vaults...`);
-
-      // Evaluate rules for each vault
-      for (const vault of vaults) {
-        const triggers = await evaluateVaultRules(vault.vault_id);
-
-        // Call callback for each trigger
-        triggers.forEach((trigger) => {
-          console.log(`Rule triggered for vault ${trigger.vaultId}:`, trigger);
-          onTrigger(trigger);
-        });
-      }
-    } catch (error) {
-      console.error('Error in rule monitoring loop:', error);
-    }
+    })(); // Fire and forget - don't block the interval
   }, 60000); // Check every 1 minute
 
   return interval;

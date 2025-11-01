@@ -104,16 +104,23 @@ app.listen(port, () => {
   // Start rule monitoring service (checks rules every 2 minutes)
   const ruleInterval = startRuleMonitoring((trigger) => {
     console.log(`🎯 Rule triggered for vault ${trigger.vaultId}, executing rebalance...`);
-    executeRebalance(trigger.vaultId, trigger.ruleIndex).then((result) => {
-      if (result.success) {
-        console.log(`✅ Rebalance executed successfully for vault ${trigger.vaultId}`);
-        if (result.transactionHash && !result.transactionHash.startsWith('mock_') && !result.transactionHash.startsWith('simulated_')) {
-          console.log(`🔗 TX Hash: ${result.transactionHash}`);
+    // Execute rebalance asynchronously without blocking
+    // Use async IIFE to properly handle the promise without blocking
+    (async () => {
+      try {
+        const result = await executeRebalance(trigger.vaultId, trigger.ruleIndex);
+        if (result.success) {
+          console.log(`✅ Rebalance executed successfully for vault ${trigger.vaultId}`);
+          if (result.transactionHash && !result.transactionHash.startsWith('mock_') && !result.transactionHash.startsWith('simulated_')) {
+            console.log(`🔗 TX Hash: ${result.transactionHash}`);
+          }
+        } else {
+          console.error(`❌ Rebalance failed for vault ${trigger.vaultId}:`, result.error);
         }
-      } else {
-        console.error(`❌ Rebalance failed for vault ${trigger.vaultId}:`, result.error);
+      } catch (error) {
+        console.error(`❌ Error executing rebalance for vault ${trigger.vaultId}:`, error);
       }
-    });
+    })(); // Fire and forget - don't block the monitoring loop
   });
   console.log('✅ Rule monitoring service started');
   
