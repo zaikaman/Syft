@@ -158,7 +158,7 @@ export function ListingModal({
                 >
                   {nfts.map((nft) => (
                     <option key={nft.nft_id} value={nft.nft_id}>
-                      {nft.metadata?.name || nft.nft_id} ({nft.ownership_percentage}% ownership)
+                      {nft.metadata?.name || nft.nft_id}
                     </option>
                   ))}
                 </select>

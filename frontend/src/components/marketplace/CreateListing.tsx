@@ -9,7 +9,6 @@ import { Modal } from '../ui/Modal';
 interface NFT {
   nft_id: string;
   vault_id: string;
-  ownership_pct: number;
   metadata: {
     name: string;
     description: string;
@@ -135,7 +134,7 @@ export function CreateListing({ nftId, onListingCreated }: CreateListingProps) {
                   <option value="">-- Select an NFT --</option>
                   {userNFTs.map((nft) => (
                     <option key={nft.nft_id} value={nft.nft_id}>
-                      {nft.metadata.name} ({nft.ownership_pct / 100}% ownership)
+                      {nft.metadata.name}
                     </option>
                   ))}
                 </select>
@@ -157,9 +156,6 @@ export function CreateListing({ nftId, onListingCreated }: CreateListingProps) {
                     <h4 className="font-medium">{selectedNFTData.metadata.name}</h4>
                     <p className="text-sm text-gray-600 mt-1">
                       {selectedNFTData.metadata.description}
-                    </p>
-                    <p className="text-sm font-medium text-blue-600 mt-2">
-                      {selectedNFTData.ownership_pct / 100}% Ownership
                     </p>
                   </div>
                 </div>

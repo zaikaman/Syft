@@ -14,7 +14,6 @@ const router = Router();
  * Body: {
  *   vaultId: string,
  *   ownerAddress: string,
- *   ownershipPercentage: number,  // In basis points (100 = 1%, 10000 = 100%)
  *   metadata: {
  *     name: string,
  *     description: string,
@@ -24,21 +23,13 @@ const router = Router();
  */
 router.post('/mint', async (req: Request, res: Response) => {
   try {
-    const { vaultId, ownerAddress, ownershipPercentage, metadata } = req.body;
+    const { vaultId, ownerAddress, metadata } = req.body;
 
     // Validate required fields
-    if (!vaultId || !ownerAddress || !ownershipPercentage || !metadata) {
+    if (!vaultId || !ownerAddress || !metadata) {
       return res.status(400).json({
         success: false,
-        error: 'Missing required fields: vaultId, ownerAddress, ownershipPercentage, metadata',
-      });
-    }
-
-    // Validate ownership percentage (1-10000 basis points)
-    if (ownershipPercentage <= 0 || ownershipPercentage > 10000) {
-      return res.status(400).json({
-        success: false,
-        error: 'Ownership percentage must be between 1 and 10000 basis points',
+        error: 'Missing required fields: vaultId, ownerAddress, metadata',
       });
     }
 
@@ -53,26 +44,6 @@ router.post('/mint', async (req: Request, res: Response) => {
       return res.status(404).json({
         success: false,
         error: 'Vault not found',
-      });
-    }
-
-    // Check total ownership doesn't exceed 100%
-    const { data: existingNFTs } = await supabase
-      .from('vault_nfts')
-      .select('ownership_percentage')
-      .eq('vault_id', vault.id);
-
-    const totalExistingOwnership = existingNFTs?.reduce(
-      (sum, nft) => sum + (nft.ownership_percentage || 0),
-      0
-    ) || 0;
-
-    const ownershipPctPercent = ownershipPercentage / 100;
-
-    if (totalExistingOwnership + ownershipPctPercent > 100) {
-      return res.status(400).json({
-        success: false,
-        error: `Cannot mint NFT: would exceed 100% ownership. Current: ${totalExistingOwnership}%, Requested: ${ownershipPctPercent}%`,
       });
     }
 
@@ -91,7 +62,7 @@ router.post('/mint', async (req: Request, res: Response) => {
       const prompt = generateVaultPrompt(
         vault.name || 'Vault',
         vault.description,
-        ownershipPctPercent
+        0 // No ownership percentage concept
       );
       finalImageUrl = await generateVaultNFTImage(prompt);
       console.log(`[Mint NFT] Generated image URL: ${finalImageUrl}`);
@@ -111,7 +82,6 @@ router.post('/mint', async (req: Request, res: Response) => {
         vault_id: vault.id,
         token_id: tokenId,
         contract_address: contractAddress,
-        ownership_percentage: ownershipPctPercent,
         original_owner: ownerAddress,
         current_holder: ownerAddress,
         metadata: finalMetadata,
@@ -133,7 +103,6 @@ router.post('/mint', async (req: Request, res: Response) => {
       data: {
         nftId: nft.nft_id,
         vaultId: vault.vault_id,
-        ownershipPercentage: (nft.ownership_percentage ?? ownershipPctPercent) * 100,
         holder: nft.current_holder,
         metadata: nft.metadata,
         mintedAt: nft.minted_at,
@@ -153,33 +122,25 @@ router.post('/mint', async (req: Request, res: Response) => {
  * Mint a new vault NFT
  * 
  * Body: {
- *   ownershipPercentage: number,  // In basis points (100 = 1%, 10000 = 100%)
  *   metadata: {
  *     name: string,
  *     description: string,
- *     imageUrl: string,
- *     vaultPerformance: number
- *   }
+ *     imageUrl?: string,
+ *     vaultPerformance?: number
+ *   },
+ *   walletAddress: string
  * }
  */
 router.post('/:vaultId/nft', async (req: Request, res: Response) => {
   try {
     const { vaultId } = req.params;
-    const { ownershipPercentage, metadata, walletAddress } = req.body;
+    const { metadata, walletAddress } = req.body;
 
     // Validate required fields
-    if (!ownershipPercentage || !metadata || !walletAddress) {
+    if (!metadata || !walletAddress) {
       return res.status(400).json({
         success: false,
-        error: 'Missing required fields: ownershipPercentage, metadata, walletAddress',
-      });
-    }
-
-    // Validate ownership percentage (1-10000 basis points)
-    if (ownershipPercentage <= 0 || ownershipPercentage > 10000) {
-      return res.status(400).json({
-        success: false,
-        error: 'Ownership percentage must be between 1 and 10000 basis points',
+        error: 'Missing required fields: metadata, walletAddress',
       });
     }
 
@@ -197,28 +158,6 @@ router.post('/:vaultId/nft', async (req: Request, res: Response) => {
       });
     }
 
-    // Check total ownership doesn't exceed 100%.
-    // Note: incoming ownershipPercentage is expected in basis points (100 = 1%).
-    const { data: existingNFTs } = await supabase
-      .from('vault_nfts')
-      .select('ownership_percentage')
-      .eq('vault_id', vault.id); // Use UUID from vault record
-
-    const totalExistingOwnership = existingNFTs?.reduce(
-      (sum, nft) => sum + (nft.ownership_percentage || 0),
-      0
-    ) || 0;
-
-    // convert incoming basis points to percent
-    const ownershipPctPercent = ownershipPercentage / 100;
-
-    if (totalExistingOwnership + ownershipPctPercent > 100) {
-      return res.status(400).json({
-        success: false,
-        error: `Cannot mint NFT: would exceed 100% ownership. Current: ${totalExistingOwnership}%, Requested: ${ownershipPctPercent}%`,
-      });
-    }
-
     // Generate NFT ID and token ID
     const timestamp = Date.now();
     const nftId = `nft_${vaultId}_${timestamp}`;
@@ -228,11 +167,26 @@ router.post('/:vaultId/nft', async (req: Request, res: Response) => {
     let finalImageUrl = metadata.imageUrl;
     if (!finalImageUrl || finalImageUrl.trim() === '') {
       console.log(`[Mint NFT] Generating AI image for ${nftId}`);
-      const prompt = generateVaultPrompt(
-        vault.name || 'Vault',
-        vault.description,
-        ownershipPctPercent
-      );
+      
+      // Use custom prompt if provided, otherwise generate vault-themed prompt
+      let prompt: string;
+      if (metadata.customPrompt && metadata.customPrompt.trim() !== '') {
+        // Enhance user's custom prompt with vault context
+        prompt = `${generateVaultPrompt(
+          vault.name || 'Vault',
+          vault.description,
+          0 // No ownership percentage concept
+        )}, ${metadata.customPrompt}`;
+        console.log(`[Mint NFT] Using custom prompt enhancement: "${metadata.customPrompt}"`);
+      } else {
+        // Use automatic vault-themed prompt
+        prompt = generateVaultPrompt(
+          vault.name || 'Vault',
+          vault.description,
+          0 // No ownership percentage concept
+        );
+      }
+      
       finalImageUrl = await generateVaultNFTImage(prompt);
       console.log(`[Mint NFT] Generated image URL: ${finalImageUrl}`);
     }
@@ -251,9 +205,6 @@ router.post('/:vaultId/nft', async (req: Request, res: Response) => {
         token_id: tokenId,
         vault_id: vault.id, // Use UUID instead of vault_id string
         contract_address: vault.contract_address || `pending_${vaultId}`,
-        // store as percentage (0-100) in DB
-        ownership_percentage: ownershipPctPercent,
-        // schema uses `current_holder` for the holder address
         current_holder: walletAddress,
         original_owner: walletAddress,
         metadata: finalMetadata,
@@ -275,8 +226,6 @@ router.post('/:vaultId/nft', async (req: Request, res: Response) => {
       data: {
         nftId: nft.nft_id,
         vaultId: vault.vault_id,
-        // return ownership in basis points for compatibility
-        ownershipPercentage: (nft.ownership_percentage ?? ownershipPctPercent) * 100,
         holder: nft.current_holder,
         metadata: nft.metadata,
         mintedAt: nft.minted_at,
@@ -473,7 +422,7 @@ router.get('/owner/:address', async (req: Request, res: Response) => {
       });
     }
 
-    // Normalize vaulted and nft fields for frontend compatibility
+    // Normalize vault fields for frontend compatibility
     const normalized = (nfts || []).map((nft: any) => {
       const vault = nft.vaults || null;
       if (vault) {
@@ -490,10 +439,6 @@ router.get('/owner/:address', async (req: Request, res: Response) => {
       // Map schema fields to legacy frontend expectations
       if (nft.current_holder && !nft.holder_address) {
         nft.holder_address = nft.current_holder;
-      }
-      if (nft.ownership_percentage !== undefined) {
-        // frontend sometimes expects basis points or `ownership_pct`; provide both
-        nft.ownership_pct = Math.round(nft.ownership_percentage * 100);
       }
 
       return nft;

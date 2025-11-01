@@ -154,7 +154,7 @@ router.post('/listings', async (req: Request, res: Response) => {
  *   - status: 'active' | 'sold' | 'cancelled'
  *   - minPrice: number
  *   - maxPrice: number
- *   - sortBy: 'price' | 'created_at' | 'ownership_pct'
+ *   - sortBy: 'price' | 'created_at'
  *   - sortOrder: 'asc' | 'desc'
  */
 router.get('/listings', async (req: Request, res: Response) => {
@@ -173,7 +173,6 @@ router.get('/listings', async (req: Request, res: Response) => {
         *,
         vault_nfts!inner (
           nft_id,
-          ownership_percentage,
           metadata,
           vaults!inner (
             vault_id,
@@ -221,7 +220,6 @@ router.get('/listings', async (req: Request, res: Response) => {
       created_at: listing.created_at,
       vault_nfts: {
         nft_id: listing.vault_nfts?.nft_id,
-        ownership_percentage: listing.vault_nfts?.ownership_percentage || 0,
         metadata: listing.vault_nfts?.metadata || {},
         vaults: {
           vault_id: listing.vault_nfts?.vaults?.vault_id,
@@ -260,7 +258,6 @@ router.get('/listings/:listingId', async (req: Request, res: Response) => {
         *,
         vault_nfts (
           nft_id,
-          ownership_percentage,
           current_holder,
           metadata,
           minted_at,

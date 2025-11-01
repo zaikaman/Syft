@@ -87,13 +87,12 @@ export async function generateVaultNFTImage(
  * Generate a vault-themed prompt based on vault metadata
  * @param _vaultName - The name of the vault (reserved for future use)
  * @param vaultDescription - Optional description
- * @param ownershipPercentage - Ownership percentage (0-100)
  * @returns A descriptive prompt for image generation
  */
 export function generateVaultPrompt(
   _vaultName: string,
   vaultDescription?: string,
-  ownershipPercentage?: number
+  _ownershipPercentage?: number // Deprecated parameter, kept for backward compatibility
 ): string {
   // Vault-specific imagery themes
   const vaultTypes = [
@@ -147,17 +146,6 @@ export function generateVaultPrompt(
   const color = colors[Math.floor(Math.random() * colors.length)];
 
   let prompt = `${vaultType}, featuring ${detail}, ${atmosphere}, ${color}`;
-
-  // Add ownership context if provided
-  if (ownershipPercentage && ownershipPercentage > 0) {
-    if (ownershipPercentage >= 50) {
-      prompt += ', wide open vault door showing abundant wealth';
-    } else if (ownershipPercentage >= 25) {
-      prompt += ', partially open vault revealing valuable contents';
-    } else {
-      prompt += ', secure locked vault with subtle glow';
-    }
-  }
 
   // Add additional context from vault name/description
   if (vaultDescription && vaultDescription.toLowerCase().includes('stable')) {

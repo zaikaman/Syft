@@ -48,7 +48,6 @@ interface VaultData {
 interface NFTHolder {
   nft_id: string;
   holder_address: string;
-  ownership_pct: number;
   metadata: {
     name: string;
   };
@@ -211,11 +210,6 @@ export function VaultDetail({ vaultId, listingId }: VaultDetailProps) {
   const truncateAddress = (address: string) => {
     return `${address.slice(0, 8)}...${address.slice(-6)}`;
   };
-
-  const totalOwnership = nftHolders.reduce(
-    (sum, holder) => sum + holder.ownership_pct,
-    0
-  );
 
   // Calculate TVL from vault state in stroops
   const calculateTVL = () => {
@@ -729,32 +723,10 @@ export function VaultDetail({ vaultId, listingId }: VaultDetailProps) {
                       </code>
                     </div>
                   </div>
-                  <div className="text-right">
-                    <p className="font-bold text-primary-500 text-lg">
-                      {holder.ownership_pct.toFixed(1)}%
-                    </p>
-                    <p className="text-xs text-neutral-500">ownership</p>
-                  </div>
                 </div>
               ))
             )}
           </div>
-
-          {/* Ownership Progress Bar */}
-          {totalOwnership > 0 && (
-            <div className="mt-5 pt-5 border-t border-default">
-              <div className="flex justify-between text-sm mb-2">
-                <span className="text-neutral-400">Total Tokenized</span>
-                <span className="font-medium text-neutral-50">{totalOwnership.toFixed(1)}%</span>
-              </div>
-              <div className="w-full bg-neutral-900 rounded-full h-2.5">
-                <div
-                  className="bg-gradient-to-r from-primary-500 to-primary-600 h-2.5 rounded-full transition-all"
-                  style={{ width: `${Math.min(totalOwnership, 100)}%` }}
-                />
-              </div>
-            </div>
-          )}
         </Card>
       </motion.div>
 

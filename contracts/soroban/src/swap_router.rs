@@ -133,6 +133,11 @@ fn swap_via_router_fallback(
 
 /// Get Soroswap factory address for the network
 fn get_soroswap_factory_address(env: &Env) -> Address {
+    get_soroswap_factory_address_internal(env)
+}
+
+/// Internal helper for getting factory address (can be used by other modules)
+pub fn get_soroswap_factory_address_internal(env: &Env) -> Address {
     // Get the factory address from the router address by using a known mapping
     // For Soroswap testnet: CDJTMBYKNUGINFQALHDMPLZYNGUV42GPN4B7QOYTWHRC4EE5IYJM6AES
     //

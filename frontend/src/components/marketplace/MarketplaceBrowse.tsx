@@ -24,7 +24,6 @@ interface Listing {
   created_at: string;
   vault_nfts: {
     nft_id: string;
-    ownership_percentage: number;
     metadata: {
       name: string;
       description: string;
@@ -437,11 +436,6 @@ export function MarketplaceBrowse({ onSelectListing }: MarketplaceBrowseProps) {
                     alt={listing.vault_nfts.metadata.name}
                     className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                   />
-                  <div className="absolute top-3 right-3 bg-black/70 backdrop-blur-sm px-3 py-1 rounded-full">
-                    <span className="text-xs font-semibold text-primary-500">
-                      {listing.vault_nfts.ownership_percentage ? listing.vault_nfts.ownership_percentage.toFixed(2) : 'N/A'}%
-                    </span>
-                  </div>
                 </div>
               ) : (
                 <div className="h-48 bg-gradient-to-br from-primary-500/20 to-primary-600/20 flex items-center justify-center">
@@ -461,16 +455,6 @@ export function MarketplaceBrowse({ onSelectListing }: MarketplaceBrowseProps) {
 
                 {/* Stats Grid */}
                 <div className="space-y-2 mb-4">
-                  <div className="flex items-center justify-between p-2 bg-neutral-900 rounded-lg">
-                    <div className="flex items-center gap-2">
-                      <Package className="w-3.5 h-3.5 text-primary-500" />
-                      <span className="text-xs text-neutral-400">Ownership</span>
-                    </div>
-                    <span className="text-sm font-semibold text-primary-500">
-                      {listing.vault_nfts?.ownership_percentage ? listing.vault_nfts.ownership_percentage.toFixed(2) : 'N/A'}%
-                    </span>
-                  </div>
-
                   {listing.vault_nfts?.vaults?.performance !== undefined && listing.vault_nfts?.vaults?.performance !== null && (
                     <div className="flex items-center justify-between p-2 bg-neutral-900 rounded-lg">
                       <div className="flex items-center gap-2">

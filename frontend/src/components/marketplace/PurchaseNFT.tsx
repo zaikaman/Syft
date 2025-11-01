@@ -1,5 +1,5 @@
-// T137: NFT purchase flow with share calculation
-// Purpose: Handle NFT purchase with profit share information
+// T137: NFT purchase flow with profit share information
+// Purpose: Handle NFT subscription with profit share information
 
 import { useState } from 'react';
 import { Card } from '../ui/Card';
@@ -10,9 +10,7 @@ interface PurchaseNFTProps {
   listingId: string;
   nftName: string;
   vaultName: string;
-  ownershipPct: number;
-  price: number;
-  currency: string;
+  profitSharePercentage: number;
   vaultPerformance: number;
   vaultTotalValue: number;
   onPurchaseSuccess?: () => void;
@@ -22,9 +20,7 @@ export function PurchaseNFT({
   listingId,
   nftName,
   vaultName,
-  ownershipPct,
-  price,
-  currency,
+  profitSharePercentage,
   vaultPerformance,
   vaultTotalValue,
   onPurchaseSuccess,
@@ -35,9 +31,7 @@ export function PurchaseNFT({
   const [agreed, setAgreed] = useState(false);
 
   // Calculate profit share potential
-  const ownershipDecimal = ownershipPct / 10000; // Convert basis points to decimal
-  const potentialValue = vaultTotalValue * ownershipDecimal;
-  const monthlyProjection = (potentialValue * (vaultPerformance / 100)) / 12;
+  const monthlyProjection = (vaultTotalValue * (vaultPerformance / 100)) / 12;
 
   const handlePurchase = async () => {
     setError('');
@@ -99,22 +93,21 @@ export function PurchaseNFT({
               <p className="text-gray-600">{vaultName}</p>
             </div>
 
-            {/* Price */}
-            <div className="bg-blue-50 p-4 rounded-lg">
-              <p className="text-sm text-gray-600 mb-1">Purchase Price</p>
-              <p className="text-3xl font-bold">
-                {price} {currency}
-              </p>
-            </div>
-
-            {/* Ownership Details */}
+            {/* Subscription Details */}
             <div className="border-t border-b py-4 space-y-3">
-              <h4 className="font-bold">What You're Getting</h4>
+              <h4 className="font-bold">Subscription Details</h4>
               
               <div className="flex justify-between">
-                <span className="text-gray-600">Ownership Share:</span>
+                <span className="text-gray-600">Profit Share to Creator:</span>
                 <span className="font-bold text-blue-600">
-                  {(ownershipPct / 100).toFixed(2)}%
+                  {profitSharePercentage}%
+                </span>
+              </div>
+
+              <div className="flex justify-between">
+                <span className="text-gray-600">You Keep:</span>
+                <span className="font-bold text-green-600">
+                  {100 - profitSharePercentage}%
                 </span>
               </div>
 
@@ -122,13 +115,6 @@ export function PurchaseNFT({
                 <span className="text-gray-600">Current Vault Value:</span>
                 <span className="font-medium">
                   ${vaultTotalValue.toLocaleString()}
-                </span>
-              </div>
-
-              <div className="flex justify-between">
-                <span className="text-gray-600">Your Share Value:</span>
-                <span className="font-medium text-green-600">
-                  ${potentialValue.toFixed(2)}
                 </span>
               </div>
 
@@ -149,10 +135,10 @@ export function PurchaseNFT({
             <div className="bg-gradient-to-r from-blue-50 to-purple-50 p-4 rounded-lg">
               <h4 className="font-bold mb-3">Estimated Monthly Returns</h4>
               <p className="text-sm text-gray-600 mb-2">
-                Based on current vault performance
+                Based on current vault performance (you keep {100 - profitSharePercentage}%)
               </p>
               <p className="text-2xl font-bold text-blue-600">
-                ${monthlyProjection >= 0 ? monthlyProjection.toFixed(2) : '0.00'}
+                ${(monthlyProjection * (100 - profitSharePercentage) / 100) >= 0 ? (monthlyProjection * (100 - profitSharePercentage) / 100).toFixed(2) : '0.00'}
                 <span className="text-sm text-gray-600 ml-2">/ month</span>
               </p>
               <p className="text-xs text-gray-500 mt-2">
@@ -162,11 +148,11 @@ export function PurchaseNFT({
 
             {/* Benefits */}
             <div className="space-y-2">
-              <h4 className="font-bold text-sm">Benefits of Ownership</h4>
+              <h4 className="font-bold text-sm">Benefits of Subscription</h4>
               <ul className="space-y-1 text-sm text-gray-600">
                 <li className="flex items-start gap-2">
                   <span className="text-green-500">✓</span>
-                  <span>Proportional share of all vault profits</span>
+                  <span>Copy proven vault strategies automatically</span>
                 </li>
                 <li className="flex items-start gap-2">
                   <span className="text-green-500">✓</span>
@@ -222,7 +208,7 @@ export function PurchaseNFT({
                 disabled={isPurchasing || !agreed}
                 className="flex-1"
               >
-                {isPurchasing ? 'Processing...' : `Purchase for ${price} ${currency}`}
+                {isPurchasing ? 'Processing...' : 'Subscribe to Strategy'}
               </Button>
             </div>
           </div>

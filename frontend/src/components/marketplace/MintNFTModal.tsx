@@ -15,7 +15,6 @@ interface MintNFTModalProps {
 export function MintNFTModal({ isOpen, onClose, vaultId, vaultName, onSuccess }: MintNFTModalProps) {
   const [nftName, setNftName] = useState('');
   const [description, setDescription] = useState('');
-  const [ownershipPct, setOwnershipPct] = useState(10);
   const [imageUrl, setImageUrl] = useState('');
   const [isMinting, setIsMinting] = useState(false);
   const [error, setError] = useState('');
@@ -36,13 +35,6 @@ export function MintNFTModal({ isOpen, onClose, vaultId, vaultName, onSuccess }:
         throw new Error('NFT name is required');
       }
 
-      if (ownershipPct <= 0 || ownershipPct > 100) {
-        throw new Error('Ownership percentage must be between 1 and 100');
-      }
-
-      // Convert percentage to basis points (10% = 1000)
-      const ownershipBasisPoints = ownershipPct * 100;
-
       const backendUrl = import.meta.env.PUBLIC_BACKEND_URL || 'http://localhost:3001';
       const response = await fetch(`${backendUrl}/api/nfts/${vaultId}/nft`, {
         method: 'POST',
@@ -50,10 +42,9 @@ export function MintNFTModal({ isOpen, onClose, vaultId, vaultName, onSuccess }:
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          ownershipPercentage: ownershipBasisPoints,
           metadata: {
             name: nftName,
-            description: description || `${ownershipPct}% ownership of ${vaultName}`,
+            description: description || `${vaultName} Strategy NFT`,
             imageUrl: imageUrl || '', // Backend will generate AI image if empty
             vaultPerformance: 0,
           },
@@ -71,7 +62,6 @@ export function MintNFTModal({ isOpen, onClose, vaultId, vaultName, onSuccess }:
       setNftName('');
       setDescription('');
       setImageUrl('');
-      setOwnershipPct(10);
       onSuccess();
       onClose();
     } catch (err: any) {
@@ -114,6 +104,9 @@ export function MintNFTModal({ isOpen, onClose, vaultId, vaultName, onSuccess }:
                 placeholder="e.g., Vault Strategy Share #1"
                 className="w-full px-4 py-2 bg-app border border-default rounded-lg text-neutral-50 placeholder-neutral-500 focus:outline-none focus:border-primary-500"
               />
+              <p className="text-xs text-neutral-500 mt-1">
+                This will be the name of your vault strategy NFT
+              </p>
             </div>
 
             <div>
@@ -127,27 +120,8 @@ export function MintNFTModal({ isOpen, onClose, vaultId, vaultName, onSuccess }:
                 rows={3}
                 className="w-full px-4 py-2 bg-app border border-default rounded-lg text-neutral-50 placeholder-neutral-500 focus:outline-none focus:border-primary-500 resize-none"
               />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-neutral-300 mb-2">
-                Ownership Percentage <span className="text-red-500">*</span>
-              </label>
-              <div className="flex items-center gap-4">
-                <input
-                  type="range"
-                  min="1"
-                  max="100"
-                  value={ownershipPct}
-                  onChange={(e) => setOwnershipPct(Number(e.target.value))}
-                  className="flex-1"
-                />
-                <div className="w-20 px-3 py-2 bg-app border border-default rounded-lg text-center">
-                  <span className="text-lg font-bold text-primary-500">{ownershipPct}%</span>
-                </div>
-              </div>
-              <p className="text-xs text-neutral-500 mt-2">
-                This NFT will represent {ownershipPct}% ownership of the vault
+              <p className="text-xs text-neutral-500 mt-1">
+                Describe your vault strategy to attract subscribers
               </p>
             </div>
 
@@ -163,7 +137,16 @@ export function MintNFTModal({ isOpen, onClose, vaultId, vaultName, onSuccess }:
                 className="w-full px-4 py-2 bg-app border border-default rounded-lg text-neutral-50 placeholder-neutral-500 focus:outline-none focus:border-primary-500"
               />
               <p className="text-xs text-neutral-500 mt-1">
-                Leave empty to use auto-generated image
+                Leave empty to use auto-generated AI image
+              </p>
+            </div>
+
+            {/* Info Box */}
+            <div className="bg-primary-500/10 border border-primary-500/30 p-4 rounded-md">
+              <h4 className="font-medium text-sm mb-2 text-neutral-50">About Strategy NFTs</h4>
+              <p className="text-xs text-neutral-400">
+                Once minted, you can list this NFT on the marketplace with a profit-sharing percentage. 
+                Subscribers will copy your vault strategy and share a percentage of their profits with you.
               </p>
             </div>
           </div>

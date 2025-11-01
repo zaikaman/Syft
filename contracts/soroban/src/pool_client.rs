@@ -107,12 +107,74 @@ pub fn swap_via_pool(
         (amount_out, 0)  // Swapping token1 -> token0
     };
     
+    // Authorize the swap operation as the current contract
+    // This is needed for the pool to send tokens back to us
+    env.authorize_as_current_contract(soroban_sdk::vec![env]);
+    
     // Call swap on the pool to get our tokens back to vault
     pool_client.swap(
         &amount0_out,
         &amount1_out,
         &vault_address,
     );
+    
+    Ok(amount_out)
+}
+
+/// Calculate expected output for a swap without executing it
+/// This uses the same constant product formula as the actual swap
+pub fn calculate_swap_output(
+    env: &Env,
+    pool_address: &Address,
+    from_token: &Address,
+    to_token: &Address,
+    amount_in: i128,
+) -> Result<i128, crate::errors::VaultError> {
+    use crate::errors::VaultError;
+    
+    if amount_in <= 0 {
+        return Err(VaultError::InvalidAmount);
+    }
+
+    let pool_client = LiquidityPoolClient::new(env, pool_address);
+    
+    // Get pool token addresses to determine which is token0 and token1
+    let token0 = pool_client.token_0();
+    let token1 = pool_client.token_1();
+    
+    // Determine which token we're swapping from
+    let is_token0_in = if from_token == &token0 {
+        true
+    } else if from_token == &token1 {
+        false
+    } else {
+        return Err(VaultError::InvalidConfiguration);
+    };
+    
+    // Get current reserves
+    let (reserve0, reserve1) = pool_client.get_reserves();
+    
+    // Calculate output amount using constant product formula
+    let (reserve_in, reserve_out) = if is_token0_in {
+        (reserve0, reserve1)
+    } else {
+        (reserve1, reserve0)
+    };
+    
+    let amount_in_with_fee = amount_in
+        .checked_mul(997)
+        .ok_or(VaultError::InvalidAmount)?;
+    
+    let numerator = amount_in_with_fee
+        .checked_mul(reserve_out)
+        .ok_or(VaultError::InvalidAmount)?;
+    
+    let denominator = reserve_in
+        .checked_mul(1000)
+        .and_then(|v| v.checked_add(amount_in_with_fee))
+        .ok_or(VaultError::InvalidAmount)?;
+    
+    let amount_out = numerator / denominator;
     
     Ok(amount_out)
 }

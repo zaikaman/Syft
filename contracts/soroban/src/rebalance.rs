@@ -329,13 +329,57 @@ fn execute_rebalance_action(
                                 continue;
                             }
                             
-                            // Calculate minimum output with 1% slippage tolerance
-                            let min_amount_out = (diff * 99) / 100;
+                            // Get the factory address to find the pool
+                            let factory_address = crate::swap_router::get_soroswap_factory_address_internal(env);
                             
-                            // Log swap attempt
+                            // Get the pool for this token pair
+                            let pool_address = match crate::pool_client::get_pool_for_pair(
+                                env,
+                                &factory_address,
+                                &source_asset,
+                                &asset,
+                            ) {
+                                Ok(addr) => addr,
+                                Err(e) => {
+                                    env.events().publish(
+                                        (symbol_short!("pool_err"),),
+                                        symbol_short!("notfound")
+                                    );
+                                    return Err(e);
+                                }
+                            };
+                            
+                            // Calculate expected output directly from pool reserves
+                            let expected_output = match crate::pool_client::calculate_swap_output(
+                                env,
+                                &pool_address,
+                                &source_asset,
+                                &asset,
+                                amount_to_swap,
+                            ) {
+                                Ok(amt) => amt,
+                                Err(e) => {
+                                    env.events().publish(
+                                        (symbol_short!("calc_err"),),
+                                        symbol_short!("failed")
+                                    );
+                                    return Err(e);
+                                }
+                            };
+                            
+                            // Calculate minimum output with 5% slippage tolerance
+                            // Use the expected output from pool calculation, not the target diff
+                            let min_amount_out = (expected_output * 95) / 100;
+                            
+                            // Log swap attempt with expected and minimum outputs
                             env.events().publish(
                                 (symbol_short!("swap_try"),),
                                 (source_asset.clone(), asset.clone(), amount_to_swap)
+                            );
+                            
+                            env.events().publish(
+                                (symbol_short!("swap_calc"),),
+                                (expected_output, min_amount_out)
                             );
                             
                             // Approve router to spend our tokens

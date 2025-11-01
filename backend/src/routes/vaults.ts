@@ -1664,7 +1664,6 @@ router.get('/:vaultId/nfts', async (req: Request, res: Response) => {
     const transformedNfts = (nfts || []).map(nft => ({
       nft_id: nft.nft_id,
       holder_address: nft.current_holder,
-      ownership_pct: nft.ownership_percentage,
       metadata: nft.metadata,
       token_id: nft.token_id,
       contract_address: nft.contract_address,
