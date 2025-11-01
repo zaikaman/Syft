@@ -963,18 +963,23 @@ export async function getPortfolioAllocation(
     const colors = ['#dce85d', '#74b97f', '#60a5fa', '#e06c6e', '#dca204', '#9b87f5', '#f97316', '#22d3ee'];
     let colorIndex = 0;
 
+    // Calculate total from actual asset values (not totalTVL which may have rounding differences)
+    const totalAssetValue = Array.from(assetMap.values()).reduce((sum, val) => sum + val, 0);
+    
     const allocation = Array.from(assetMap.entries())
       .map(([asset, value]) => ({
         asset,
         value,
-        percentage: (value / totalTVL) * 100,
+        percentage: totalAssetValue > 0 ? (value / totalAssetValue) * 100 : 0,
         color: colors[colorIndex++ % colors.length],
       }))
       .sort((a, b) => b.value - a.value); // Sort by value descending
 
     console.log('[getPortfolioAllocation] Asset Allocation:', {
       totalTVL: `$${totalTVL.toFixed(2)}`,
+      totalAssetValue: `$${totalAssetValue.toFixed(2)}`,
       assets: allocation.map(a => `${a.asset}: $${a.value.toFixed(2)} (${a.percentage.toFixed(1)}%)`),
+      totalPercentage: `${allocation.reduce((sum, a) => sum + a.percentage, 0).toFixed(2)}%`,
     });
 
     return allocation;

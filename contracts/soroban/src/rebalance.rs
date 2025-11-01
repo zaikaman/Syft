@@ -313,23 +313,14 @@ fn execute_rebalance_action(
                         if source_current > source_target {
                             // This asset has excess, use it as source
                             let excess = source_current - source_target;
-                            let amount_to_swap = if diff < excess { diff } else { excess };
                             
-                            env.events().publish(
-                                (symbol_short!("calc_swap"),),
-                                (excess, amount_to_swap)
-                            );
+                            // Calculate how much of source asset we need to sell to get the target amount
+                            // We want to buy 'diff' amount of target asset
+                            // Due to AMM mechanics, we need to estimate the input amount
+                            // For now, use a simple approximation: we need roughly 'diff' worth of source asset
+                            // In reality, this should use the pool's price ratio
                             
-                            // Skip if amount is negligible
-                            if amount_to_swap <= 0 {
-                                env.events().publish(
-                                    (symbol_short!("skip_amt"),),
-                                    amount_to_swap
-                                );
-                                continue;
-                            }
-                            
-                            // Get the factory address to find the pool
+                            // Get the factory address to find the pool for price calculation
                             let factory_address = crate::swap_router::get_soroswap_factory_address_internal(env);
                             
                             // Get the pool for this token pair
@@ -349,13 +340,13 @@ fn execute_rebalance_action(
                                 }
                             };
                             
-                            // Calculate expected output directly from pool reserves
-                            let expected_output = match crate::pool_client::calculate_swap_output(
+                            // Calculate how much source asset we need to sell to get 'diff' of target asset
+                            let amount_to_swap = match crate::pool_client::calculate_swap_input(
                                 env,
                                 &pool_address,
                                 &source_asset,
                                 &asset,
-                                amount_to_swap,
+                                diff, // How much we want to receive
                             ) {
                                 Ok(amt) => amt,
                                 Err(e) => {
@@ -367,8 +358,42 @@ fn execute_rebalance_action(
                                 }
                             };
                             
+                            // Make sure we don't swap more than our excess
+                            let amount_to_swap = if amount_to_swap > excess { excess } else { amount_to_swap };
+                            
+                            env.events().publish(
+                                (symbol_short!("calc_swap"),),
+                                (excess, amount_to_swap)
+                            );
+                            
+                            // Skip if amount is negligible (less than 100 stroops)
+                            if amount_to_swap < 100 {
+                                env.events().publish(
+                                    (symbol_short!("skip_amt"),),
+                                    amount_to_swap
+                                );
+                                continue;
+                            }
+                            
+                            // Now calculate what we'll actually receive from this swap
+                            let expected_output = match crate::pool_client::calculate_swap_output(
+                                env,
+                                &pool_address,
+                                &source_asset,
+                                &asset,
+                                amount_to_swap,
+                            ) {
+                                Ok(amt) => amt,
+                                Err(e) => {
+                                    env.events().publish(
+                                        (symbol_short!("out_err"),),
+                                        symbol_short!("failed")
+                                    );
+                                    return Err(e);
+                                }
+                            };
+                            
                             // Calculate minimum output with 5% slippage tolerance
-                            // Use the expected output from pool calculation, not the target diff
                             let min_amount_out = (expected_output * 95) / 100;
                             
                             // Log swap attempt with expected and minimum outputs

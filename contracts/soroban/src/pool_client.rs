@@ -179,6 +179,69 @@ pub fn calculate_swap_output(
     Ok(amount_out)
 }
 
+/// Calculate required input for a desired output from a swap
+/// This uses the constant product formula solved for amount_in
+pub fn calculate_swap_input(
+    env: &Env,
+    pool_address: &Address,
+    from_token: &Address,
+    to_token: &Address,
+    amount_out_desired: i128,
+) -> Result<i128, crate::errors::VaultError> {
+    use crate::errors::VaultError;
+    
+    if amount_out_desired <= 0 {
+        return Err(VaultError::InvalidAmount);
+    }
+
+    let pool_client = LiquidityPoolClient::new(env, pool_address);
+    
+    // Get pool token addresses to determine which is token0 and token1
+    let token0 = pool_client.token_0();
+    let token1 = pool_client.token_1();
+    
+    // Determine which token we're swapping from
+    let is_token0_in = if from_token == &token0 {
+        true
+    } else if from_token == &token1 {
+        false
+    } else {
+        return Err(VaultError::InvalidConfiguration);
+    };
+    
+    // Get current reserves
+    let (reserve0, reserve1) = pool_client.get_reserves();
+    
+    // Calculate input amount using constant product formula (solved for amount_in)
+    // Formula: amount_in = (reserve_in * amount_out * 1000) / ((reserve_out - amount_out) * 997) + 1
+    let (reserve_in, reserve_out) = if is_token0_in {
+        (reserve0, reserve1)
+    } else {
+        (reserve1, reserve0)
+    };
+    
+    // Make sure we're not trying to drain the pool
+    if amount_out_desired >= reserve_out {
+        return Err(VaultError::InvalidAmount);
+    }
+    
+    let numerator = reserve_in
+        .checked_mul(amount_out_desired)
+        .and_then(|v| v.checked_mul(1000))
+        .ok_or(VaultError::InvalidAmount)?;
+    
+    let denominator = reserve_out
+        .checked_sub(amount_out_desired)
+        .and_then(|v| v.checked_mul(997))
+        .ok_or(VaultError::InvalidAmount)?;
+    
+    let amount_in = (numerator / denominator)
+        .checked_add(1) // Add 1 for rounding
+        .ok_or(VaultError::InvalidAmount)?;
+    
+    Ok(amount_in)
+}
+
 /// Find the liquidity pool address for a token pair
 /// This queries the Soroswap factory to get the pool address
 pub fn get_pool_for_pair(
