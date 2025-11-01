@@ -101,9 +101,48 @@ export const WalletProvider = ({ children }: { children: React.ReactNode }) => {
     let timer: NodeJS.Timeout;
     let isMounted = true;
 
-    // Clear any persisted wallet data on initial mount ONLY
-    // This ensures users must manually connect every time they load the page
-    nullify();
+    // Try to restore wallet connection from localStorage on mount
+    // This allows the wallet to stay connected across page refreshes
+    const restoreWalletConnection = async () => {
+      const walletId = storage.getItem("walletId");
+      const walletAddr = storage.getItem("walletAddress");
+      const walletNetworkRaw = storage.getItem("walletNetwork");
+      const walletNetwork = walletNetworkRaw?.toLowerCase();
+      const passphrase = storage.getItem("networkPassphrase");
+
+      console.log("[WalletProvider] Attempting to restore wallet connection:", { 
+        walletId, 
+        walletAddr, 
+        walletNetwork,
+        passphrase 
+      });
+
+      // If we have stored wallet data, try to reconnect
+      if (walletId && walletAddr && walletNetwork && passphrase) {
+        try {
+          // Set the wallet in the kit to restore the connection
+          wallet.setWallet(walletId);
+          
+          // Update state with restored wallet info
+          updateState({
+            address: walletAddr,
+            network: walletNetwork,
+            networkPassphrase: passphrase,
+          });
+          
+          console.log("[WalletProvider] Wallet connection restored successfully");
+        } catch (error) {
+          console.error("[WalletProvider] Failed to restore wallet connection:", error);
+          // If restoration fails, clear the storage
+          nullify();
+        }
+      } else {
+        console.log("[WalletProvider] No stored wallet data found");
+      }
+    };
+
+    // Restore connection on mount
+    void restoreWalletConnection();
 
     // Create recursive polling function to check wallet state continuously
     const pollWalletState = () => {
@@ -116,8 +155,7 @@ export const WalletProvider = ({ children }: { children: React.ReactNode }) => {
       }
     };
 
-    // Start polling after clearing storage
-    // This allows the polling to detect when user connects
+    // Start polling after attempting to restore
     timer = setTimeout(() => {
       if (isMounted) {
         pollWalletState();
