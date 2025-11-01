@@ -398,9 +398,13 @@ export async function executeRebalance(
         let methodName = 'trigger_rebalance'; // default
         
         // Get the rule to determine action type
-        const config = vault.configuration;
+        const config = vault.config; // Fixed: was vault.configuration
+        console.log(`📋 [DEBUG] Full vault config:`, JSON.stringify(config, null, 2));
+        
         if (config && config.rules && config.rules[ruleIndex]) {
           const rule = config.rules[ruleIndex];
+          console.log(`📋 [DEBUG] Rule at index ${ruleIndex}:`, JSON.stringify(rule, null, 2));
+          
           const actionType = rule.action?.type || rule.action;
           
           console.log(`🎯 Rule action type: ${actionType}`);
@@ -415,6 +419,9 @@ export async function executeRebalance(
           }
           
           console.log(`📞 Calling vault method: ${methodName}`);
+        } else {
+          console.warn(`⚠️  Could not find rule at index ${ruleIndex} for vault ${vaultId}`);
+          console.log(`📋 Available config:`, JSON.stringify(config, null, 2));
         }
         
         const result = await invokeVaultMethod(
