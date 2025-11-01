@@ -52,10 +52,28 @@ export class NaturalLanguageVaultGenerator {
 CRITICAL CONTEXT - STELLAR NETWORK:
 - These vaults operate on Stellar blockchain (NOT Ethereum)
 - Stellar uses native DEX (SDEX) and protocols like Soroswap, Aquarius, Blend
-- Common Stellar assets: XLM, USDC, AQUA, yXLM, BTC (Stellar), ETH (Stellar)
 - Stellar has low fees (~0.00001 XLM) and fast finality (3-5 seconds)
 - Vault smart contracts are written in Rust and deployed on Soroban
 - Rebalancing happens via Stellar DEX or Soroswap router
+
+SUPPORTED TESTNET ASSETS (WHITELIST):
+IMPORTANT: You can ONLY use these assets when building vaults on testnet. DO NOT use any other tokens.
+
+1. XLM (Native Stellar Lumens)
+   - assetType: "XLM"
+   - assetCode: "XLM"
+   - assetIssuer: NOT REQUIRED (native asset)
+   - Description: Native Stellar cryptocurrency
+
+2. USDC (USD Coin by Circle)
+   - assetType: "USDC"
+   - assetCode: "USDC"
+   - assetIssuer: NOT REQUIRED (system handles SAC conversion automatically)
+   - Description: Stablecoin pegged to USD
+
+NOTE: Testnet is regularly reset. Tokens like BTC, ETH, AQUA, yXLM do NOT have reliable testnet addresses.
+If user requests assets not in this whitelist, explain that only XLM and USDC are available on testnet, 
+and suggest using those instead or explain that other assets are only available on mainnet.
 
 YOUR CAPABILITIES:
 1. **Chat conversationally** - Answer questions, explain concepts, provide advice
@@ -112,36 +130,90 @@ VAULT STRUCTURE (when building):
 CRITICAL: Every node MUST have ALL required fields populated. Do not leave any data properties empty or undefined.
 
 1. **Asset Nodes**: Define which tokens the vault will hold and their allocations
-   Structure:
+   
+   FOR XLM (Native Asset):
    {
      "id": "asset-0",
      "type": "asset",
      "position": { "x": 100, "y": 100 },
      "data": {
-       "assetType": "XLM" | "USDC" | "CUSTOM",
-       "assetCode": "XLM",           // REQUIRED - the asset symbol
-       "assetIssuer": "CA...",        // Optional - contract address for custom tokens
-       "allocation": 50,              // REQUIRED - percentage (must sum to 100% across all assets)
+       "assetType": "XLM",            // REQUIRED - must be "XLM" for native
+       "assetCode": "XLM",            // REQUIRED - must be "XLM"
+       "allocation": 50,              // REQUIRED - percentage (must sum to 100%)
        "label": "XLM"                 // REQUIRED - display name
+       // DO NOT include assetIssuer for XLM
+     }
+   }
+   
+   FOR USDC (Stablecoin):
+   {
+     "id": "asset-1",
+     "type": "asset",
+     "position": { "x": 100, "y": 250 },
+     "data": {
+       "assetType": "USDC",           // REQUIRED - must be "USDC"
+       "assetCode": "USDC",           // REQUIRED - must be "USDC"
+       "allocation": 50,              // REQUIRED - percentage (must sum to 100%)
+       "label": "USDC"                // REQUIRED - display name
+       // DO NOT include assetIssuer - system handles SAC conversion
      }
    }
    
 2. **Condition Nodes**: Define rules/triggers for automated actions
-   Structure:
+   
+   FOR TIME-BASED CONDITIONS:
    {
      "id": "condition-0",
      "type": "condition",
      "position": { "x": 500, "y": 100 },
      "data": {
-       "conditionType": "time_based" | "allocation" | "apy_threshold" | "price_change",  // REQUIRED
+       "conditionType": "time_based",              // REQUIRED
+       "timeUnit": "days",                         // REQUIRED - "minutes" | "hours" | "days" | "weeks"
+       "timeValue": 7,                             // REQUIRED - numeric value
        "label": "Every 7 days",                    // REQUIRED - display name
-       "description": "Rebalance weekly",          // REQUIRED - explanation
-       // For time_based:
-       "timeUnit": "minutes" | "hours" | "days" | "weeks",  // REQUIRED for time_based
-       "timeValue": 7,                             // REQUIRED for time_based
-       // For threshold-based:
-       "threshold": 10,                            // REQUIRED for apy_threshold/price_change/allocation
-       "operator": "gt" | "lt" | "eq" | "gte" | "lte"  // Optional
+       "description": "Rebalance weekly"           // REQUIRED - explanation
+     }
+   }
+   
+   FOR PRICE CHANGE CONDITIONS:
+   {
+     "id": "condition-1",
+     "type": "condition",
+     "position": { "x": 500, "y": 250 },
+     "data": {
+       "conditionType": "price_change",            // REQUIRED
+       "value": 5,                                 // REQUIRED - percentage change (e.g., 5 for 5%)
+       "operator": "gt",                           // REQUIRED - "gt" | "lt" | "gte" | "lte"
+       "label": "XLM price moves >5%",             // REQUIRED - display name
+       "description": "Trigger when XLM price changes more than 5%"  // REQUIRED
+     }
+   }
+   
+   FOR ALLOCATION CONDITIONS:
+   {
+     "id": "condition-2",
+     "type": "condition",
+     "position": { "x": 500, "y": 400 },
+     "data": {
+       "conditionType": "allocation",              // REQUIRED
+       "threshold": 10,                            // REQUIRED - percentage drift (e.g., 10 for 10%)
+       "operator": "gt",                           // REQUIRED - "gt" | "lt" | "gte" | "lte"
+       "label": "Allocation drifts >10%",          // REQUIRED - display name
+       "description": "Rebalance when allocation deviates by 10%"  // REQUIRED
+     }
+   }
+   
+   FOR APY THRESHOLD CONDITIONS:
+   {
+     "id": "condition-3",
+     "type": "condition",
+     "position": { "x": 500, "y": 550 },
+     "data": {
+       "conditionType": "apy_threshold",           // REQUIRED
+       "threshold": 8,                             // REQUIRED - APY percentage (e.g., 8 for 8%)
+       "operator": "gt",                           // REQUIRED - "gt" | "lt" | "gte" | "lte"
+       "label": "APY above 8%",                    // REQUIRED - display name
+       "description": "Stake when APY exceeds 8%"  // REQUIRED
      }
    }
    
@@ -236,14 +308,20 @@ NODE POSITIONING:
 - Actions at right (x: 800-1000, y: spaced by 150)
 
 IMPORTANT RULES (when building):
-1. Allocations MUST sum to 100%
-2. Every condition MUST connect to an action
-3. Assets should connect to conditions (showing they're affected by rules)
-4. Use realistic Stellar asset codes (XLM, USDC, AQUA, yXLM, etc.)
-5. Time-based conditions use: minutes, hours, days, weeks
-6. Provide helpful explanation and suggestions
-7. If user mentions staking, use protocols like Aquarius or native Stellar staking
-8. If user mentions liquidity, reference Soroswap pools
+1. **CRITICAL: ONLY use XLM and USDC assets** - These are the only tokens available on testnet
+2. **Use assetType: "XLM" for XLM and assetType: "USDC" for USDC** - Do NOT use "CUSTOM"
+3. **NEVER include assetIssuer for XLM or USDC** - System handles addresses automatically
+4. **Allocations MUST sum to 100%**
+5. **Every condition MUST have ALL required fields**:
+   - time_based: MUST have timeUnit AND timeValue
+   - price_change: MUST have value AND operator
+   - allocation: MUST have threshold AND operator
+   - apy_threshold: MUST have threshold AND operator
+   - ALL conditions MUST have label AND description
+6. **Every condition MUST connect to an action**
+7. **Assets should connect to conditions** (showing they're affected by rules)
+8. **Provide helpful explanation and suggestions**
+9. If user mentions assets not in whitelist (BTC, ETH, AQUA, yXLM), explain they're only available on mainnet and suggest XLM/USDC alternatives
 
 Be conversational and helpful. Build vaults only when the user is ready and has provided enough details.`;
 
@@ -437,11 +515,43 @@ Be conversational and helpful. Build vaults only when the user is ready and has 
       if (assetNodes.length === 0) {
         console.warn('[NLVaultGenerator] No asset nodes found in response');
       } else {
-        // Ensure all asset nodes have data and allocation
+        // Define testnet whitelist
+        const TESTNET_ASSETS = new Map([
+          ['XLM', { assetType: 'XLM', requiresIssuer: false }],
+          ['USDC', { assetType: 'USDC', requiresIssuer: false }]
+        ]);
+
+        // Validate and fix asset nodes
         assetNodes.forEach((node: Node) => {
           if (!node.data) {
             node.data = {};
           }
+
+          const assetCode = node.data.assetCode as string;
+          const assetInfo = TESTNET_ASSETS.get(assetCode);
+
+          // Validate asset is in whitelist
+          if (!assetInfo) {
+            console.warn(`[NLVaultGenerator] Invalid asset ${assetCode} - not in testnet whitelist. Using XLM instead.`);
+            node.data.assetCode = 'XLM';
+            node.data.assetType = 'XLM';
+            node.data.label = 'XLM';
+            delete node.data.assetIssuer;
+          } else {
+            // Ensure correct asset type
+            if (node.data.assetType !== assetInfo.assetType) {
+              console.warn(`[NLVaultGenerator] Correcting assetType for ${assetCode}`);
+              node.data.assetType = assetInfo.assetType;
+            }
+
+            // Remove issuer - system handles SAC conversion automatically
+            if (node.data.assetIssuer) {
+              console.warn(`[NLVaultGenerator] Removing assetIssuer for ${assetCode} - system handles SAC conversion`);
+              delete node.data.assetIssuer;
+            }
+          }
+
+          // Ensure allocation exists
           if (node.data.allocation === undefined || node.data.allocation === null) {
             console.warn(`[NLVaultGenerator] Asset node ${node.id} missing allocation, setting to 0`);
             node.data.allocation = 0;
@@ -473,10 +583,68 @@ Be conversational and helpful. Build vaults only when the user is ready and has 
         }
       }
 
+      // Validate and fix condition nodes
+      const conditionNodes = parsed.nodes.filter((n: Node) => n.type === 'condition');
+      conditionNodes.forEach((node: Node) => {
+        if (!node.data) {
+          node.data = {};
+        }
+
+        const conditionType = node.data.conditionType as string;
+
+        // Validate based on condition type
+        switch (conditionType) {
+          case 'time_based':
+            if (!node.data.timeUnit) {
+              console.warn(`[NLVaultGenerator] Condition ${node.id} missing timeUnit, setting to 'days'`);
+              node.data.timeUnit = 'days';
+            }
+            if (!node.data.timeValue) {
+              console.warn(`[NLVaultGenerator] Condition ${node.id} missing timeValue, setting to 7`);
+              node.data.timeValue = 7;
+            }
+            break;
+
+          case 'price_change':
+            if (node.data.value === undefined || node.data.value === null) {
+              console.warn(`[NLVaultGenerator] Condition ${node.id} missing value for price_change, setting to 5`);
+              node.data.value = 5;
+            }
+            if (!node.data.operator) {
+              console.warn(`[NLVaultGenerator] Condition ${node.id} missing operator, setting to 'gt'`);
+              node.data.operator = 'gt';
+            }
+            break;
+
+          case 'allocation':
+          case 'apy_threshold':
+            if (node.data.threshold === undefined || node.data.threshold === null) {
+              console.warn(`[NLVaultGenerator] Condition ${node.id} missing threshold, setting to 10`);
+              node.data.threshold = 10;
+            }
+            if (!node.data.operator) {
+              console.warn(`[NLVaultGenerator] Condition ${node.id} missing operator, setting to 'gt'`);
+              node.data.operator = 'gt';
+            }
+            break;
+        }
+
+        // Ensure label and description exist
+        if (!node.data.label) {
+          console.warn(`[NLVaultGenerator] Condition ${node.id} missing label, generating one`);
+          node.data.label = `Condition ${node.id}`;
+        }
+        if (!node.data.description) {
+          console.warn(`[NLVaultGenerator] Condition ${node.id} missing description, generating one`);
+          node.data.description = `Auto-generated condition`;
+        }
+      });
+
       console.log('[NLVaultGenerator] Vault generated successfully:', {
         nodeCount: parsed.nodes.length,
         edgeCount: parsed.edges.length,
         assetCount: assetNodes.length,
+        conditionCount: conditionNodes.length,
       });
 
       return {
