@@ -9,6 +9,8 @@ pub struct VaultConfig {
     pub assets: Vec<Address>,
     pub rules: Vec<RebalanceRule>,
     pub router_address: Option<Address>, // Soroswap/Phoenix router for swaps
+    pub staking_pool_address: Option<Address>, // Liquid staking pool (e.g., stXLM)
+    pub factory_address: Option<Address>, // Soroswap factory for finding pools
 }
 
 #[contracttype]
@@ -40,4 +42,26 @@ pub struct UserPosition {
 pub struct AssetBalance {
     pub token: Address,
     pub amount: i128,
+}
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct StakingPosition {
+    pub staking_pool: Address,
+    pub original_token: Address,  // e.g., XLM
+    pub staked_amount: i128,      // Original amount staked
+    pub st_token_amount: i128,    // Liquid staking tokens received (e.g., stXLM)
+    pub timestamp: u64,           // When staked
+}
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct LiquidityPosition {
+    pub pool_address: Address,
+    pub token_a: Address,
+    pub token_b: Address,
+    pub lp_tokens: i128,          // LP tokens received
+    pub amount_a_provided: i128,  // Original amount of token A
+    pub amount_b_provided: i128,  // Original amount of token B
+    pub timestamp: u64,           // When liquidity was provided
 }

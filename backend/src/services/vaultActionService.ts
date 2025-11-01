@@ -393,9 +393,33 @@ export async function executeRebalance(
     if (rebalancerKeypair) {
       try {
         console.log(`📡 Submitting on-chain rebalance transaction...`);
+        
+        // Determine which trigger function to call based on rule action
+        let methodName = 'trigger_rebalance'; // default
+        
+        // Get the rule to determine action type
+        const config = vault.configuration;
+        if (config && config.rules && config.rules[ruleIndex]) {
+          const rule = config.rules[ruleIndex];
+          const actionType = rule.action?.type || rule.action;
+          
+          console.log(`🎯 Rule action type: ${actionType}`);
+          
+          // Map action type to trigger function
+          if (actionType === 'stake') {
+            methodName = 'trigger_stake';
+          } else if (actionType === 'provide_liquidity' || actionType === 'liquidity') {
+            methodName = 'trigger_liquidity';
+          } else if (actionType === 'rebalance') {
+            methodName = 'trigger_rebalance';
+          }
+          
+          console.log(`📞 Calling vault method: ${methodName}`);
+        }
+        
         const result = await invokeVaultMethod(
           vault.contract_address,
-          'trigger_rebalance',
+          methodName,
           [],
           rebalancerKeypair,
           vault.network // Pass the vault's network
@@ -403,9 +427,10 @@ export async function executeRebalance(
         
         if (result.success && result.hash) {
           txHash = result.hash;
-          console.log(`✅ On-chain rebalance executed! TX: ${txHash}`);
+          console.log(`✅ ${methodName} transaction submitted: ${txHash}`);
+          console.log(`🔗 https://stellar.expert/explorer/${vault.network}/tx/${txHash}`);
         } else if (result.mvp) {
-          console.log(`⚠️  MVP mode - simulated rebalance`);
+          console.log(`⚠️  MVP mode - simulated ${methodName}`);
           txHash = `simulated_tx_${Date.now()}`;
         }
       } catch (txError) {

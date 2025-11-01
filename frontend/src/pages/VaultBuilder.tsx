@@ -292,14 +292,44 @@ const VaultBuilder = () => {
               config.assets.map(a => `${a.code}: ${a.allocation}%`).join(', ')
             );
             console.log('[VaultBuilder] Target allocation (basis points):', targetAllocation);
+          } else if (rule.action.type === 'stake' || rule.action.type === 'provide_liquidity') {
+            // For stake/liquidity actions, use targetAllocation as percentage of vault to stake
+            const percentage = rule.action.parameters.targetAllocation || 0;
+            targetAllocation = [Math.round((percentage as number) * 10000)];
+            console.log(`[VaultBuilder] ${rule.action.type} percentage: ${percentage}% -> ${targetAllocation[0]} basis points`);
           } else if (rule.action.parameters.targetAllocation) {
-            // For non-rebalance actions, use the provided target allocation
+            // For other actions, use the provided target allocation
             targetAllocation = [rule.action.parameters.targetAllocation as number];
           }
           
+          // Map frontend condition types to contract types
+          const conditionTypeMap: Record<string, string> = {
+            'time_based': 'time',
+            'apy_threshold': 'apy',
+            'allocation': 'allocation',
+            'price_change': 'price',
+          };
+          
+          const contractConditionType = conditionTypeMap[rule.condition.type] || rule.condition.type;
+          
+          // Calculate threshold based on condition type
+          let threshold = rule.condition.parameters.threshold || 0;
+          if (rule.condition.type === 'time_based') {
+            // Convert time_based interval to seconds
+            const timeValue = rule.condition.parameters.interval || 1;
+            const timeUnit = rule.condition.parameters.unit || 'hours';
+            const unitToSeconds: Record<string, number> = {
+              'minutes': 60,
+              'hours': 3600,
+              'days': 86400,
+              'weeks': 604800,
+            };
+            threshold = (timeValue as number) * unitToSeconds[timeUnit as string];
+          }
+          
           return {
-            condition_type: rule.condition.type,
-            threshold: rule.condition.parameters.threshold || 0,
+            condition_type: contractConditionType,
+            threshold: threshold,
             action: rule.action.type,
             target_allocation: targetAllocation,
           };

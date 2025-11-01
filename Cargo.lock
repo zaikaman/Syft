@@ -929,6 +929,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "mock-staking-pool"
+version = "0.1.0"
+dependencies = [
+ "soroban-sdk 22.0.8",
+]
+
+[[package]]
 name = "nft-enumerable-example"
 version = "0.0.1"
 dependencies = [

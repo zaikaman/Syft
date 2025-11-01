@@ -105,35 +105,35 @@ impl VaultContract {
         deposit_token_client.transfer(&user, &vault_address, &amount);
         env.events().publish((symbol_short!("debug"),), symbol_short!("xfer_ok"));
 
-        // IMPORTANT: Accept deposits in ANY configured vault asset
-        // The deposit transaction ONLY transfers tokens to the vault
-        // Rebalancing happens in a SEPARATE transaction (force_rebalance call)
-        // 
-        // This is because Soroban's authorization model requires explicit user authorization
-        // for cross-contract calls (swaps), so we can't auto-swap during deposit.
-        //
-        // Workflow:
-        // 1. User calls deposit() → tokens transferred to vault
-        // 2. User/Backend calls force_rebalance() → vault swaps to target allocation
-        
-        // Verify deposit token is one of the vault's configured assets
-        let mut is_valid_asset = false;
-        for i in 0..config.assets.len() {
-            if let Some(asset) = config.assets.get(i) {
-                if asset == deposit_token {
-                    is_valid_asset = true;
-                    break;
-                }
-            }
-        }
-        
-        if !is_valid_asset {
-            env.events().publish((symbol_short!("debug"),), symbol_short!("invalid"));
-            return Err(VaultError::InvalidConfiguration);
-        }
-        
-        // Accept the deposit as-is (no swap during deposit)
-        let final_amount = amount;
+        // AUTO-SWAP: If deposit token differs from base token, automatically swap to base token
+        // This allows users to deposit ANY token (e.g., XLM) into vaults with different base assets (e.g., USDC)
+        // The vault will automatically swap the deposited token to match the base asset
+        let final_amount = if deposit_token != base_token {
+            // Deposit token is different from base token - need to swap
+            env.events().publish((symbol_short!("debug"),), symbol_short!("swap_req"));
+            
+            // Check if router is configured
+            let router_address = config.router_address
+                .ok_or(VaultError::RouterNotSet)?;
+            
+            env.events().publish((symbol_short!("debug"),), symbol_short!("swap_go"));
+            
+            // Swap deposit token to base token via router
+            let swapped_amount = crate::swap_router::swap_via_router(
+                &env,
+                &router_address,
+                &deposit_token,
+                &base_token,
+                amount,
+                0, // min_amount_out = 0 (accept any slippage for now)
+            )?;
+            
+            env.events().publish((symbol_short!("debug"),), symbol_short!("swap_ok"));
+            swapped_amount
+        } else {
+            // Deposit token matches base token - no swap needed
+            amount
+        };
 
         // Get current state
         let mut state: VaultState = env.storage().instance().get(&STATE)
@@ -167,14 +167,12 @@ impl VaultContract {
         // Emit event with final amount (after swap)
         emit_deposit(&env, &user, final_amount, shares);
 
-        // NOTE: Auto-rebalance is disabled because it requires authorization to call the router
-        // Users must manually trigger rebalance after deposit by calling trigger_rebalance()
-        // 
-        // The issue: When auto-rebalance tries to swap tokens via the router during deposit,
-        // it doesn't have the user's authorization context. The vault can't authorize itself
-        // to spend tokens or execute swaps without the user explicitly signing a rebalance transaction.
+        // NOTE: Auto-swap is now ENABLED for deposits
+        // If user deposits a token different from the vault's base token, it will automatically swap
+        // Example: Vault has USDC as base, user deposits XLM → automatically swaps XLM to USDC
         //
-        // Future improvement: Use batch transactions where users sign both deposit + rebalance in one go
+        // For multi-asset vaults with specific allocations, users should still call force_rebalance()
+        // after deposit to rebalance across all configured assets according to target allocation
 
         Ok(shares)
     }
@@ -305,7 +303,47 @@ impl VaultContract {
         Ok(())
     }
 
-    /// Trigger a rebalance based on configured rules
+    /// Set the staking pool address for liquid staking (e.g., stXLM)
+    pub fn set_staking_pool(env: Env, caller: Address, staking_pool: Address) -> Result<(), VaultError> {
+        caller.require_auth();
+        
+        let mut config: VaultConfig = env.storage().instance().get(&CONFIG)
+            .ok_or(VaultError::NotInitialized)?;
+        
+        // Only owner can update staking pool
+        if caller != config.owner {
+            return Err(VaultError::Unauthorized);
+        }
+        
+        config.staking_pool_address = Some(staking_pool);
+        
+        // Store updated config
+        env.storage().instance().set(&CONFIG, &config);
+        
+        Ok(())
+    }
+
+    /// Set the factory address for finding liquidity pools
+    pub fn set_factory(env: Env, caller: Address, factory: Address) -> Result<(), VaultError> {
+        caller.require_auth();
+        
+        let mut config: VaultConfig = env.storage().instance().get(&CONFIG)
+            .ok_or(VaultError::NotInitialized)?;
+        
+        // Only owner can update factory
+        if caller != config.owner {
+            return Err(VaultError::Unauthorized);
+        }
+        
+        config.factory_address = Some(factory);
+        
+        // Store updated config
+        env.storage().instance().set(&CONFIG, &config);
+        
+        Ok(())
+    }
+
+    /// Trigger a rebalance based on configured rules (only rebalance actions)
     /// Can be called by anyone, but only executes if rebalance rules are met
     pub fn trigger_rebalance(env: Env) -> Result<(), VaultError> {
         // Check vault is initialized
@@ -326,8 +364,8 @@ impl VaultContract {
         let mut state: VaultState = env.storage().instance().get(&STATE)
             .ok_or(VaultError::NotInitialized)?;
 
-        // Execute rebalance logic
-        crate::rebalance::execute_rebalance(&env)?;
+        // Execute only rebalance actions
+        crate::rebalance::execute_rebalance_only(&env)?;
 
         // Update last rebalance timestamp
         state.last_rebalance = env.ledger().timestamp();
@@ -335,6 +373,70 @@ impl VaultContract {
 
         // Emit rebalance event
         crate::events::emit_rebalance(&env, state.last_rebalance);
+
+        Ok(())
+    }
+
+    /// Trigger staking based on configured rules (only stake actions)
+    /// Can be called by anyone, but only executes if stake rules are met
+    pub fn trigger_stake(env: Env) -> Result<(), VaultError> {
+        // Check vault is initialized
+        if !env.storage().instance().has(&CONFIG) {
+            return Err(VaultError::NotInitialized);
+        }
+
+        // Check if staking should occur based on rules
+        if !crate::engine::should_stake(&env) {
+            return Ok(()); // No staking needed
+        }
+
+        let _config: VaultConfig = env.storage().instance().get(&CONFIG)
+            .ok_or(VaultError::NotInitialized)?;
+        
+        let mut state: VaultState = env.storage().instance().get(&STATE)
+            .ok_or(VaultError::NotInitialized)?;
+
+        // Execute only stake actions
+        crate::rebalance::execute_stake_only(&env)?;
+
+        // Update last rebalance timestamp
+        state.last_rebalance = env.ledger().timestamp();
+        env.storage().instance().set(&STATE, &state);
+
+        // Emit stake event
+        env.events().publish((symbol_short!("staked"),), state.last_rebalance);
+
+        Ok(())
+    }
+
+    /// Trigger liquidity provision based on configured rules (only liquidity actions)
+    /// Can be called by anyone, but only executes if liquidity rules are met
+    pub fn trigger_liquidity(env: Env) -> Result<(), VaultError> {
+        // Check vault is initialized
+        if !env.storage().instance().has(&CONFIG) {
+            return Err(VaultError::NotInitialized);
+        }
+
+        // Check if liquidity provision should occur based on rules
+        if !crate::engine::should_provide_liquidity(&env) {
+            return Ok(()); // No liquidity provision needed
+        }
+
+        let _config: VaultConfig = env.storage().instance().get(&CONFIG)
+            .ok_or(VaultError::NotInitialized)?;
+        
+        let mut state: VaultState = env.storage().instance().get(&STATE)
+            .ok_or(VaultError::NotInitialized)?;
+
+        // Execute only liquidity actions
+        crate::rebalance::execute_liquidity_only(&env)?;
+
+        // Update last rebalance timestamp
+        state.last_rebalance = env.ledger().timestamp();
+        env.storage().instance().set(&STATE, &state);
+
+        // Emit liquidity event
+        env.events().publish((symbol_short!("liquidity"),), state.last_rebalance);
 
         Ok(())
     }
@@ -364,5 +466,41 @@ impl VaultContract {
         crate::events::emit_rebalance(&env, state.last_rebalance);
 
         Ok(())
+    }
+
+    /// Get the current staking position for the vault
+    pub fn get_staking_position(env: Env) -> Result<crate::types::StakingPosition, VaultError> {
+        use soroban_sdk::String;
+        
+        let position_key = String::from_str(&env, "stake_position");
+        
+        env.storage().instance()
+            .get(&position_key)
+            .ok_or(VaultError::NotInitialized)
+    }
+
+    /// Get the current liquidity position for the vault
+    pub fn get_liquidity_position(env: Env) -> Result<crate::types::LiquidityPosition, VaultError> {
+        use soroban_sdk::String;
+        
+        let position_key = String::from_str(&env, "lp_position");
+        
+        env.storage().instance()
+            .get(&position_key)
+            .ok_or(VaultError::NotInitialized)
+    }
+
+    /// Check if vault has an active staking position
+    pub fn has_staking_position(env: Env) -> bool {
+        use soroban_sdk::String;
+        let position_key = String::from_str(&env, "stake_position");
+        env.storage().instance().has(&position_key)
+    }
+
+    /// Check if vault has an active liquidity position
+    pub fn has_liquidity_position(env: Env) -> bool {
+        use soroban_sdk::String;
+        let position_key = String::from_str(&env, "lp_position");
+        env.storage().instance().has(&position_key)
     }
 }

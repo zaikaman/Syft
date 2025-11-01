@@ -103,6 +103,9 @@ export class ConfigSerializer {
       asset: assetIdentifier,
     };
 
+    // Store frontend condition type (will be mapped to contract type during deployment)
+    let finalConditionType = typeof conditionType === 'string' ? conditionType : 'custom';
+
     switch (conditionType) {
       case 'allocation':
         parameters.operator = operator || 'gt';
@@ -115,8 +118,18 @@ export class ConfigSerializer {
         break;
 
       case 'time_based':
+        // Store time interval configuration (will be converted to seconds during deployment)
         parameters.interval = timeValue || 1;
         parameters.unit = timeUnit || 'hours';
+        // Also calculate and store threshold in seconds for reference
+        const unitToSeconds: Record<string, number> = {
+          'minutes': 60,
+          'hours': 3600,
+          'days': 86400,
+          'weeks': 604800,
+        };
+        const unit = (timeUnit || 'hours') as string;
+        parameters.threshold = ((timeValue || 1) as number) * unitToSeconds[unit];
         break;
 
       case 'price_change':
@@ -130,7 +143,7 @@ export class ConfigSerializer {
     }
 
     return {
-      type: typeof conditionType === 'string' ? conditionType : 'custom',
+      type: finalConditionType,
       parameters,
     };
   }
@@ -157,11 +170,20 @@ export class ConfigSerializer {
         if (protocol) {
           actionParams.protocol = protocol;
         }
+        if (targetAsset) {
+          actionParams.targetAsset = targetAsset;
+        }
+        if (targetAllocation !== undefined) {
+          actionParams.targetAllocation = targetAllocation;
+        }
         break;
 
       case 'provide_liquidity':
         if (protocol) {
           actionParams.protocol = protocol;
+        }
+        if (targetAllocation !== undefined) {
+          actionParams.targetAllocation = targetAllocation;
         }
         break;
 

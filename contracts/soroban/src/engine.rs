@@ -104,7 +104,64 @@ pub fn should_rebalance(env: &Env) -> bool {
         .ok_or(crate::errors::VaultError::NotInitialized);
     
     match config {
-        Ok(cfg) => evaluate_rules(env, &cfg.rules),
+        Ok(cfg) => {
+            // Only check rebalance-type rules
+            for i in 0..cfg.rules.len() {
+                if let Some(rule) = cfg.rules.get(i) {
+                    use soroban_sdk::String;
+                    if rule.action == String::from_str(env, "rebalance") && evaluate_single_rule(env, &rule) {
+                        return true;
+                    }
+                }
+            }
+            false
+        },
+        Err(_) => false,
+    }
+}
+
+/// Check if any rule should trigger staking
+pub fn should_stake(env: &Env) -> bool {
+    let config: Result<crate::types::VaultConfig, crate::errors::VaultError> = 
+        env.storage().instance().get(&symbol_short!("CONFIG"))
+        .ok_or(crate::errors::VaultError::NotInitialized);
+    
+    match config {
+        Ok(cfg) => {
+            // Only check stake-type rules
+            for i in 0..cfg.rules.len() {
+                if let Some(rule) = cfg.rules.get(i) {
+                    use soroban_sdk::String;
+                    if rule.action == String::from_str(env, "stake") && evaluate_single_rule(env, &rule) {
+                        return true;
+                    }
+                }
+            }
+            false
+        },
+        Err(_) => false,
+    }
+}
+
+/// Check if any rule should trigger liquidity provision
+pub fn should_provide_liquidity(env: &Env) -> bool {
+    let config: Result<crate::types::VaultConfig, crate::errors::VaultError> = 
+        env.storage().instance().get(&symbol_short!("CONFIG"))
+        .ok_or(crate::errors::VaultError::NotInitialized);
+    
+    match config {
+        Ok(cfg) => {
+            // Only check liquidity-type rules
+            for i in 0..cfg.rules.len() {
+                if let Some(rule) = cfg.rules.get(i) {
+                    use soroban_sdk::String;
+                    if rule.action == String::from_str(env, "liquidity") && evaluate_single_rule(env, &rule) {
+                        return true;
+                    }
+                }
+            }
+            false
+        },
         Err(_) => false,
     }
 }

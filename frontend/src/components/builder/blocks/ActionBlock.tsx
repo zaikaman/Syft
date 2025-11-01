@@ -176,18 +176,49 @@ const ActionBlock = ({ id, data, selected }: ActionBlockProps) => {
               )}
             </div>
             {actionType === 'stake' && (
-              <div>
-                <label className="text-xs text-gray-600 dark:text-gray-400 block mb-1">
-                  Asset to Stake
-                </label>
-                <input
-                  type="text"
-                  value={localTargetAsset}
-                  onChange={(e) => handleTargetAssetChange(e.target.value)}
-                  placeholder="e.g. XLM"
-                  className="w-full px-2 py-1 text-sm bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded focus:outline-none focus:ring-2 focus:ring-orange-500 text-gray-900 dark:text-white"
-                />
-              </div>
+              <>
+                <div>
+                  <label className="text-xs text-gray-600 dark:text-gray-400 block mb-1">
+                    Asset to Stake
+                  </label>
+                  <input
+                    type="text"
+                    value={localTargetAsset}
+                    onChange={(e) => handleTargetAssetChange(e.target.value)}
+                    placeholder="e.g. XLM"
+                    className="w-full px-2 py-1 text-sm bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded focus:outline-none focus:ring-2 focus:ring-orange-500 text-gray-900 dark:text-white"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-gray-600 dark:text-gray-400 block mb-1">
+                    Amount to Stake (% of vault)
+                  </label>
+                  <div className="flex gap-2">
+                    <input
+                      type="number"
+                      min="0"
+                      max="100"
+                      step="1"
+                      value={localTargetAllocation}
+                      onChange={(e) => handleTargetAllocationChange(parseFloat(e.target.value) || 0)}
+                      className="flex-1 px-2 py-1 text-sm bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded focus:outline-none focus:ring-2 focus:ring-orange-500 text-gray-900 dark:text-white"
+                    />
+                    <span className="flex items-center text-sm text-gray-600 dark:text-gray-400">%</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="0"
+                    max="100"
+                    step="1"
+                    value={localTargetAllocation}
+                    onChange={(e) => handleTargetAllocationChange(parseFloat(e.target.value))}
+                    className="w-full mt-1"
+                    style={{
+                      background: `linear-gradient(to right, #f97316 0%, #f97316 ${localTargetAllocation}%, #e5e7eb ${localTargetAllocation}%, #e5e7eb 100%)`
+                    }}
+                  />
+                </div>
+              </>
             )}
           </div>
         );
@@ -252,9 +283,12 @@ const ActionBlock = ({ id, data, selected }: ActionBlockProps) => {
           ? `Rebalance ${localTargetAsset} to ${localTargetAllocation}%`
           : 'Rebalance to target allocations';
       case 'stake':
-        return localProtocol
-          ? `Stake ${localTargetAsset || 'assets'} on ${localProtocol}`
-          : 'Stake assets';
+        if (localProtocol && localTargetAllocation > 0) {
+          return `Stake ${localTargetAllocation}% of ${localTargetAsset || 'assets'} on ${localProtocol}`;
+        } else if (localProtocol) {
+          return `Stake ${localTargetAsset || 'assets'} on ${localProtocol}`;
+        }
+        return 'Stake assets';
       case 'provide_liquidity':
         return localProtocol
           ? `Add liquidity to ${localProtocol}`

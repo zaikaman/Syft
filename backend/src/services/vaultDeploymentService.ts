@@ -13,6 +13,8 @@ export interface VaultDeploymentConfig {
     target_allocation: number[];
   }>;
   routerAddress?: string; // Optional: set DEX router (defaults to Soroswap testnet)
+  stakingPoolAddress?: string; // Optional: set liquid staking pool (e.g., stXLM)
+  factoryAddress?: string; // Optional: set Soroswap factory for liquidity pools
 }
 
 export interface DeploymentResult {
@@ -529,11 +531,21 @@ export async function deployVault(
     const vaultId = generateVaultId();
     const routerAddress = config.routerAddress || process.env.SOROSWAP_ROUTER_ADDRESS || 
       'CCMAPXWVZD4USEKDWRYS7DA4Y3D7E2SDMGBFJUCEXTC7VN6CUBGWPFUS';
+    
+    // Default addresses for staking and liquidity factory (Soroswap testnet)
+    const stakingPoolAddress = config.stakingPoolAddress || process.env.STAKING_POOL_ADDRESS || 
+      'CDLZVYS4GWBUKQAJYX5DFXUH4N2NVPW6QQZNSG6GJUMU4LQYPVCQLKFK'; // Mock staking pool for testnet
+    
+    const soroswapFactoryAddress = config.factoryAddress || process.env.SOROSWAP_FACTORY_ADDRESS || 
+      'CBP7NO6F7FRDHSOFQBT2L2UWYIZ2PU76JKVRYAQTG3KZSQLYAOKIF2WB'; // Soroswap factory
 
     console.log(`[Vault Deployment] Starting deployment for ${config.name}`);
     console.log(`[Vault Deployment] Network: ${network || 'testnet'}`);
     console.log(`[Vault Deployment] Owner: ${config.owner}`);
     console.log(`[Vault Deployment] Assets: ${config.assets.join(', ')}`);
+    console.log(`[Vault Deployment] Router: ${routerAddress}`);
+    console.log(`[Vault Deployment] Staking Pool: ${stakingPoolAddress}`);
+    console.log(`[Vault Deployment] Soroswap Factory: ${soroswapFactoryAddress}`);
 
     // Convert asset symbols to contract addresses (network-aware)
     const assetAddressStrings = config.assets.map(asset => {
@@ -944,6 +956,50 @@ export async function deployVault(
       console.warn(`[Router Setup] Vault deployed but router not configured - auto-swap will not work`);
       console.warn(`[Router Setup] To manually set router:`);
       console.warn(`[Router Setup] stellar contract invoke --id ${contractAddress} --source-account <keypair> -- set_router --router ${routerAddress}`);
+    }
+
+    // AUTO-SET STAKING POOL: Configure staking pool for liquid staking (e.g., stXLM)
+    console.log(`[Staking Setup] Setting staking pool address: ${stakingPoolAddress}`);
+    try {
+      const stakingResult = await invokeVaultMethod(
+        contractAddress,
+        'set_staking_pool',
+        [config.owner, stakingPoolAddress],
+        sourceKeypair,
+        network
+      );
+      
+      if (stakingResult.success) {
+        console.log(`[Staking Setup] ✅ Staking pool configured successfully`);
+        console.log(`[Staking Setup] TX: ${stakingResult.hash}`);
+      }
+    } catch (stakingError) {
+      console.error(`[Staking Setup] ⚠️  Failed to set staking pool:`, stakingError);
+      console.warn(`[Staking Setup] Vault deployed but staking pool not configured - stake action will not work`);
+      console.warn(`[Staking Setup] To manually set staking pool:`);
+      console.warn(`[Staking Setup] stellar contract invoke --id ${contractAddress} --source-account ${config.owner} -- set_staking_pool --caller ${config.owner} --staking_pool ${stakingPoolAddress}`);
+    }
+
+    // AUTO-SET FACTORY: Configure Soroswap factory for finding liquidity pools
+    console.log(`[Factory Setup] Setting factory address: ${soroswapFactoryAddress}`);
+    try {
+      const factoryResult = await invokeVaultMethod(
+        contractAddress,
+        'set_factory',
+        [config.owner, soroswapFactoryAddress],
+        sourceKeypair,
+        network
+      );
+      
+      if (factoryResult.success) {
+        console.log(`[Factory Setup] ✅ Factory configured successfully`);
+        console.log(`[Factory Setup] TX: ${factoryResult.hash}`);
+      }
+    } catch (factoryError) {
+      console.error(`[Factory Setup] ⚠️  Failed to set factory:`, factoryError);
+      console.warn(`[Factory Setup] Vault deployed but factory not configured - liquidity action will not work`);
+      console.warn(`[Factory Setup] To manually set factory:`);
+      console.warn(`[Factory Setup] stellar contract invoke --id ${contractAddress} --source-account ${config.owner} -- set_factory --caller ${config.owner} --factory ${soroswapFactoryAddress}`);
     }
 
     return {

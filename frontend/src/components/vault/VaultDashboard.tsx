@@ -1,4 +1,6 @@
 import React, { useEffect, useState } from 'react';
+import { VaultPositions } from './VaultPositions';
+
 
 interface VaultState {
   totalShares: string;
@@ -347,6 +349,9 @@ export const VaultDashboard: React.FC<VaultDashboardProps> = ({
           <p className="text-gray-600">No rules configured</p>
         )}
       </div>
+
+      {/* Vault Positions - Staking & Liquidity */}
+      <VaultPositions vaultId={vaultId} />
     </div>
   );
 };

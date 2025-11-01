@@ -1,5 +1,5 @@
 // Rebalancing execution logic
-use soroban_sdk::{Env, Address, symbol_short, Symbol, Vec};
+use soroban_sdk::{Env, Address, symbol_short, Symbol, Vec, String};
 use crate::errors::VaultError;
 
 const CONFIG: Symbol = symbol_short!("CONFIG");
@@ -39,6 +39,105 @@ pub fn execute_rebalance(env: &Env) -> Result<(), VaultError> {
     Ok(())
 }
 
+/// Execute only rebalance actions (excludes stake and liquidity)
+pub fn execute_rebalance_only(env: &Env) -> Result<(), VaultError> {
+    use soroban_sdk::symbol_short;
+    
+    let config: crate::types::VaultConfig = env.storage().instance()
+        .get(&CONFIG)
+        .ok_or(VaultError::NotInitialized)?;
+    
+    let state: crate::types::VaultState = env.storage().instance()
+        .get(&STATE)
+        .ok_or(VaultError::NotInitialized)?;
+    
+    env.events().publish(
+        (symbol_short!("reb_start"),),
+        state.total_value
+    );
+    
+    if state.total_value == 0 {
+        return Err(VaultError::InsufficientBalance);
+    }
+    
+    // Execute only rebalance rules
+    for i in 0..config.rules.len() {
+        if let Some(rule) = config.rules.get(i) {
+            if rule.action == String::from_str(env, "rebalance") {
+                execute_rebalance_action(env, &rule, &config.assets, state.total_value)?;
+            }
+        }
+    }
+    
+    Ok(())
+}
+
+/// Execute only stake actions (excludes rebalance and liquidity)
+pub fn execute_stake_only(env: &Env) -> Result<(), VaultError> {
+    use soroban_sdk::symbol_short;
+    
+    let config: crate::types::VaultConfig = env.storage().instance()
+        .get(&CONFIG)
+        .ok_or(VaultError::NotInitialized)?;
+    
+    let state: crate::types::VaultState = env.storage().instance()
+        .get(&STATE)
+        .ok_or(VaultError::NotInitialized)?;
+    
+    env.events().publish(
+        (symbol_short!("stk_start"),),
+        state.total_value
+    );
+    
+    if state.total_value == 0 {
+        return Err(VaultError::InsufficientBalance);
+    }
+    
+    // Execute only stake rules
+    for i in 0..config.rules.len() {
+        if let Some(rule) = config.rules.get(i) {
+            if rule.action == String::from_str(env, "stake") {
+                execute_stake_action(env, &rule, &config.assets, state.total_value)?;
+            }
+        }
+    }
+    
+    Ok(())
+}
+
+/// Execute only liquidity actions (excludes rebalance and stake)
+pub fn execute_liquidity_only(env: &Env) -> Result<(), VaultError> {
+    use soroban_sdk::symbol_short;
+    
+    let config: crate::types::VaultConfig = env.storage().instance()
+        .get(&CONFIG)
+        .ok_or(VaultError::NotInitialized)?;
+    
+    let state: crate::types::VaultState = env.storage().instance()
+        .get(&STATE)
+        .ok_or(VaultError::NotInitialized)?;
+    
+    env.events().publish(
+        (symbol_short!("liq_start"),),
+        state.total_value
+    );
+    
+    if state.total_value == 0 {
+        return Err(VaultError::InsufficientBalance);
+    }
+    
+    // Execute only liquidity rules
+    for i in 0..config.rules.len() {
+        if let Some(rule) = config.rules.get(i) {
+            if rule.action == String::from_str(env, "liquidity") {
+                execute_liquidity_action(env, &rule, &config.assets, state.total_value)?;
+            }
+        }
+    }
+    
+    Ok(())
+}
+
 /// Execute the action specified in a rebalancing rule
 fn execute_rule_action(
     env: &Env, 
@@ -47,6 +146,12 @@ fn execute_rule_action(
     total_value: i128
 ) -> Result<(), VaultError> {
     use soroban_sdk::String;
+    
+    // Log the action we're executing
+    env.events().publish(
+        (symbol_short!("exec_act"),),
+        rule.action.clone()
+    );
     
     // Rebalance action: Adjust asset allocations to target percentages
     if rule.action == String::from_str(env, "rebalance") {
@@ -62,6 +167,12 @@ fn execute_rule_action(
     if rule.action == String::from_str(env, "liquidity") {
         return execute_liquidity_action(env, rule, assets, total_value);
     }
+    
+    // Log if no action matched
+    env.events().publish(
+        (symbol_short!("no_match"),),
+        rule.action.clone()
+    );
     
     Ok(())
 }
@@ -314,22 +425,43 @@ fn execute_stake_action(
         return Err(VaultError::InsufficientBalance);
     }
     
-    // In production, integrate with Stellar staking:
-    // For XLM staking on Stellar:
-    // 1. Identify validator/staking pool address
-    // 2. Create staking operation (delegate to validator)
-    // 3. Track staking position and rewards
+    // Get staking pool address from config
+    let config: crate::types::VaultConfig = env.storage().instance()
+        .get(&CONFIG)
+        .ok_or(VaultError::NotInitialized)?;
     
-    // For liquid staking tokens (like stXLM):
-    // let staking_pool_address = get_staking_pool_address(env)?;
-    // let staking_client = StakingPoolClient::new(env, &staking_pool_address);
-    // let st_tokens = staking_client.stake(
-    //     &env.current_contract_address(),
-    //     &stake_amount,
-    // );
+    let staking_pool = config.staking_pool_address
+        .ok_or(VaultError::InvalidConfiguration)?;
     
-    // Store staked amount in vault state
-    // This would be tracked in AssetBalance with staking metadata
+    // Stake tokens through liquid staking pool
+    // This will deposit XLM and receive stXLM (or similar) in return
+    let st_tokens_received = crate::staking_client::stake_tokens(
+        env,
+        &staking_pool,
+        &staking_token,
+        stake_amount,
+    )?;
+    
+    // Store staking position for tracking
+    let position = crate::types::StakingPosition {
+        staking_pool: staking_pool.clone(),
+        original_token: staking_token.clone(),
+        staked_amount: stake_amount,
+        st_token_amount: st_tokens_received,
+        timestamp: env.ledger().timestamp(),
+    };
+    
+    // Save position to storage
+    // Key: "stake_" + staking_pool address
+    let position_key = String::from_str(env, "stake_position");
+    env.storage().instance().set(&position_key, &position);
+    
+    // Emit staking event
+    crate::events::emit_vault_event(
+        env,
+        String::from_str(env, "tokens_staked"),
+        stake_amount,
+    );
     
     Ok(())
 }
@@ -356,12 +488,15 @@ fn execute_liquidity_action(
         return Err(VaultError::InsufficientBalance);
     }
     
-    // Get router address from config
+    // Get router and factory addresses from config
     let config: crate::types::VaultConfig = env.storage().instance()
         .get(&CONFIG)
         .ok_or(VaultError::NotInitialized)?;
     
     let router_address = config.router_address
+        .ok_or(VaultError::InvalidConfiguration)?;
+    
+    let factory_address = config.factory_address
         .ok_or(VaultError::InvalidConfiguration)?;
     
     // Use first two assets as liquidity pair
@@ -372,34 +507,93 @@ fn execute_liquidity_action(
     let balance_a = crate::token_client::get_vault_balance(env, &token_a);
     let balance_b = crate::token_client::get_vault_balance(env, &token_b);
     
-    // Calculate amounts to provide (proportional to current ratio)
-    let amount_a = liquidity_amount / 2;
-    let amount_b = liquidity_amount / 2;
+    // Find the liquidity pool for this pair
+    let pool_address = crate::pool_client::get_pool_for_pair(
+        env,
+        &factory_address,
+        &token_a,
+        &token_b,
+    )?;
+    
+    // Get pool reserves to calculate optimal amounts
+    use crate::pool_client::LiquidityPoolClient;
+    let pool_client = LiquidityPoolClient::new(env, &pool_address);
+    let (reserve_a, reserve_b) = pool_client.get_reserves();
+    
+    // Determine if token_a is token0 or token1 in the pool
+    let pool_token0 = pool_client.token_0();
+    let (reserve_a_correct, reserve_b_correct) = if &pool_token0 == &token_a {
+        (reserve_a, reserve_b)
+    } else {
+        (reserve_b, reserve_a)
+    };
+    
+    // Calculate amounts to provide based on pool ratio
+    // Start with half of liquidity_amount for each token
+    let mut amount_a = liquidity_amount / 2;
+    let mut amount_b = liquidity_amount / 2;
+    
+    // If pool has reserves, adjust to maintain ratio
+    if reserve_a_correct > 0 && reserve_b_correct > 0 {
+        // Calculate optimal amount_b for our amount_a
+        let optimal_b = crate::liquidity_router::get_optimal_liquidity_amounts(
+            env,
+            &router_address,
+            amount_a,
+            reserve_a_correct,
+            reserve_b_correct,
+        )?;
+        
+        if optimal_b <= balance_b {
+            amount_b = optimal_b;
+        } else {
+            // If we don't have enough of token_b, calculate based on available token_b
+            amount_b = balance_b.min(liquidity_amount / 2);
+            amount_a = amount_b
+                .checked_mul(reserve_a_correct)
+                .and_then(|v| v.checked_div(reserve_b_correct))
+                .unwrap_or(amount_a);
+        }
+    }
     
     // Verify we have sufficient balance
     if amount_a > balance_a || amount_b > balance_b {
         return Err(VaultError::InsufficientBalance);
     }
     
-    // Approve router to spend our tokens
-    crate::token_client::approve_router(env, &token_a, &router_address, amount_a)?;
-    crate::token_client::approve_router(env, &token_b, &router_address, amount_b)?;
+    // Add liquidity through router with 5% slippage tolerance
+    let (lp_tokens, actual_a, actual_b) = crate::liquidity_router::add_liquidity_to_pool(
+        env,
+        &router_address,
+        &token_a,
+        &token_b,
+        amount_a,
+        amount_b,
+        5, // 5% slippage
+    )?;
     
-    // In production, call router's add_liquidity function:
-    // let router_client = SoroswapRouterClient::new(env, &router_address);
-    // let (lp_amount, actual_a, actual_b) = router_client.add_liquidity(
-    //     &token_a,
-    //     &token_b,
-    //     &amount_a,
-    //     &amount_b,
-    //     &(amount_a * 95 / 100), // min_amount_a with 5% slippage
-    //     &(amount_b * 95 / 100), // min_amount_b with 5% slippage
-    //     &env.current_contract_address(),
-    //     &(env.ledger().timestamp() + 3600), // deadline
-    // );
+    // Store liquidity position for tracking
+    let position = crate::types::LiquidityPosition {
+        pool_address: pool_address.clone(),
+        token_a: token_a.clone(),
+        token_b: token_b.clone(),
+        lp_tokens,
+        amount_a_provided: actual_a,
+        amount_b_provided: actual_b,
+        timestamp: env.ledger().timestamp(),
+    };
     
-    // Store LP token position in vault state
-    // This would be tracked in a separate data structure in production
+    // Save position to storage
+    // Key: "lp_position_" + pool address
+    let position_key = String::from_str(env, "lp_position");
+    env.storage().instance().set(&position_key, &position);
+    
+    // Emit liquidity provision event
+    crate::events::emit_vault_event(
+        env,
+        String::from_str(env, "liquidity_provided"),
+        lp_tokens,
+    );
     
     Ok(())
 }

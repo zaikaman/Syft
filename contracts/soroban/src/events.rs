@@ -1,5 +1,5 @@
 // Event emissions for vault actions
-use soroban_sdk::{symbol_short, Address, Env, Symbol};
+use soroban_sdk::{symbol_short, Address, Env, Symbol, String};
 
 const DEPOSIT: Symbol = symbol_short!("deposit");
 const WITHDRAW: Symbol = symbol_short!("withdraw");
@@ -15,4 +15,8 @@ pub fn emit_withdraw(env: &Env, user: &Address, shares: i128, amount: i128) {
 
 pub fn emit_rebalance(env: &Env, timestamp: u64) {
     env.events().publish((REBALANCE,), timestamp);
+}
+
+pub fn emit_vault_event(env: &Env, event_type: String, amount: i128) {
+    env.events().publish((event_type,), amount);
 }

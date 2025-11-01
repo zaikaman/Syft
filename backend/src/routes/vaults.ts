@@ -94,11 +94,15 @@ async function initializeVaultContract(
     ).join('; '));
   }
   
-  // Build full VaultConfig struct (alphabetical order: assets, name, owner, router_address, rules)
+  // Build full VaultConfig struct (alphabetical order: assets, factory_address, name, owner, router_address, rules, staking_pool_address)
   const vaultConfigStruct = StellarSdk.xdr.ScVal.scvMap([
     new StellarSdk.xdr.ScMapEntry({
       key: StellarSdk.xdr.ScVal.scvSymbol(Buffer.from('assets')),
       val: StellarSdk.xdr.ScVal.scvVec(assetAddresses),
+    }),
+    new StellarSdk.xdr.ScMapEntry({
+      key: StellarSdk.xdr.ScVal.scvSymbol(Buffer.from('factory_address')),
+      val: StellarSdk.xdr.ScVal.scvVoid(), // Option::None
     }),
     new StellarSdk.xdr.ScMapEntry({
       key: StellarSdk.xdr.ScVal.scvSymbol(Buffer.from('name')),
@@ -110,12 +114,25 @@ async function initializeVaultContract(
     }),
     new StellarSdk.xdr.ScMapEntry({
       key: StellarSdk.xdr.ScVal.scvSymbol(Buffer.from('router_address')),
-      // Option::None in Soroban is encoded as Void, not an empty Vec
-      val: StellarSdk.xdr.ScVal.scvVoid(),
+      val: StellarSdk.xdr.ScVal.scvVoid(), // Option::None
     }),
     new StellarSdk.xdr.ScMapEntry({
       key: StellarSdk.xdr.ScVal.scvSymbol(Buffer.from('rules')),
       val: StellarSdk.xdr.ScVal.scvVec(rulesScVal), // Pass the actual rules!
+    }),
+    new StellarSdk.xdr.ScMapEntry({
+      key: StellarSdk.xdr.ScVal.scvSymbol(Buffer.from('staking_pool_address')),
+      val: (() => {
+        // Set staking pool address for testnet if any stake rules exist
+        const hasStakeRules = config.rules?.some((r: any) => r.action === 'stake');
+        if (hasStakeRules && network === 'testnet') {
+          const stakingPoolAddress = 'CDLZVYS4GWBUKQAJYX5DFXUH4N2NVPW6QQZNSG6GJUMU4LQYPVCQLKFK';
+          return StellarSdk.xdr.ScVal.scvVec([
+            StellarSdk.Address.fromString(stakingPoolAddress).toScVal()
+          ]); // Option::Some(Address)
+        }
+        return StellarSdk.xdr.ScVal.scvVoid(); // Option::None
+      })(),
     }),
   ]);
   
@@ -693,6 +710,10 @@ router.post('/build-initialize', async (req: Request, res: Response) => {
         val: StellarSdk.xdr.ScVal.scvVec(assetAddresses),
       }),
       new StellarSdk.xdr.ScMapEntry({
+        key: StellarSdk.xdr.ScVal.scvSymbol(Buffer.from('factory_address')),
+        val: StellarSdk.xdr.ScVal.scvVoid(), // Option::None
+      }),
+      new StellarSdk.xdr.ScMapEntry({
         key: StellarSdk.xdr.ScVal.scvSymbol(Buffer.from('name')),
         val: StellarSdk.nativeToScVal(config.name, { type: 'string' }),
       }),
@@ -702,11 +723,15 @@ router.post('/build-initialize', async (req: Request, res: Response) => {
       }),
       new StellarSdk.xdr.ScMapEntry({
         key: StellarSdk.xdr.ScVal.scvSymbol(Buffer.from('router_address')),
-        val: StellarSdk.nativeToScVal(null, { type: 'option' }),
+        val: StellarSdk.xdr.ScVal.scvVoid(), // Option::None
       }),
       new StellarSdk.xdr.ScMapEntry({
         key: StellarSdk.xdr.ScVal.scvSymbol(Buffer.from('rules')),
         val: StellarSdk.xdr.ScVal.scvVec([]),
+      }),
+      new StellarSdk.xdr.ScMapEntry({
+        key: StellarSdk.xdr.ScVal.scvSymbol(Buffer.from('staking_pool_address')),
+        val: StellarSdk.xdr.ScVal.scvVoid(), // Option::None
       }),
     ]);
 
@@ -1086,8 +1111,13 @@ router.post('/:vaultId/submit-deposit', async (req: Request, res: Response) => {
         .eq('vault_id', vaultId)
         .single();
       
-      // Only auto-rebalance if vault has rebalance rules configured
-      if (vault?.config?.rules && vault.config.rules.length > 0) {
+      // Only auto-rebalance if:
+      // 1. Vault has rebalance rules configured
+      // 2. Vault has multiple assets (single-asset vaults don't need rebalancing)
+      const hasMultipleAssets = vault?.config?.assets && vault.config.assets.length > 1;
+      const hasRebalanceRules = vault?.config?.rules && vault.config.rules.length > 0;
+      
+      if (hasRebalanceRules && hasMultipleAssets) {
         // Build rebalance transaction (force_rebalance, not trigger_rebalance)
         const { xdr: rebalanceXDR } = await buildRebalanceTransaction(
           vaultId,
@@ -1110,6 +1140,8 @@ router.post('/:vaultId/submit-deposit', async (req: Request, res: Response) => {
         
         // Sync vault state again after rebalance
         await syncVaultState(vaultId);
+      } else if (!hasMultipleAssets) {
+        console.log(`[Submit Deposit] Single-asset vault, skipping auto-rebalance`);
       } else {
         console.log(`[Submit Deposit] No rebalance rules configured, skipping auto-rebalance`);
       }
@@ -1984,6 +2016,99 @@ router.get('/user/:walletAddress', async (req: Request, res: Response) => {
     });
   } catch (error) {
     console.error('Error in GET /api/vaults/user/:walletAddress:', error);
+    return res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Internal server error',
+    });
+  }
+});
+
+// Get staking positions for a vault
+router.get('/:id/positions/staking', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+
+    const { data: positions, error } = await supabase
+      .from('vault_staking_positions')
+      .select('*')
+      .eq('vault_id', id)
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      throw error;
+    }
+
+    return res.json({
+      success: true,
+      data: positions || [],
+    });
+  } catch (error) {
+    console.error('Error fetching staking positions:', error);
+    return res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Internal server error',
+    });
+  }
+});
+
+// Get liquidity positions for a vault
+router.get('/:id/positions/liquidity', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+
+    const { data: positions, error } = await supabase
+      .from('vault_liquidity_positions')
+      .select('*')
+      .eq('vault_id', id)
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      throw error;
+    }
+
+    return res.json({
+      success: true,
+      data: positions || [],
+    });
+  } catch (error) {
+    console.error('Error fetching liquidity positions:', error);
+    return res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Internal server error',
+    });
+  }
+});
+
+// Get all positions (staking + liquidity) for a vault
+router.get('/:id/positions', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+
+    const [stakingResult, liquidityResult] = await Promise.all([
+      supabase
+        .from('vault_staking_positions')
+        .select('*')
+        .eq('vault_id', id)
+        .order('created_at', { ascending: false }),
+      supabase
+        .from('vault_liquidity_positions')
+        .select('*')
+        .eq('vault_id', id)
+        .order('created_at', { ascending: false }),
+    ]);
+
+    if (stakingResult.error) throw stakingResult.error;
+    if (liquidityResult.error) throw liquidityResult.error;
+
+    return res.json({
+      success: true,
+      data: {
+        staking: stakingResult.data || [],
+        liquidity: liquidityResult.data || [],
+      },
+    });
+  } catch (error) {
+    console.error('Error fetching vault positions:', error);
     return res.status(500).json({
       success: false,
       error: error instanceof Error ? error.message : 'Internal server error',

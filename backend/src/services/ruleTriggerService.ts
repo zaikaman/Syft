@@ -111,20 +111,22 @@ async function checkIfRebalanceNeeded(rule: any, vault: any): Promise<boolean> {
       // Parse total value from contract (it's in stroops for XLM)
       totalValue = Number(vaultState.totalValue) / 10_000_000; // Convert stroops to XLM
       
-      // NOTE: For contract-based vaults, we currently distribute the total value among assets
-      // based on the target allocation proportions (since the contract only returns total value).
-      // This is a limitation - ideally the contract should expose individual asset balances
-      // or allocation percentages. For now, we assume the contract is managing allocations
-      // and only check if there's sufficient value for rebalancing to be worthwhile.
-      // In this simplified check, we'll assume the vault is already at target allocation.
+      // For stake and liquidity actions, always allow rebalancing if there's any value
+      // These actions don't depend on allocation drift
+      if (rule.action === 'stake' || rule.action === 'provide_liquidity') {
+        console.log(`  ✓ ${rule.action} action - rebalance allowed (TVL: ${totalValue.toFixed(2)} XLM)`);
+        return totalValue > 0; // Allow if there's any value to stake/provide
+      }
+      
+      // For rebalance actions, only trigger if total value is significant enough
       console.log(`  Contract vault total value: ${totalValue.toFixed(2)} XLM`);
       console.log(`  ⚠️  Note: Contract-based vault - cannot verify individual asset allocations`);
       console.log(`  ✓ Assuming contract is managing allocations correctly`);
       
-      // For contract vaults, we can't verify actual drift, so we'll allow rebalancing
-      // if the total value is significant enough (> 10 XLM)
+      // For contract vaults doing rebalance, we can't verify actual drift, so we'll allow rebalancing
+      // if the total value is significant enough (>= 1 XLM)
       // The contract's rebalance function will handle the actual allocation logic
-      return totalValue > 10;
+      return totalValue >= 1;
     } else {
       // For regular wallet addresses, use fetchAssetBalances
       const { fetchAssetBalances } = await import('./assetService.js');
@@ -337,7 +339,7 @@ export function startRuleMonitoring(
     } catch (error) {
       console.error('Error in rule monitoring loop:', error);
     }
-  }, 120000); // Check every 2 minutes (reduced from 60 seconds to avoid overwhelming Horizon)
+  }, 60000); // Check every 1 minute
 
   return interval;
 }

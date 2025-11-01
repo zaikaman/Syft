@@ -19,6 +19,28 @@ async function resolveAssetName(contractAddress: string, network: string): Promi
     return cached.name;
   }
 
+  // Known token addresses for quick lookup
+  const knownTokens: { [key: string]: { [key: string]: string } } = {
+    'testnet': {
+      'CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC': 'XLM',
+      'CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA': 'USDC',
+    },
+    'futurenet': {
+      'CB64D3G7SM2RTH6JSGG34DDTFTQ5CFDKVDZJZSODMCX4NJ2HV2KN7OHT': 'XLM',
+    },
+    'mainnet': {
+      'CAS3J7GYLGXMF6TDJBBYYSE3HQ6BBSMLNUQ34T6TZMYMW2EVH34XOWMA': 'XLM',
+    },
+  };
+
+  // Check known tokens first
+  const networkTokens = knownTokens[network.toLowerCase()];
+  if (networkTokens && networkTokens[contractAddress]) {
+    const name = networkTokens[contractAddress];
+    assetNameCache.set(contractAddress, { name, timestamp: Date.now() });
+    return name;
+  }
+
   try {
     // Fetch from Soroswap API
     const response = await fetch('https://api.soroswap.finance/api/tokens');
