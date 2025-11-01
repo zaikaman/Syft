@@ -321,10 +321,10 @@ const Dashboard = () => {
     },
     {
       label: 'Weighted APY',
-      value: portfolioAnalytics?.weightedAPY 
+      value: portfolioAnalytics?.weightedAPY !== null && portfolioAnalytics?.weightedAPY !== undefined
         ? `${portfolioAnalytics.weightedAPY.toFixed(2)}%`
         : 'N/A',
-      change: portfolioAnalytics?.averageAPY 
+      change: portfolioAnalytics?.averageAPY !== null && portfolioAnalytics?.averageAPY !== undefined
         ? `Avg: ${portfolioAnalytics.averageAPY.toFixed(2)}%`
         : 'No data yet',
       icon: Percent,
