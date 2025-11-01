@@ -3,6 +3,7 @@
 
 import { Router, Request, Response } from 'express';
 import { supabase } from '../lib/supabase.js';
+import { generateVaultNFTImage, generateVaultPrompt } from '../services/runwareService.js';
 
 const router = Router();
 
@@ -83,6 +84,25 @@ router.post('/mint', async (req: Request, res: Response) => {
     // Use vault contract address or generate placeholder
     const contractAddress = vault.contract_address || `pending_${vaultId}`;
 
+    // Generate AI image if not provided
+    let finalImageUrl = metadata.imageUrl;
+    if (!finalImageUrl || finalImageUrl.trim() === '') {
+      console.log(`[Mint NFT] Generating AI image for ${nftId}`);
+      const prompt = generateVaultPrompt(
+        vault.name || 'Vault',
+        vault.description,
+        ownershipPctPercent
+      );
+      finalImageUrl = await generateVaultNFTImage(prompt);
+      console.log(`[Mint NFT] Generated image URL: ${finalImageUrl}`);
+    }
+
+    // Update metadata with final image URL
+    const finalMetadata = {
+      ...metadata,
+      imageUrl: finalImageUrl,
+    };
+
     // Store NFT in database
     const { data: nft, error: nftError } = await supabase
       .from('vault_nfts')
@@ -94,7 +114,7 @@ router.post('/mint', async (req: Request, res: Response) => {
         ownership_percentage: ownershipPctPercent,
         original_owner: ownerAddress,
         current_holder: ownerAddress,
-        metadata: metadata,
+        metadata: finalMetadata,
         minted_at: new Date().toISOString(),
       })
       .select()
@@ -204,6 +224,25 @@ router.post('/:vaultId/nft', async (req: Request, res: Response) => {
     const nftId = `nft_${vaultId}_${timestamp}`;
     const tokenId = `token_${vaultId}_${timestamp}`;
 
+    // Generate AI image if not provided
+    let finalImageUrl = metadata.imageUrl;
+    if (!finalImageUrl || finalImageUrl.trim() === '') {
+      console.log(`[Mint NFT] Generating AI image for ${nftId}`);
+      const prompt = generateVaultPrompt(
+        vault.name || 'Vault',
+        vault.description,
+        ownershipPctPercent
+      );
+      finalImageUrl = await generateVaultNFTImage(prompt);
+      console.log(`[Mint NFT] Generated image URL: ${finalImageUrl}`);
+    }
+
+    // Update metadata with final image URL
+    const finalMetadata = {
+      ...metadata,
+      imageUrl: finalImageUrl,
+    };
+
     // Store NFT in database (use vault.id which is the UUID)
     const { data: nft, error: nftError } = await supabase
       .from('vault_nfts')
@@ -217,7 +256,7 @@ router.post('/:vaultId/nft', async (req: Request, res: Response) => {
         // schema uses `current_holder` for the holder address
         current_holder: walletAddress,
         original_owner: walletAddress,
-        metadata: metadata,
+        metadata: finalMetadata,
         minted_at: new Date().toISOString(),
       })
       .select()

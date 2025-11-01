@@ -51,7 +51,7 @@ export function MintNFT({ vaultId, vaultName, vaultPerformance, onMintSuccess }:
           metadata: {
             name: nftName,
             description: description || `${ownershipPct}% ownership of ${vaultName}`,
-            imageUrl: imageUrl || `https://api.dicebear.com/7.x/shapes/svg?seed=${vaultId}`,
+            imageUrl: imageUrl || '', // Backend will generate AI image if empty
             vaultPerformance: vaultPerformance,
           },
           walletAddress,

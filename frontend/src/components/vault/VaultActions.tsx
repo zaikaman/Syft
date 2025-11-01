@@ -130,12 +130,82 @@ export const VaultActions: React.FC<VaultActionsProps> = ({
 
       console.log(`[VaultActions] ✅ Deposit successful! TX: ${submitData.data.transactionHash}`);
 
+      // For multi-asset vaults, automatically trigger rebalance after deposit
+      let rebalanceSuccess = false;
+      try {
+        console.log(`[VaultActions] Triggering auto-rebalance after deposit...`);
+        
+        // Build rebalance transaction
+        const rebalanceResponse = await fetch(
+          `http://localhost:3001/api/vaults/${vaultId}/build-rebalance`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              userAddress: address,
+              network: normalizedNetwork,
+            }),
+          }
+        );
+
+        const rebalanceData = await rebalanceResponse.json();
+        console.log(`[VaultActions] Rebalance build response:`, rebalanceData);
+
+        if (rebalanceResponse.ok && rebalanceData.success) {
+          console.log(`[VaultActions] Rebalance transaction built, requesting signature...`);
+          
+          // Sign rebalance transaction
+          const { wallet } = await import('../../util/wallet');
+          const { signedTxXdr: rebalanceSignedXdr } = await wallet.signTransaction(rebalanceData.data.xdr, {
+            networkPassphrase: networkPassphrase || 'Test SDF Network ; September 2015',
+          });
+
+          console.log(`[VaultActions] Rebalance transaction signed, submitting...`);
+
+          // Submit rebalance transaction
+          const submitRebalanceResponse = await fetch(
+            `http://localhost:3001/api/vaults/${vaultId}/submit-rebalance`,
+            {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                signedXDR: rebalanceSignedXdr,
+                network: normalizedNetwork,
+              }),
+            }
+          );
+
+          const submitRebalanceData = await submitRebalanceResponse.json();
+          console.log(`[VaultActions] Rebalance submit response:`, submitRebalanceData);
+
+          if (submitRebalanceResponse.ok && submitRebalanceData.success) {
+            console.log(`[VaultActions] ✅ Auto-rebalance successful!`);
+            rebalanceSuccess = true;
+          } else {
+            console.error(`[VaultActions] ❌ Rebalance submit failed:`, submitRebalanceData.error);
+          }
+        } else {
+          console.error(`[VaultActions] ❌ Rebalance build failed:`, rebalanceData.error);
+        }
+      } catch (rebalanceError) {
+        console.error(`[VaultActions] ❌ Auto-rebalance exception:`, rebalanceError);
+        // Don't fail the deposit if rebalance fails
+      }
+
       setMessage({
         type: 'success',
-        text: `Successfully deposited ${amount} XLM!`,
+        text: rebalanceSuccess 
+          ? `Successfully deposited ${amount} XLM and rebalanced to target allocation!`
+          : `Successfully deposited ${amount} XLM! (Rebalance skipped - click Rebalance button if needed)`,
       });
       modal.message(
-        `Successfully deposited ${amount} XLM!`,
+        rebalanceSuccess 
+          ? `Deposited ${amount} XLM and rebalanced!`
+          : `Deposited ${amount} XLM successfully!`,
         'Deposit Complete',
         'success'
       );
@@ -321,6 +391,13 @@ export const VaultActions: React.FC<VaultActionsProps> = ({
           </div>
           <p className="text-sm text-neutral-400 mt-2">
             Deposit assets to receive vault shares
+          </p>
+        </div>
+
+        {/* Note about auto-rebalance */}
+        <div className="p-3 bg-primary-500/10 border border-primary-500/30 rounded-lg">
+          <p className="text-sm text-primary-400">
+            💡 <strong>Auto-Rebalance:</strong> After depositing, you'll be prompted to sign a second transaction to rebalance assets to the target allocation (70% USDC / 30% XLM). This requires two signatures due to Stellar platform limitations.
           </p>
         </div>
 

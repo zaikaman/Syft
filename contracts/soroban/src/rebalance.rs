@@ -7,6 +7,8 @@ const STATE: Symbol = symbol_short!("STATE");
 
 /// Execute rebalancing of vault assets according to rules
 pub fn execute_rebalance(env: &Env) -> Result<(), VaultError> {
+    use soroban_sdk::symbol_short;
+    
     // Get vault configuration
     let config: crate::types::VaultConfig = env.storage().instance()
         .get(&CONFIG)
@@ -15,6 +17,12 @@ pub fn execute_rebalance(env: &Env) -> Result<(), VaultError> {
     let state: crate::types::VaultState = env.storage().instance()
         .get(&STATE)
         .ok_or(VaultError::NotInitialized)?;
+    
+    // Log rebalance start
+    env.events().publish(
+        (symbol_short!("reb_start"),),
+        state.total_value
+    );
     
     // Ensure vault has assets to rebalance
     if state.total_value == 0 {
@@ -137,9 +145,20 @@ fn execute_rebalance_action(
     
     // Skip rebalancing if already at target allocation
     if !needs_rebalance {
+        // Log that rebalance was skipped
+        env.events().publish(
+            (symbol_short!("reb_skip"),),
+            tolerance
+        );
         // No error, just skip - allocation is already correct
         return Ok(());
     }
+    
+    // Log that we're proceeding with swaps
+    env.events().publish(
+        (symbol_short!("reb_exec"),),
+        true
+    );
     
     // Execute swaps to reach target allocation
     for i in 0..assets.len() {
@@ -157,6 +176,12 @@ fn execute_rebalance_action(
             
             if diff > 0 {
                 // Need to buy more of this asset
+                // Log what we're trying to buy
+                env.events().publish(
+                    (symbol_short!("need_buy"),),
+                    (asset.clone(), diff)
+                );
+                
                 // Find an asset we have excess of to sell
                 for j in 0..assets.len() {
                     if i == j {
@@ -168,17 +193,39 @@ fn execute_rebalance_action(
                         current_balances.get(j),
                         target_amounts.get(j)
                     ) {
+                        // Log what we're checking
+                        env.events().publish(
+                            (symbol_short!("check_src"),),
+                            (source_asset.clone(), source_current, source_target)
+                        );
+                        
                         if source_current > source_target {
                             // This asset has excess, use it as source
-                            let amount_to_swap = diff.min(source_current - source_target);
+                            let excess = source_current - source_target;
+                            let amount_to_swap = if diff < excess { diff } else { excess };
+                            
+                            env.events().publish(
+                                (symbol_short!("calc_swap"),),
+                                (excess, amount_to_swap)
+                            );
                             
                             // Skip if amount is negligible
                             if amount_to_swap <= 0 {
+                                env.events().publish(
+                                    (symbol_short!("skip_amt"),),
+                                    amount_to_swap
+                                );
                                 continue;
                             }
                             
                             // Calculate minimum output with 1% slippage tolerance
                             let min_amount_out = (diff * 99) / 100;
+                            
+                            // Log swap attempt
+                            env.events().publish(
+                                (symbol_short!("swap_try"),),
+                                (source_asset.clone(), asset.clone(), amount_to_swap)
+                            );
                             
                             // Approve router to spend our tokens
                             crate::token_client::approve_router(
@@ -188,15 +235,37 @@ fn execute_rebalance_action(
                                 amount_to_swap,
                             )?;
                             
+                            env.events().publish(
+                                (symbol_short!("approved"),),
+                                amount_to_swap
+                            );
+                            
                             // Execute swap through router
-                            let amount_out = crate::swap_router::swap_via_router(
+                            // Note: If this fails, the entire transaction will fail
+                            let amount_out = match crate::swap_router::swap_via_router(
                                 env,
                                 &router_address,
                                 &source_asset,
                                 &asset,
                                 amount_to_swap,
                                 min_amount_out,
-                            )?;
+                            ) {
+                                Ok(amt) => {
+                                    env.events().publish(
+                                        (symbol_short!("swapped"),),
+                                        amt
+                                    );
+                                    amt
+                                },
+                                Err(e) => {
+                                    // Log the error and propagate it
+                                    env.events().publish(
+                                        (symbol_short!("swap_err"),),
+                                        symbol_short!("failed")
+                                    );
+                                    return Err(e);
+                                }
+                            };
                             
                             // Update balances after swap
                             current_balances.set(j, source_current - amount_to_swap);

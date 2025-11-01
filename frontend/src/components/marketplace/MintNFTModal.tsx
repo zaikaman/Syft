@@ -54,7 +54,7 @@ export function MintNFTModal({ isOpen, onClose, vaultId, vaultName, onSuccess }:
           metadata: {
             name: nftName,
             description: description || `${ownershipPct}% ownership of ${vaultName}`,
-            imageUrl: imageUrl || `https://api.dicebear.com/7.x/shapes/svg?seed=${vaultId}`,
+            imageUrl: imageUrl || '', // Backend will generate AI image if empty
             vaultPerformance: 0,
           },
           walletAddress,

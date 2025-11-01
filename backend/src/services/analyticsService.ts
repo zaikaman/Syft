@@ -867,66 +867,73 @@ export async function getPortfolioAllocation(
 
     if (totalTVL === 0) return [];
 
-    // Calculate asset allocation based on vault TVL and their configured asset allocations
+    // Calculate asset allocation based on ACTUAL on-chain balances, not configured allocations
     const assetMap = new Map<string, number>();
 
     for (let i = 0; i < vaults.length; i++) {
       const vault = vaults[i];
-      const analytics = vaultAnalytics[i];
-      const vaultTVL = analytics.tvl;
-      const assets = vault.config?.assets || [];
-
-      // Get target allocations from asset configuration (allocation percentages from vault builder)
-      const targetAllocations = new Map<string, number>();
       
-      console.log(`[getPortfolioAllocation] Processing vault ${vault.vault_id}:`, {
-        assetsCount: assets.length,
-        assetsRaw: assets,
-      });
+      console.log(`[getPortfolioAllocation] Processing vault ${vault.vault_id}`);
       
-      for (const asset of assets) {
-        // Extract asset key and allocation percentage
-        let assetKey: string;
-        let allocation: number = 0;
+      // Get actual on-chain state with real token balances
+      try {
+        const { monitorVaultState } = await import('./vaultMonitorService.js');
+        const vaultState = await monitorVaultState(vault.contract_address, vault.network);
         
-        if (typeof asset === 'string') {
-          assetKey = asset;
-          allocation = 100 / assets.length; // Equal distribution if no allocation specified
-          console.log(`[getPortfolioAllocation] String asset: ${assetKey}, allocation: ${allocation}%`);
-        } else if (asset && typeof asset === 'object') {
-          assetKey = asset.code || asset.issuer || 'UNKNOWN';
-          allocation = asset.allocation || (100 / assets.length);
-          console.log(`[getPortfolioAllocation] Object asset: ${assetKey}, allocation: ${allocation}%`, asset);
+        if (vaultState && vaultState.assetBalances && vaultState.assetBalances.length > 0) {
+          console.log(`[getPortfolioAllocation] Got ${vaultState.assetBalances.length} asset balances from contract`);
+          
+          // Use actual on-chain balances
+          for (const assetBalance of vaultState.assetBalances) {
+            const assetAddr = assetBalance.asset;
+            const balanceInStroops = parseFloat(assetBalance.balance);
+            
+            // Skip zero balances
+            if (balanceInStroops === 0) continue;
+            
+            // Convert stroops to USD
+            const { stroopsToUSD } = await import('./priceService.js');
+            const valueUSD = await stroopsToUSD(balanceInStroops);
+            
+            // Resolve asset name from contract address
+            let assetCode = await resolveAssetName(assetAddr, network);
+            
+            console.log(`[getPortfolioAllocation] Asset ${assetCode}: ${balanceInStroops} stroops = $${valueUSD.toFixed(2)}`);
+            
+            const currentValue = assetMap.get(assetCode) || 0;
+            assetMap.set(assetCode, currentValue + valueUSD);
+          }
         } else {
-          continue;
-        }
-        
-        targetAllocations.set(assetKey, allocation);
-      }
+          // Fallback: use configured allocations if we can't get actual balances
+          console.warn(`[getPortfolioAllocation] No asset balances from contract, falling back to configured allocations`);
+          
+          const analytics = vaultAnalytics[i];
+          const vaultTVL = analytics.tvl;
+          const assets = vault.config?.assets || [];
 
-      for (const asset of assets) {
-        // Assets can be either strings (e.g., "XLM" or contract address) or objects with code property
-        let assetKey = typeof asset === 'string' ? asset : (asset.code || 'UNKNOWN');
-        let assetCode = assetKey;
-        
-        // If it looks like a contract address (starts with C and is 56 chars), try to resolve it
-        if (typeof assetCode === 'string' && assetCode.startsWith('C') && assetCode.length === 56) {
-          assetCode = await resolveAssetName(assetCode, network);
-        }
-        // If it's a classic issuer (starts with G), extract from issuer if available
-        else if (typeof assetCode === 'string' && assetCode.startsWith('G') && assetCode.length === 56) {
-          assetCode = 'CLASSIC_ASSET'; // Fallback for unresolved classic assets
-        }
+          for (const asset of assets) {
+            let assetKey = typeof asset === 'string' ? asset : (asset.code || 'UNKNOWN');
+            let assetCode = assetKey;
+            
+            // Resolve contract addresses
+            if (typeof assetCode === 'string' && assetCode.startsWith('C') && assetCode.length === 56) {
+              assetCode = await resolveAssetName(assetCode, network);
+            }
 
-        // Calculate value based on target allocation or equal distribution
-        const allocation = targetAllocations.size > 0
-          ? (targetAllocations.get(assetKey) || 0) 
-          : (100 / assets.length);
-        
-        const assetValue = (vaultTVL * allocation) / 100;
-        
-        const currentValue = assetMap.get(assetCode) || 0;
-        assetMap.set(assetCode, currentValue + assetValue);
+            // Use equal distribution as fallback
+            const allocation = typeof asset === 'object' && asset.allocation 
+              ? asset.allocation 
+              : (100 / assets.length);
+            
+            const assetValue = (vaultTVL * allocation) / 100;
+            
+            const currentValue = assetMap.get(assetCode) || 0;
+            assetMap.set(assetCode, currentValue + assetValue);
+          }
+        }
+      } catch (error) {
+        console.error(`[getPortfolioAllocation] Error getting vault state for ${vault.vault_id}:`, error);
+        // Continue with next vault
       }
     }
 

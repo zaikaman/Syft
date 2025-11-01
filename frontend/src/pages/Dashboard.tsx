@@ -393,7 +393,8 @@ const Dashboard = () => {
           animate={{ opacity: 1, y: 0 }}
           className="mb-8"
         >
-          <h1 className="text-3xl md:text-4xl font-bold mb-2 text-neutral-50">
+          <h1 className="text-3xl md:text-4xl font-bold mb-2 text-neutral-50 flex items-center gap-3">
+            <Activity className="w-8 h-8 text-primary-500" />
             Dashboard
           </h1>
           <p className="text-neutral-400">

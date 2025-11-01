@@ -62,6 +62,38 @@ async function initializeVaultContract(
     return asset; // Assume it's already an address
   }).map((addr: string) => StellarSdk.Address.fromString(addr).toScVal());
   
+  // Convert rules to Soroban ScVal format
+  const rulesScVal = (config.rules || []).map((rule: any) => {
+    // Build RebalanceRule struct (fields must be alphabetically ordered!)
+    return StellarSdk.xdr.ScVal.scvMap([
+      new StellarSdk.xdr.ScMapEntry({
+        key: StellarSdk.xdr.ScVal.scvSymbol(Buffer.from('action')),
+        val: StellarSdk.nativeToScVal(rule.action, { type: 'string' }),
+      }),
+      new StellarSdk.xdr.ScMapEntry({
+        key: StellarSdk.xdr.ScVal.scvSymbol(Buffer.from('condition_type')),
+        val: StellarSdk.nativeToScVal(rule.condition_type, { type: 'string' }),
+      }),
+      new StellarSdk.xdr.ScMapEntry({
+        key: StellarSdk.xdr.ScVal.scvSymbol(Buffer.from('target_allocation')),
+        val: StellarSdk.xdr.ScVal.scvVec(
+          rule.target_allocation.map((alloc: number) => StellarSdk.nativeToScVal(alloc, { type: 'i128' }))
+        ),
+      }),
+      new StellarSdk.xdr.ScMapEntry({
+        key: StellarSdk.xdr.ScVal.scvSymbol(Buffer.from('threshold')),
+        val: StellarSdk.nativeToScVal(rule.threshold, { type: 'i128' }),
+      }),
+    ]);
+  });
+  
+  console.log(`[initializeVaultContract] Converting ${config.rules?.length || 0} rules to ScVal format`);
+  if (config.rules && config.rules.length > 0) {
+    console.log(`[initializeVaultContract] Rules:`, config.rules.map((r: any, i: number) => 
+      `Rule ${i}: ${r.action} with allocation ${r.target_allocation?.join(', ')}`
+    ).join('; '));
+  }
+  
   // Build full VaultConfig struct (alphabetical order: assets, name, owner, router_address, rules)
   const vaultConfigStruct = StellarSdk.xdr.ScVal.scvMap([
     new StellarSdk.xdr.ScMapEntry({
@@ -83,7 +115,7 @@ async function initializeVaultContract(
     }),
     new StellarSdk.xdr.ScMapEntry({
       key: StellarSdk.xdr.ScVal.scvSymbol(Buffer.from('rules')),
-      val: StellarSdk.xdr.ScVal.scvVec([]), // Empty rules array
+      val: StellarSdk.xdr.ScVal.scvVec(rulesScVal), // Pass the actual rules!
     }),
   ]);
   
@@ -1037,6 +1069,183 @@ router.post('/:vaultId/submit-deposit', async (req: Request, res: Response) => {
 
     await syncVaultState(vaultId);
 
+    // IMPORTANT: Automatically trigger rebalance after successful deposit
+    // This is done in a SEPARATE transaction because Soroban requires explicit user authorization
+    // The deposit transaction transfers tokens, the rebalance transaction swaps to target allocation
+    let rebalanceTxHash: string | undefined;
+    try {
+      console.log(`[Submit Deposit] Triggering auto-rebalance after deposit...`);
+      
+      // Import the rebalance helper
+      const { buildRebalanceTransaction } = await import('../services/vaultActionService.js');
+      
+      // Get vault info to check if it has rules requiring rebalance
+      const { data: vault } = await supabase
+        .from('vaults')
+        .select('config')
+        .eq('vault_id', vaultId)
+        .single();
+      
+      // Only auto-rebalance if vault has rebalance rules configured
+      if (vault?.config?.rules && vault.config.rules.length > 0) {
+        // Build rebalance transaction (force_rebalance, not trigger_rebalance)
+        const { xdr: rebalanceXDR } = await buildRebalanceTransaction(
+          vaultId,
+          userAddress,
+          network,
+          true // force = true to skip rule checks
+        );
+        
+        // Parse transaction
+        const rebalanceTx = StellarSdk.TransactionBuilder.fromXDR(
+          rebalanceXDR,
+          servers.networkPassphrase
+        );
+        
+        // Submit rebalance transaction
+        const rebalanceResult = await servers.horizonServer.submitTransaction(rebalanceTx);
+        rebalanceTxHash = rebalanceResult.hash;
+        
+        console.log(`[Submit Deposit] ✅ Auto-rebalance completed: ${rebalanceTxHash}`);
+        
+        // Sync vault state again after rebalance
+        await syncVaultState(vaultId);
+      } else {
+        console.log(`[Submit Deposit] No rebalance rules configured, skipping auto-rebalance`);
+      }
+    } catch (rebalanceError) {
+      console.error('[Submit Deposit] Auto-rebalance failed (non-critical):', rebalanceError);
+      // Don't fail the deposit if rebalance fails - just log it
+      // The user can manually trigger rebalance later
+    }
+
+    return res.json({
+      success: true,
+      data: {
+        transactionHash: txHash,
+        rebalanceTransactionHash: rebalanceTxHash,
+        autoRebalanced: !!rebalanceTxHash,
+      },
+    });
+  } catch (error) {
+    console.error('Error in POST /api/vaults/:vaultId/submit-deposit:', error);
+    return res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Internal server error',
+    });
+  }
+});
+
+/**
+ * POST /api/vaults/:vaultId/build-rebalance
+ * Build unsigned rebalance transaction for user to sign
+ */
+router.post('/:vaultId/build-rebalance', async (req: Request, res: Response) => {
+  try {
+    const { vaultId } = req.params;
+    const { userAddress, network } = req.body;
+
+    if (!userAddress) {
+      return res.status(400).json({
+        success: false,
+        error: 'Missing required field: userAddress',
+      });
+    }
+
+    // Get vault from database
+    const { data: vault, error: vaultError } = await supabase
+      .from('vaults')
+      .select('*')
+      .eq('vault_id', vaultId)
+      .single();
+
+    if (vaultError || !vault) {
+      return res.status(404).json({
+        success: false,
+        error: 'Vault not found',
+      });
+    }
+
+    const servers = getNetworkServers(network);
+    const userAccount = await servers.horizonServer.loadAccount(userAddress);
+
+    // Build transaction to call force_rebalance (bypasses rule checks for post-deposit swaps)
+    const contract = new StellarSdk.Contract(vault.contract_address);
+    const operation = contract.call('force_rebalance');
+
+    let transaction = new StellarSdk.TransactionBuilder(userAccount, {
+      fee: StellarSdk.BASE_FEE,
+      networkPassphrase: servers.networkPassphrase,
+    })
+      .addOperation(operation)
+      .setTimeout(300)
+      .build();
+
+    // Simulate transaction
+    const simulationResponse = await servers.sorobanServer.simulateTransaction(transaction);
+    
+    if (StellarSdk.rpc.Api.isSimulationError(simulationResponse)) {
+      throw new Error(`Simulation failed: ${simulationResponse.error}`);
+    }
+
+    // Assemble transaction
+    transaction = StellarSdk.rpc.assembleTransaction(transaction, simulationResponse).build();
+
+    return res.json({
+      success: true,
+      data: {
+        xdr: transaction.toXDR(),
+        contractAddress: vault.contract_address,
+      },
+    });
+  } catch (error) {
+    console.error('Error in POST /api/vaults/:vaultId/build-rebalance:', error);
+    return res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Internal server error',
+    });
+  }
+});
+
+/**
+ * POST /api/vaults/:vaultId/submit-rebalance
+ * Submit signed rebalance transaction
+ */
+router.post('/:vaultId/submit-rebalance', async (req: Request, res: Response) => {
+  try {
+    const { vaultId } = req.params;
+    const { signedXDR, network } = req.body;
+
+    if (!signedXDR) {
+      return res.status(400).json({
+        success: false,
+        error: 'Missing required field: signedXDR',
+      });
+    }
+
+    console.log(`[Submit Rebalance] Submitting signed rebalance transaction...`);
+
+    const servers = getNetworkServers(network);
+    const transaction = StellarSdk.TransactionBuilder.fromXDR(signedXDR, servers.networkPassphrase);
+    
+    const txResponse = await servers.horizonServer.submitTransaction(transaction);
+    const txHash = txResponse.hash;
+
+    console.log(`[Submit Rebalance] ✅ Transaction submitted successfully: ${txHash}`);
+
+    // Invalidate cache and sync state
+    const { data: vault } = await supabase
+      .from('vaults')
+      .select('contract_address')
+      .eq('vault_id', vaultId)
+      .single();
+
+    if (vault?.contract_address) {
+      invalidateVaultCache(vault.contract_address);
+    }
+
+    await syncVaultState(vaultId);
+
     return res.json({
       success: true,
       data: {
@@ -1044,7 +1253,7 @@ router.post('/:vaultId/submit-deposit', async (req: Request, res: Response) => {
       },
     });
   } catch (error) {
-    console.error('Error in POST /api/vaults/:vaultId/submit-deposit:', error);
+    console.error('Error in POST /api/vaults/:vaultId/submit-rebalance:', error);
     return res.status(500).json({
       success: false,
       error: error instanceof Error ? error.message : 'Internal server error',

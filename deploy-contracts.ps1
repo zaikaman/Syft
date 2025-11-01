@@ -137,11 +137,8 @@ if ($EXISTING_FACTORY) {
     Write-Host "✅ Factory initialized`n" -ForegroundColor Green
 }
 
-# Step 3: Update .env
-Write-Host "💾 Step 3: Updating .env..." -ForegroundColor Yellow
-
-$envContent = Get-Content .env
-$updated = $false
+# Step 3: Update .env files
+Write-Host "💾 Step 3: Updating .env files..." -ForegroundColor Yellow
 
 # Determine which env variable to update based on network
 $envVarName = if ($NETWORK -eq "futurenet") {
@@ -152,15 +149,33 @@ $envVarName = if ($NETWORK -eq "futurenet") {
     "VAULT_FACTORY_CONTRACT_ID"
 }
 
-# Update the appropriate factory contract ID
-if ($envContent -match "$envVarName=") {
-    $envContent = $envContent -replace "$envVarName=.*", "$envVarName=$FACTORY_ADDRESS"
-} else {
-    $envContent += "`n$envVarName=$FACTORY_ADDRESS"
+# Update root .env
+if (Test-Path .env) {
+    $envContent = Get-Content .env
+    if ($envContent -match "$envVarName=") {
+        $envContent = $envContent -replace "$envVarName=.*", "$envVarName=$FACTORY_ADDRESS"
+    } else {
+        $envContent += "`n$envVarName=$FACTORY_ADDRESS"
+    }
+    Set-Content .env $envContent
+    Write-Host "✅ Root .env updated ($envVarName)" -ForegroundColor Green
 }
 
-Set-Content .env $envContent
-Write-Host "✅ .env updated ($envVarName)`n" -ForegroundColor Green
+# Update backend/.env
+if (Test-Path backend\.env) {
+    $backendEnvContent = Get-Content backend\.env
+    if ($backendEnvContent -match "$envVarName=") {
+        $backendEnvContent = $backendEnvContent -replace "$envVarName=.*", "$envVarName=$FACTORY_ADDRESS"
+    } else {
+        $backendEnvContent += "`n$envVarName=$FACTORY_ADDRESS"
+    }
+    Set-Content backend\.env $backendEnvContent
+    Write-Host "✅ Backend .env updated ($envVarName)" -ForegroundColor Green
+} else {
+    Write-Host "⚠️  backend/.env not found, skipping" -ForegroundColor Yellow
+}
+
+Write-Host ""
 
 # Summary
 Write-Host "═══════════════════════════════════" -ForegroundColor Cyan

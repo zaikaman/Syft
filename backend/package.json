@@ -20,6 +20,7 @@
   "author": "",
   "license": "MIT",
   "dependencies": {
+    "@runware/sdk-js": "^1.1.50",
     "@stellar/stellar-sdk": "^14.3.0",
     "@supabase/supabase-js": "^2.39.0",
     "@tavily/core": "^0.5.12",

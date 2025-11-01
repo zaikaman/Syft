@@ -44,13 +44,15 @@ function getAssetAddressFromCode(assetCode: string, network?: string): string {
 /**
  * Build unsigned deposit transaction for user to sign
  * @param depositToken - The token address the user is depositing (will be auto-swapped if not base token)
+ * @param withRebalance - If true, includes a rebalance operation in the same transaction
  */
 export async function buildDepositTransaction(
   vaultId: string,
   userAddress: string,
   amount: string,
   network?: string,
-  depositToken?: string
+  depositToken?: string,
+  withRebalance: boolean = true
 ): Promise<{ xdr: string; contractAddress: string }> {
   try {
     // Get vault from database
@@ -91,16 +93,19 @@ export async function buildDepositTransaction(
     }
 
     console.log(`[Build Deposit TX] Using deposit token: ${tokenAddress}`);
+    console.log(`[Build Deposit TX] With auto-rebalance: ${withRebalance}`);
 
-    // Build deposit operation using deposit_with_token to enable auto-swap
-    const operation = contract.call(
+    // Build deposit operation using deposit_with_token
+    const depositOperation = contract.call(
       'deposit_with_token',
       StellarSdk.Address.fromString(userAddress).toScVal(),
       StellarSdk.nativeToScVal(BigInt(amount), { type: 'i128' }),
       StellarSdk.Address.fromString(tokenAddress).toScVal()
     );
 
-    // Build transaction
+    // Build transaction with deposit operation only
+    // NOTE: Stellar doesn't support multiple contract invocations in one transaction
+    // So we can't batch deposit + rebalance. Frontend will handle sequential signing.
     let transaction = new StellarSdk.TransactionBuilder(userAccount, {
       fee: StellarSdk.BASE_FEE,
       networkPassphrase: servers.network === 'futurenet' 
@@ -109,11 +114,11 @@ export async function buildDepositTransaction(
         ? StellarSdk.Networks.PUBLIC
         : StellarSdk.Networks.TESTNET,
     })
-      .addOperation(operation)
+      .addOperation(depositOperation)
       .setTimeout(300)
       .build();
 
-    console.log(`[Build Deposit TX] Simulating transaction...`);
+    console.log(`[Build Deposit TX] Simulating batch transaction...`);
 
     // Simulate transaction to get resource footprint
     const simulationResponse = await servers.sorobanServer.simulateTransaction(transaction);
@@ -139,7 +144,7 @@ export async function buildDepositTransaction(
       simulationResponse
     ).build();
 
-    console.log(`[Build Deposit TX] Transaction built successfully, returning XDR for signing`);
+    console.log(`[Build Deposit TX] Batch transaction built successfully (${withRebalance ? 'with' : 'without'} rebalance)`);
 
     return {
       xdr: transaction.toXDR(),
@@ -147,6 +152,84 @@ export async function buildDepositTransaction(
     };
   } catch (error) {
     console.error('Error building deposit transaction:', error);
+    throw error;
+  }
+}
+
+/**
+ * Build unsigned rebalance transaction
+ * @param force - If true, uses force_rebalance (bypasses rule checks), otherwise uses trigger_rebalance
+ */
+export async function buildRebalanceTransaction(
+  vaultId: string,
+  userAddress: string,
+  network?: string,
+  force: boolean = true
+): Promise<{ xdr: string; contractAddress: string }> {
+  try {
+    // Get vault from database
+    const { data: vault, error } = await supabase
+      .from('vaults')
+      .select('*')
+      .eq('vault_id', vaultId)
+      .single();
+
+    if (error || !vault) {
+      throw new Error('Vault not found');
+    }
+
+    // Get network-specific servers
+    const servers = getNetworkServers(network);
+    
+    // Load user account
+    const userAccount = await servers.horizonServer.loadAccount(userAddress);
+
+    // Create contract instance
+    const contract = new StellarSdk.Contract(vault.contract_address);
+
+    // Build rebalance operation
+    // Use force_rebalance to bypass rule checks (for post-deposit swaps)
+    // Use trigger_rebalance to respect configured rules
+    const methodName = force ? 'force_rebalance' : 'trigger_rebalance';
+    const operation = contract.call(methodName);
+
+    // Build transaction
+    let transaction = new StellarSdk.TransactionBuilder(userAccount, {
+      fee: StellarSdk.BASE_FEE,
+      networkPassphrase: servers.network === 'futurenet' 
+        ? StellarSdk.Networks.FUTURENET
+        : servers.network === 'mainnet' || servers.network === 'public'
+        ? StellarSdk.Networks.PUBLIC
+        : StellarSdk.Networks.TESTNET,
+    })
+      .addOperation(operation)
+      .setTimeout(300)
+      .build();
+
+    console.log(`[Build Rebalance TX] Simulating ${methodName} transaction...`);
+
+    // Simulate transaction to get resource footprint
+    const simulationResponse = await servers.sorobanServer.simulateTransaction(transaction);
+    
+    if (StellarSdk.rpc.Api.isSimulationError(simulationResponse)) {
+      console.error(`[Build Rebalance TX] Simulation error:`, simulationResponse);
+      throw new Error(`Rebalance simulation failed: ${simulationResponse.error || 'Unknown error'}`);
+    }
+
+    // Assemble transaction with simulation results
+    transaction = StellarSdk.rpc.assembleTransaction(
+      transaction,
+      simulationResponse
+    ).build();
+
+    console.log(`[Build Rebalance TX] Transaction built successfully`);
+
+    return {
+      xdr: transaction.toXDR(),
+      contractAddress: vault.contract_address,
+    };
+  } catch (error) {
+    console.error('Error building rebalance transaction:', error);
     throw error;
   }
 }

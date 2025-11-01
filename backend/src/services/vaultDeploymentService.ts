@@ -824,6 +824,37 @@ export async function deployVault(
     console.log(`[Vault Initialization] Initializing vault contract...`);
     
     try {
+      // Convert rules to Soroban ScVal format
+      // Each RebalanceRule is a struct with: condition_type, threshold, action, target_allocation
+      const rulesScVal = config.rules.map(rule => {
+        // Build RebalanceRule struct (fields must be alphabetically ordered!)
+        return StellarSdk.xdr.ScVal.scvMap([
+          new StellarSdk.xdr.ScMapEntry({
+            key: StellarSdk.xdr.ScVal.scvSymbol(Buffer.from('action')),
+            val: StellarSdk.nativeToScVal(rule.action, { type: 'string' }),
+          }),
+          new StellarSdk.xdr.ScMapEntry({
+            key: StellarSdk.xdr.ScVal.scvSymbol(Buffer.from('condition_type')),
+            val: StellarSdk.nativeToScVal(rule.condition_type, { type: 'string' }),
+          }),
+          new StellarSdk.xdr.ScMapEntry({
+            key: StellarSdk.xdr.ScVal.scvSymbol(Buffer.from('target_allocation')),
+            val: StellarSdk.xdr.ScVal.scvVec(
+              rule.target_allocation.map(alloc => StellarSdk.nativeToScVal(alloc, { type: 'i128' }))
+            ),
+          }),
+          new StellarSdk.xdr.ScMapEntry({
+            key: StellarSdk.xdr.ScVal.scvSymbol(Buffer.from('threshold')),
+            val: StellarSdk.nativeToScVal(rule.threshold, { type: 'i128' }),
+          }),
+        ]);
+      });
+      
+      console.log(`[Vault Initialization] Converted ${config.rules.length} rules to ScVal format`);
+      console.log(`[Vault Initialization] Rules:`, config.rules.map((r, i) => 
+        `Rule ${i}: ${r.action} with allocation ${r.target_allocation.join(', ')}`
+      ).join('; '));
+      
       // Build VaultConfig struct for initialization
       // IMPORTANT: ScMap entries MUST be sorted alphabetically by key!
       const vaultConfigStruct = StellarSdk.xdr.ScVal.scvMap([
@@ -845,7 +876,7 @@ export async function deployVault(
         }),
         new StellarSdk.xdr.ScMapEntry({
           key: StellarSdk.xdr.ScVal.scvSymbol(Buffer.from('rules')), // 'r' comes last (rules)
-          val: StellarSdk.xdr.ScVal.scvVec([]), // Empty rules for now
+          val: StellarSdk.xdr.ScVal.scvVec(rulesScVal), // Pass the actual rules!
         }),
       ]);
       
@@ -874,7 +905,8 @@ export async function deployVault(
       name: config.name,
       description: 'Deployed vault from visual builder',
       config: {
-        assets: config.assets,
+        // Store full asset objects with allocations if available, otherwise use simple asset codes
+        assets: (config as any).assetsWithAllocations || config.assets,
         rules: config.rules,
         router_address: routerAddress,
       },

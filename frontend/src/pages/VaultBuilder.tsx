@@ -1,7 +1,7 @@
 import { motion, AnimatePresence } from 'framer-motion';
 import { useState, useCallback, useEffect } from 'react';
 import type { Node, Edge } from '@xyflow/react';
-import { Save, Play, Undo2, Redo2, FileText, AlertCircle, FolderOpen, X, Clock, CheckCircle, Eye, EyeOff } from 'lucide-react';
+import { Save, Box, Play, Undo2, Redo2, FileText, AlertCircle, FolderOpen, X, Clock, CheckCircle, Eye, EyeOff } from 'lucide-react';
 import { Button, useModal } from '../components/ui';
 import BlockPalette from '../components/builder/BlockPalette';
 import VaultCanvas from '../components/builder/VaultCanvas';
@@ -266,19 +266,44 @@ const VaultBuilder = () => {
         name: vaultName,
         description: vaultDescription,
         isPublic,
+        // For deployment, send just the asset addresses/codes
         assets: config.assets.map(asset => {
           // If issuer exists (contract address or classic issuer), use it; otherwise use code
           // Backend accepts contract addresses (C...) or known symbols (XLM, USDC, etc.)
           return asset.issuer || asset.code;
         }),
-        rules: config.rules.map(rule => ({
-          condition_type: rule.condition.type,
-          threshold: rule.condition.parameters.threshold || 0,
-          action: rule.action.type,
-          target_allocation: rule.action.parameters.targetAllocation 
-            ? [rule.action.parameters.targetAllocation as number]
-            : [0],
-        })),
+        // Keep full asset config with allocations for database storage
+        assetsWithAllocations: config.assets,
+        rules: config.rules.map(rule => {
+          // For rebalance actions, gather all asset allocations into target_allocation array
+          let targetAllocation: number[] = [0];
+          
+          if (rule.action.type === 'rebalance') {
+            // Convert asset allocations from percentages to basis points (100_0000 = 100%)
+            // The target_allocation array must match the order of assets
+            targetAllocation = config.assets.map(asset => {
+              const percentage = asset.allocation || 0;
+              // Convert to contract format: 70% -> 700000 (representing 70.0000%)
+              // Contract expects sum to equal 1000000 (100_0000) for 100%
+              return Math.round(percentage * 10000);
+            });
+            
+            console.log('[VaultBuilder] Asset allocations:', 
+              config.assets.map(a => `${a.code}: ${a.allocation}%`).join(', ')
+            );
+            console.log('[VaultBuilder] Target allocation (basis points):', targetAllocation);
+          } else if (rule.action.parameters.targetAllocation) {
+            // For non-rebalance actions, use the provided target allocation
+            targetAllocation = [rule.action.parameters.targetAllocation as number];
+          }
+          
+          return {
+            condition_type: rule.condition.type,
+            threshold: rule.condition.parameters.threshold || 0,
+            action: rule.action.type,
+            target_allocation: targetAllocation,
+          };
+        }),
       };
 
       const normalizedNetwork = normalizeNetwork(network, networkPassphrase);
@@ -559,7 +584,10 @@ const VaultBuilder = () => {
           <div className="flex items-center justify-between">
             {/* Left: Title & Vault Name */}
             <div className="flex items-center gap-4">
-              <h1 className="text-lg font-bold text-neutral-50">Vault Builder</h1>
+              <h1 className="text-lg font-bold text-neutral-50 flex items-center gap-3">
+                <Box className="w-8 h-8 text-primary-500" />
+                Vault Builder
+              </h1>
               <div className="h-6 w-px bg-default"></div>
               <input
                 type="text"

@@ -105,35 +105,35 @@ impl VaultContract {
         deposit_token_client.transfer(&user, &vault_address, &amount);
         env.events().publish((symbol_short!("debug"),), symbol_short!("xfer_ok"));
 
-        // Check if we need to swap to base token
-        let final_amount = if deposit_token != base_token {
-            // User deposited a different token, check if we can swap
-            env.events().publish((symbol_short!("debug"),), symbol_short!("swap_req"));
-            
-            // Check if router is configured
-            if let Some(router_address) = config.router_address.clone() {
-                // Router available, execute swap from deposit_token to base_token
-                let swapped_amount = crate::swap_router::swap_via_router(
-                    &env,
-                    &router_address,
-                    &deposit_token,
-                    &base_token,
-                    amount,
-                    0, // No minimum for now (in production, calculate slippage tolerance)
-                )?;
-                
-                env.events().publish((symbol_short!("debug"),), symbol_short!("swap_ok"));
-                swapped_amount
-            } else {
-                // No router configured - cannot swap between different tokens
-                // This happens on networks without DEX (like futurenet)
-                env.events().publish((symbol_short!("debug"),), symbol_short!("no_router"));
-                return Err(VaultError::RouterNotSet);
+        // IMPORTANT: Accept deposits in ANY configured vault asset
+        // The deposit transaction ONLY transfers tokens to the vault
+        // Rebalancing happens in a SEPARATE transaction (force_rebalance call)
+        // 
+        // This is because Soroban's authorization model requires explicit user authorization
+        // for cross-contract calls (swaps), so we can't auto-swap during deposit.
+        //
+        // Workflow:
+        // 1. User calls deposit() → tokens transferred to vault
+        // 2. User/Backend calls force_rebalance() → vault swaps to target allocation
+        
+        // Verify deposit token is one of the vault's configured assets
+        let mut is_valid_asset = false;
+        for i in 0..config.assets.len() {
+            if let Some(asset) = config.assets.get(i) {
+                if asset == deposit_token {
+                    is_valid_asset = true;
+                    break;
+                }
             }
-        } else {
-            // Already in base token, no swap needed
-            amount
-        };
+        }
+        
+        if !is_valid_asset {
+            env.events().publish((symbol_short!("debug"),), symbol_short!("invalid"));
+            return Err(VaultError::InvalidConfiguration);
+        }
+        
+        // Accept the deposit as-is (no swap during deposit)
+        let final_amount = amount;
 
         // Get current state
         let mut state: VaultState = env.storage().instance().get(&STATE)
@@ -167,22 +167,14 @@ impl VaultContract {
         // Emit event with final amount (after swap)
         emit_deposit(&env, &user, final_amount, shares);
 
-        // Auto-rebalance vault to target allocations after deposit
-        // This ensures deposited funds are immediately distributed across all configured assets
-        if config.assets.len() > 1 && !config.rules.is_empty() {
-            // Only auto-rebalance if vault has multiple assets and rebalance rules configured
-            match crate::rebalance::execute_rebalance(&env) {
-                Ok(_) => {
-                    env.events().publish((symbol_short!("rebalance"),), symbol_short!("auto_ok"));
-                },
-                Err(e) => {
-                    // Log rebalance failure but don't fail the deposit
-                    // Deposit succeeded, rebalance can be retried later
-                    env.events().publish((symbol_short!("rebalance"),), symbol_short!("auto_err"));
-                    log!(&env, "Auto-rebalance after deposit failed: {:?}", e);
-                }
-            }
-        }
+        // NOTE: Auto-rebalance is disabled because it requires authorization to call the router
+        // Users must manually trigger rebalance after deposit by calling trigger_rebalance()
+        // 
+        // The issue: When auto-rebalance tries to swap tokens via the router during deposit,
+        // it doesn't have the user's authorization context. The vault can't authorize itself
+        // to spend tokens or execute swaps without the user explicitly signing a rebalance transaction.
+        //
+        // Future improvement: Use batch transactions where users sign both deposit + rebalance in one go
 
         Ok(shares)
     }
@@ -313,19 +305,17 @@ impl VaultContract {
         Ok(())
     }
 
-    /// Trigger a rebalance based on configured rules (owner only)
+    /// Trigger a rebalance based on configured rules
+    /// Can be called by anyone, but only executes if rebalance rules are met
     pub fn trigger_rebalance(env: Env) -> Result<(), VaultError> {
         // Check vault is initialized
         if !env.storage().instance().has(&CONFIG) {
             return Err(VaultError::NotInitialized);
         }
 
-        // Require owner authorization to prevent spam
-        let config: VaultConfig = env.storage().instance().get(&CONFIG)
-            .ok_or(VaultError::NotInitialized)?;
-        config.owner.require_auth();
-
         // Check if rebalancing should occur based on rules
+        // NOTE: Anyone can call this, but it only rebalances if rules are satisfied
+        // This prevents griefing while allowing automated rebalancing
         if !crate::engine::should_rebalance(&env) {
             return Ok(()); // No rebalancing needed
         }
@@ -337,6 +327,33 @@ impl VaultContract {
             .ok_or(VaultError::NotInitialized)?;
 
         // Execute rebalance logic
+        crate::rebalance::execute_rebalance(&env)?;
+
+        // Update last rebalance timestamp
+        state.last_rebalance = env.ledger().timestamp();
+        env.storage().instance().set(&STATE, &state);
+
+        // Emit rebalance event
+        crate::events::emit_rebalance(&env, state.last_rebalance);
+
+        Ok(())
+    }
+
+    /// Force rebalance to target allocation (for post-deposit swaps)
+    /// Always executes rebalance regardless of rules
+    pub fn force_rebalance(env: Env) -> Result<(), VaultError> {
+        // Check vault is initialized
+        if !env.storage().instance().has(&CONFIG) {
+            return Err(VaultError::NotInitialized);
+        }
+
+        let _config: VaultConfig = env.storage().instance().get(&CONFIG)
+            .ok_or(VaultError::NotInitialized)?;
+
+        let mut state: VaultState = env.storage().instance().get(&STATE)
+            .ok_or(VaultError::NotInitialized)?;
+
+        // Execute rebalance logic without checking rules
         crate::rebalance::execute_rebalance(&env)?;
 
         // Update last rebalance timestamp

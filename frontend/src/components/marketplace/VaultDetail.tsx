@@ -281,6 +281,7 @@ export function VaultDetail({ vaultId, listingId }: VaultDetailProps) {
           <div className="flex justify-between items-start mb-3">
             <div className="flex-1">
               <div className="flex items-center gap-3 mb-2">
+                <Package className="w-8 h-8 text-primary-500" />
                 <h1 className="text-2xl md:text-3xl font-bold text-neutral-50">
                   {vault.name || vault.config?.name || 'Unnamed Vault'}
                 </h1>

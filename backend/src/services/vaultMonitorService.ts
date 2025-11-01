@@ -282,19 +282,60 @@ export async function monitorVaultState(
           
           console.log('[monitorVaultState] Found assets:', assetAddresses);
           
-          // Now query balance for each asset
+          // Now query balance for each asset from token contracts
           if (assetAddresses.length > 0 && parseFloat(totalValue) > 0) {
-            // For now, distribute value equally across assets (simplified)
-            // In production, we would query actual balances from token contracts
-            const valuePerAsset = (parseFloat(totalValue) / assetAddresses.length).toString();
+            console.log('[monitorVaultState] Querying actual token balances for each asset...');
             
-            assetBalances = assetAddresses.map(assetAddr => ({
-              asset: assetAddr,
-              balance: valuePerAsset, // Simplified - actual balance would need token contract query
-              value: valuePerAsset,
+            // Query actual balance from each token contract
+            assetBalances = await Promise.all(assetAddresses.map(async (assetAddr) => {
+              try {
+                // Query token balance: token.balance(vault_address)
+                const balanceResult = await invokeVaultMethod(
+                  assetAddr, // Token contract address
+                  'balance',
+                  [contractAddress], // Vault address as parameter
+                  sourceKeypair,
+                  vaultNetwork
+                );
+                
+                if (balanceResult.success && balanceResult.result) {
+                  // Parse the balance (should be i128)
+                  const balanceScVal = balanceResult.result;
+                  let balance = '0';
+                  
+                  if (balanceScVal && typeof balanceScVal === 'bigint') {
+                    balance = balanceScVal.toString();
+                  } else if (balanceScVal && typeof balanceScVal === 'object' && '_switch' in balanceScVal) {
+                    const decoded = StellarSdk.scValToNative(balanceScVal);
+                    balance = (typeof decoded === 'bigint' ? decoded : BigInt(decoded || 0)).toString();
+                  }
+                  
+                  console.log(`[monitorVaultState] Token ${assetAddr.slice(0, 8)}... balance: ${balance} stroops`);
+                  
+                  return {
+                    asset: assetAddr,
+                    balance: balance,
+                    value: balance, // In stroops - will be converted to USD by analytics service
+                  };
+                } else {
+                  console.warn(`[monitorVaultState] Failed to query balance for ${assetAddr}: ${balanceResult.error}`);
+                  return {
+                    asset: assetAddr,
+                    balance: '0',
+                    value: '0',
+                  };
+                }
+              } catch (balanceError) {
+                console.error(`[monitorVaultState] Error querying balance for ${assetAddr}:`, balanceError);
+                return {
+                  asset: assetAddr,
+                  balance: '0',
+                  value: '0',
+                };
+              }
             }));
             
-            console.log('[monitorVaultState] Asset balances:', assetBalances);
+            console.log('[monitorVaultState] Actual asset balances:', assetBalances);
           }
         }
       } catch (configError) {

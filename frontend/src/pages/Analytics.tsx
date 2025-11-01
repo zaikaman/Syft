@@ -318,7 +318,10 @@ const Analytics = () => {
           {/* Header */}
           <div className="flex flex-col md:flex-row md:justify-between md:items-center gap-4">
             <div>
-              <h1 className="text-3xl font-bold text-neutral-50 mb-2">Portfolio Analytics</h1>
+              <h1 className="text-3xl font-bold text-neutral-50 mb-2 flex items-center gap-3">
+                <Activity className="w-8 h-8 text-primary-500" />
+                Portfolio Analytics
+              </h1>
               <p className="text-neutral-400">
                 Deep insights into your vault performance and returns
               </p>

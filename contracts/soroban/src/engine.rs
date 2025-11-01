@@ -83,8 +83,8 @@ fn evaluate_allocation_condition(env: &Env, _rule: &RebalanceRule) -> bool {
             last_rebalance: 0,
         });
     
-    // If vault has value, check if rebalance is needed
-    // threshold represents max drift percentage (e.g., 5%)
+    // Always allow rebalancing if vault has deposits
+    // In production, this would calculate actual drift from target allocation
     state.total_value > 0
 }
 

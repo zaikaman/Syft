@@ -8,7 +8,6 @@ import VaultDetail from "./pages/VaultDetail";
 import Marketplace from "./pages/Marketplace";
 import Analytics from "./pages/Analytics";
 import Backtests from "./pages/Backtests";
-import NFTs from "./pages/NFTs";
 import Suggestions from "./pages/Suggestions";
 
 import AppLayout from "./layouts/AppLayout";
@@ -49,7 +48,6 @@ function App() {
         <Route path="marketplace" element={<Marketplace />} />
         <Route path="analytics" element={<Analytics />} />
         <Route path="backtests" element={<Backtests />} />
-        <Route path="nfts" element={<NFTs />} />
         <Route path="suggestions" element={<Suggestions />} />
 
         <Route path="vaults/:vaultId" element={<VaultDetail />} />

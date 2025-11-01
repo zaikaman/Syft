@@ -9,6 +9,8 @@ mod events;
 mod errors;
 mod token_client;
 mod swap_router;
+mod soroswap_router;
+mod pool_client;  // Direct pool interaction
 // mod factory;  // Factory should be a separate contract
 // mod vault_nft;  // VaultNFT should be a separate contract
 // mod nft_types;
