@@ -286,18 +286,56 @@ CRITICAL: Every node MUST have ALL required fields populated. Do not leave any d
    }
    
 3. **Action Nodes**: Define what happens when conditions are met
-   Structure:
+   
+   FOR REBALANCE ACTIONS:
    {
      "id": "action-0",
      "type": "action",
      "position": { "x": 900, "y": 100 },
      "data": {
-       "actionType": "rebalance" | "stake" | "provide_liquidity" | "swap",  // REQUIRED
+       "actionType": "rebalance",                  // REQUIRED
        "label": "Rebalance Portfolio",             // REQUIRED - display name
-       "targetAsset": "XLM",                       // Optional - for stake/swap actions
-       "targetAllocation": 50,                     // Optional - for rebalance actions
-       "protocol": "Aquarius",                     // Optional - for stake/liquidity actions
-       "parameters": {}                            // Optional - additional config
+       "description": "Rebalance to target allocations"  // REQUIRED
+     }
+   }
+   
+   FOR SWAP ACTIONS:
+   {
+     "id": "action-1",
+     "type": "action",
+     "position": { "x": 900, "y": 250 },
+     "data": {
+       "actionType": "swap",                       // REQUIRED
+       "label": "Swap to USDC",                    // REQUIRED - display name
+       "targetAsset": "USDC",                      // REQUIRED - asset to swap to
+       "description": "Swap assets to USDC"       // REQUIRED
+     }
+   }
+   
+   FOR STAKE ACTIONS:
+   {
+     "id": "action-2",
+     "type": "action",
+     "position": { "x": 900, "y": 400 },
+     "data": {
+       "actionType": "stake",                      // REQUIRED
+       "label": "Stake XLM",                       // REQUIRED - display name
+       "targetAsset": "XLM",                       // REQUIRED - asset to stake
+       "protocol": "Aquarius",                     // Optional - staking protocol
+       "description": "Stake XLM for yield"       // REQUIRED
+     }
+   }
+   
+   FOR PROVIDE LIQUIDITY ACTIONS:
+   {
+     "id": "action-3",
+     "type": "action",
+     "position": { "x": 900, "y": 550 },
+     "data": {
+       "actionType": "provide_liquidity",          // REQUIRED
+       "label": "Add Liquidity",                   // REQUIRED - display name
+       "protocol": "Soroswap",                     // REQUIRED - liquidity protocol
+       "description": "Provide liquidity to pool" // REQUIRED
      }
    }
    
@@ -390,7 +428,13 @@ IMPORTANT RULES (when building):
    - allocation: MUST have threshold AND operator
    - apy_threshold: MUST have threshold AND operator
    - ALL conditions MUST have label AND description
-7. **Every condition MUST connect to an action**
+7. **Every action MUST have ALL required fields**:
+   - ALL actions MUST have actionType, label, AND description
+   - swap: MUST have targetAsset (which asset to swap to)
+   - stake: MUST have targetAsset (which asset to stake)
+   - provide_liquidity: MUST have protocol
+   - rebalance: label and description only
+8. **Every condition MUST connect to an action**
 8. **Assets should connect to conditions** (showing they're affected by rules)
 9. **Provide helpful explanation and suggestions**
 10. If user mentions assets not in whitelist, explain available testnet tokens and suggest alternatives from the whitelist
@@ -729,6 +773,56 @@ Be conversational and helpful. Build vaults only when the user is ready and has 
         if (!node.data.description) {
           console.warn(`[NLVaultGenerator] Condition ${node.id} missing description, generating one`);
           node.data.description = `Auto-generated condition`;
+        }
+      });
+
+      // Validate and fix action nodes
+      const actionNodes = parsed.nodes.filter((n: Node) => n.type === 'action');
+      actionNodes.forEach((node: Node) => {
+        if (!node.data) {
+          node.data = {};
+        }
+
+        const actionType = node.data.actionType as string;
+
+        // Ensure actionType exists
+        if (!actionType) {
+          console.warn(`[NLVaultGenerator] Action ${node.id} missing actionType, setting to 'rebalance'`);
+          node.data.actionType = 'rebalance';
+        }
+
+        // Validate based on action type
+        switch (actionType) {
+          case 'swap':
+            if (!node.data.targetAsset) {
+              console.warn(`[NLVaultGenerator] Action ${node.id} is swap but missing targetAsset, setting to 'USDC'`);
+              node.data.targetAsset = 'USDC';
+            }
+            break;
+
+          case 'stake':
+            if (!node.data.targetAsset) {
+              console.warn(`[NLVaultGenerator] Action ${node.id} is stake but missing targetAsset, setting to 'XLM'`);
+              node.data.targetAsset = 'XLM';
+            }
+            break;
+
+          case 'provide_liquidity':
+            if (!node.data.protocol) {
+              console.warn(`[NLVaultGenerator] Action ${node.id} is provide_liquidity but missing protocol, setting to 'Soroswap'`);
+              node.data.protocol = 'Soroswap';
+            }
+            break;
+        }
+
+        // Ensure label and description exist
+        if (!node.data.label) {
+          console.warn(`[NLVaultGenerator] Action ${node.id} missing label, generating one`);
+          node.data.label = `${actionType.charAt(0).toUpperCase() + actionType.slice(1).replace('_', ' ')} Action`;
+        }
+        if (!node.data.description) {
+          console.warn(`[NLVaultGenerator] Action ${node.id} missing description, generating one`);
+          node.data.description = `Auto-generated ${actionType} action`;
         }
       });
 
