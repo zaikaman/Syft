@@ -82,7 +82,7 @@ router.post('/sessions', async (req: Request, res: Response) => {
  * Get all sessions (optionally filtered by user or wallet address)
  * GET /api/chat/sessions?userId=xxx or ?walletAddress=xxx
  */
-router.get('/sessions', async (req: Request, res: Response) => {
+router.get('/sessions', async (req: Request, res: Response): Promise<void> => {
   try {
     const { userId, walletAddress, limit } = req.query;
     
@@ -102,10 +102,11 @@ router.get('/sessions', async (req: Request, res: Response) => {
       if (userError) {
         console.log('[Chat API] User not found for wallet:', walletAddress, userError.message);
         // Return empty array if user doesn't exist yet
-        return res.json({
+        res.json({
           success: true,
           data: [],
         });
+        return;
       }
       
       if (userData) {
@@ -161,17 +162,18 @@ router.get('/sessions', async (req: Request, res: Response) => {
  * Get a specific session
  * GET /api/chat/sessions/:sessionId
  */
-router.get('/sessions/:sessionId', async (req: Request, res: Response) => {
+router.get('/sessions/:sessionId', async (req: Request, res: Response): Promise<void> => {
   try {
     const { sessionId } = req.params;
 
     const session = await chatHistoryService.getSession(sessionId);
 
     if (!session) {
-      return res.status(404).json({
+      res.status(404).json({
         success: false,
         error: 'Session not found',
       });
+      return;
     }
 
     res.json({
@@ -237,16 +239,17 @@ router.delete('/sessions/:sessionId', async (req: Request, res: Response) => {
  * Update session status
  * PATCH /api/chat/sessions/:sessionId/status
  */
-router.patch('/sessions/:sessionId/status', async (req: Request, res: Response) => {
+router.patch('/sessions/:sessionId/status', async (req: Request, res: Response): Promise<void> => {
   try {
     const { sessionId } = req.params;
     const { status } = req.body;
 
     if (!['active', 'completed', 'abandoned'].includes(status)) {
-      return res.status(400).json({
+      res.status(400).json({
         success: false,
         error: 'Invalid status',
       });
+      return;
     }
 
     await chatHistoryService.updateSessionStatus(sessionId, status);
