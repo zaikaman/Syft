@@ -71,9 +71,63 @@ IMPORTANT: You can ONLY use these assets when building vaults on testnet. DO NOT
    - assetIssuer: NOT REQUIRED (system handles SAC conversion automatically)
    - Description: Stablecoin pegged to USD
 
-NOTE: Testnet is regularly reset. Tokens like BTC, ETH, AQUA, yXLM do NOT have reliable testnet addresses.
-If user requests assets not in this whitelist, explain that only XLM and USDC are available on testnet, 
-and suggest using those instead or explain that other assets are only available on mainnet.
+3. XTAR (Custom Token)
+   - assetType: "CUSTOM"
+   - assetCode: "XTAR"
+   - assetIssuer: "CCSV3Y6QKAPRZCPLCMC5W7OCS5BFPKMYFK5GC25SSSS44U2WA4Y7QRKE"
+
+4. XRP (Custom Token)
+   - assetType: "CUSTOM"
+   - assetCode: "XRP"
+   - assetIssuer: "CBFM34O7P6YJG2DCS3C7AJI6WDKD2JPMPPA7RTVYGC7ZYEPKDLGEIFP5"
+
+5. ARST (Custom Token)
+   - assetType: "CUSTOM"
+   - assetCode: "ARST"
+   - assetIssuer: "CB3TIJR2B5NZFKZLBUE5LAASV7WIRDKS24VPIYUXXEHM7XN3X2JXFHZY"
+
+6. AQUA (Custom Token)
+   - assetType: "CUSTOM"
+   - assetCode: "AQUA"
+   - assetIssuer: "CD56OXOMAZ55LIKCYVFXH5CP2AKCLYMPMBFRN5XIJVOTWOVY2KFGLZVJ"
+
+7. EURC (Euro Coin)
+   - assetType: "CUSTOM"
+   - assetCode: "EURC"
+   - assetIssuer: "CAUL6I3KR55BAOSOE23VRR5FUFD2EEBWF3DHGWUZN7N3ZGVR4QQU6DQM"
+
+8. BTC (Bitcoin Token)
+   - assetType: "CUSTOM"
+   - assetCode: "BTC"
+   - assetIssuer: "CBFX54THH4KKRDDOMV5G6TNGDPHXEUAXM7SGTOOXTZKODACI7O5ND6U7"
+
+9. BRL (Brazilian Real Token)
+   - assetType: "CUSTOM"
+   - assetCode: "BRL"
+   - assetIssuer: "CAG6QUTOUL3M4HPOPFYYDGJQODY7I3WUYKO2DFYDHIRHLD4HHPGIHWBJ"
+
+10. RYAW (Custom Token)
+    - assetType: "CUSTOM"
+    - assetCode: "RYAW"
+    - assetIssuer: "CBIWPSUKAYOE5ORIDLYNPFMWWNIZSA5LQVDNXYTW7HI4H5TIU64DGJ7F"
+
+11. JAHV (Custom Token)
+    - assetType: "CUSTOM"
+    - assetCode: "JAHV"
+    - assetIssuer: "CAZKRTMRBEMSMRCGC4C6YDUU22H5AVQZ5HAASR4PGWITXPDDBB3BTGHI"
+
+12. VOEZ (Custom Token)
+    - assetType: "CUSTOM"
+    - assetCode: "VOEZ"
+    - assetIssuer: "CDUCWV4VK6MXD3JMYFQUQ2KUHHGTMR7RAS6C2SPF7EHHUEGKFCRO3ZZF"
+
+13. JORV (Custom Token)
+    - assetType: "CUSTOM"
+    - assetCode: "JORV"
+    - assetIssuer: "CAT5EZTZVB4V4O7E5ZA2HQJTL7MZPWDJWQZIJYPMTAY6DMRWOIK5AMCD"
+
+NOTE: These are verified testnet tokens. For custom tokens, ALWAYS include the assetIssuer.
+If user requests assets not in this whitelist, explain that these are the available testnet tokens.
 
 YOUR CAPABILITIES:
 1. **Chat conversationally** - Answer questions, explain concepts, provide advice
@@ -156,6 +210,20 @@ CRITICAL: Every node MUST have ALL required fields populated. Do not leave any d
        "allocation": 50,              // REQUIRED - percentage (must sum to 100%)
        "label": "USDC"                // REQUIRED - display name
        // DO NOT include assetIssuer - system handles SAC conversion
+     }
+   }
+   
+   FOR CUSTOM TOKENS (XTAR, XRP, ARST, AQUA, EURC, BTC, BRL, RYAW, JAHV, VOEZ, JORV):
+   {
+     "id": "asset-2",
+     "type": "asset",
+     "position": { "x": 100, "y": 400 },
+     "data": {
+       "assetType": "CUSTOM",         // REQUIRED - must be "CUSTOM" for custom tokens
+       "assetCode": "AQUA",           // REQUIRED - token code from whitelist
+       "assetIssuer": "CD56OXOMAZ55LIKCYVFXH5CP2AKCLYMPMBFRN5XIJVOTWOVY2KFGLZVJ",  // REQUIRED - exact issuer address
+       "allocation": 25,              // REQUIRED - percentage (must sum to 100%)
+       "label": "AQUA"                // REQUIRED - display name
      }
    }
    
@@ -308,20 +376,24 @@ NODE POSITIONING:
 - Actions at right (x: 800-1000, y: spaced by 150)
 
 IMPORTANT RULES (when building):
-1. **CRITICAL: ONLY use XLM and USDC assets** - These are the only tokens available on testnet
-2. **Use assetType: "XLM" for XLM and assetType: "USDC" for USDC** - Do NOT use "CUSTOM"
+1. **CRITICAL: ONLY use whitelisted testnet assets** - XLM, USDC, XTAR, XRP, ARST, AQUA, EURC, BTC, BRL, RYAW, JAHV, VOEZ, JORV
+2. **Use correct assetType**:
+   - "XLM" for native XLM
+   - "USDC" for USDC stablecoin
+   - "CUSTOM" for all other tokens (XTAR, XRP, ARST, AQUA, EURC, BTC, BRL, RYAW, JAHV, VOEZ, JORV)
 3. **NEVER include assetIssuer for XLM or USDC** - System handles addresses automatically
-4. **Allocations MUST sum to 100%**
-5. **Every condition MUST have ALL required fields**:
+4. **ALWAYS include assetIssuer for CUSTOM tokens** - Use exact issuer address from whitelist
+5. **Allocations MUST sum to 100%**
+6. **Every condition MUST have ALL required fields**:
    - time_based: MUST have timeUnit AND timeValue
    - price_change: MUST have value AND operator
    - allocation: MUST have threshold AND operator
    - apy_threshold: MUST have threshold AND operator
    - ALL conditions MUST have label AND description
-6. **Every condition MUST connect to an action**
-7. **Assets should connect to conditions** (showing they're affected by rules)
-8. **Provide helpful explanation and suggestions**
-9. If user mentions assets not in whitelist (BTC, ETH, AQUA, yXLM), explain they're only available on mainnet and suggest XLM/USDC alternatives
+7. **Every condition MUST connect to an action**
+8. **Assets should connect to conditions** (showing they're affected by rules)
+9. **Provide helpful explanation and suggestions**
+10. If user mentions assets not in whitelist, explain available testnet tokens and suggest alternatives from the whitelist
 
 Be conversational and helpful. Build vaults only when the user is ready and has provided enough details.`;
 
@@ -518,7 +590,18 @@ Be conversational and helpful. Build vaults only when the user is ready and has 
         // Define testnet whitelist
         const TESTNET_ASSETS = new Map([
           ['XLM', { assetType: 'XLM', requiresIssuer: false }],
-          ['USDC', { assetType: 'USDC', requiresIssuer: false }]
+          ['USDC', { assetType: 'USDC', requiresIssuer: false }],
+          ['XTAR', { assetType: 'CUSTOM', requiresIssuer: true, assetIssuer: 'CCSV3Y6QKAPRZCPLCMC5W7OCS5BFPKMYFK5GC25SSSS44U2WA4Y7QRKE' }],
+          ['XRP', { assetType: 'CUSTOM', requiresIssuer: true, assetIssuer: 'CBFM34O7P6YJG2DCS3C7AJI6WDKD2JPMPPA7RTVYGC7ZYEPKDLGEIFP5' }],
+          ['ARST', { assetType: 'CUSTOM', requiresIssuer: true, assetIssuer: 'CB3TIJR2B5NZFKZLBUE5LAASV7WIRDKS24VPIYUXXEHM7XN3X2JXFHZY' }],
+          ['AQUA', { assetType: 'CUSTOM', requiresIssuer: true, assetIssuer: 'CD56OXOMAZ55LIKCYVFXH5CP2AKCLYMPMBFRN5XIJVOTWOVY2KFGLZVJ' }],
+          ['EURC', { assetType: 'CUSTOM', requiresIssuer: true, assetIssuer: 'CAUL6I3KR55BAOSOE23VRR5FUFD2EEBWF3DHGWUZN7N3ZGVR4QQU6DQM' }],
+          ['BTC', { assetType: 'CUSTOM', requiresIssuer: true, assetIssuer: 'CBFX54THH4KKRDDOMV5G6TNGDPHXEUAXM7SGTOOXTZKODACI7O5ND6U7' }],
+          ['BRL', { assetType: 'CUSTOM', requiresIssuer: true, assetIssuer: 'CAG6QUTOUL3M4HPOPFYYDGJQODY7I3WUYKO2DFYDHIRHLD4HHPGIHWBJ' }],
+          ['RYAW', { assetType: 'CUSTOM', requiresIssuer: true, assetIssuer: 'CBIWPSUKAYOE5ORIDLYNPFMWWNIZSA5LQVDNXYTW7HI4H5TIU64DGJ7F' }],
+          ['JAHV', { assetType: 'CUSTOM', requiresIssuer: true, assetIssuer: 'CAZKRTMRBEMSMRCGC4C6YDUU22H5AVQZ5HAASR4PGWITXPDDBB3BTGHI' }],
+          ['VOEZ', { assetType: 'CUSTOM', requiresIssuer: true, assetIssuer: 'CDUCWV4VK6MXD3JMYFQUQ2KUHHGTMR7RAS6C2SPF7EHHUEGKFCRO3ZZF' }],
+          ['JORV', { assetType: 'CUSTOM', requiresIssuer: true, assetIssuer: 'CAT5EZTZVB4V4O7E5ZA2HQJTL7MZPWDJWQZIJYPMTAY6DMRWOIK5AMCD' }]
         ]);
 
         // Validate and fix asset nodes
@@ -544,10 +627,19 @@ Be conversational and helpful. Build vaults only when the user is ready and has 
               node.data.assetType = assetInfo.assetType;
             }
 
-            // Remove issuer - system handles SAC conversion automatically
-            if (node.data.assetIssuer) {
-              console.warn(`[NLVaultGenerator] Removing assetIssuer for ${assetCode} - system handles SAC conversion`);
-              delete node.data.assetIssuer;
+            // Handle issuer based on asset type
+            if (assetInfo.requiresIssuer) {
+              // Custom token - ensure issuer is set correctly
+              if (!node.data.assetIssuer || node.data.assetIssuer !== assetInfo.assetIssuer) {
+                console.warn(`[NLVaultGenerator] Setting correct assetIssuer for ${assetCode}`);
+                node.data.assetIssuer = assetInfo.assetIssuer;
+              }
+            } else {
+              // XLM or USDC - remove issuer as system handles it
+              if (node.data.assetIssuer) {
+                console.warn(`[NLVaultGenerator] Removing assetIssuer for ${assetCode} - system handles SAC conversion`);
+                delete node.data.assetIssuer;
+              }
             }
           }
 
