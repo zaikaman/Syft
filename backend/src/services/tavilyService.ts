@@ -153,6 +153,41 @@ export class TavilyService {
   }
 
   /**
+   * Search for social sentiment on X/Twitter and Reddit via web search
+   * This replaces direct API calls to Twitter and Reddit
+   */
+  async getSocialSentiment(
+    assetCode: string,
+    options?: {
+      daysBack?: number;
+      maxResults?: number;
+    }
+  ): Promise<TavilySearchResponse> {
+    const daysBack = options?.daysBack || 1;
+    const maxResults = options?.maxResults || 10;
+
+    // Build search query targeting X/Twitter and Reddit
+    const query = `${assetCode} cryptocurrency sentiment discussion (site:twitter.com OR site:x.com OR site:reddit.com) last ${daysBack} days`;
+
+    try {
+      return await this.search(query, {
+        searchDepth: 'basic',
+        maxResults,
+        includeAnswer: true,
+      });
+    } catch (error) {
+      console.error(`Failed to get social sentiment for ${assetCode}:`, error);
+      return {
+        query,
+        results: [],
+        followUpQuestions: [],
+        answer: undefined,
+        images: [],
+      };
+    }
+  }
+
+  /**
    * Search for DeFi and Stellar ecosystem trends
    */
   async getDeFiTrends(): Promise<TavilySearchResponse> {

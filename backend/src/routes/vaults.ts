@@ -2028,6 +2028,109 @@ router.get('/user/:walletAddress', async (req: Request, res: Response) => {
   }
 });
 
+/**
+ * GET /api/vaults/subscriptions/:walletAddress
+ * Get all vault subscriptions for a user
+ */
+router.get('/subscriptions/:walletAddress', async (req: Request, res: Response) => {
+  try {
+    const { walletAddress } = req.params;
+    const { network } = req.query;
+
+    if (!walletAddress) {
+      return res.status(400).json({
+        success: false,
+        error: 'Wallet address is required',
+      });
+    }
+
+    // Get all subscriptions for this user
+    const { data: subscriptions, error: subsError } = await supabase
+      .from('vault_subscriptions')
+      .select(`
+        *,
+        original_vault:vaults!vault_subscriptions_original_vault_id_fkey(*),
+        subscribed_vault:vaults!vault_subscriptions_subscribed_vault_id_fkey(*)
+      `)
+      .eq('subscriber_wallet_address', walletAddress)
+      .order('subscribed_at', { ascending: false });
+
+    if (subsError) {
+      throw subsError;
+    }
+
+    // Filter by network if provided
+    let filteredSubscriptions = subscriptions || [];
+    if (network) {
+      filteredSubscriptions = filteredSubscriptions.filter(
+        (sub: any) => sub.subscribed_vault?.network === network
+      );
+      console.log(`[Get User Subscriptions] Filtering by network: ${network}`);
+    }
+
+    // Enrich with current position data for each subscribed vault
+    const enrichedSubscriptions = await Promise.all(
+      filteredSubscriptions.map(async (subscription: any) => {
+        const subscribedVault = subscription.subscribed_vault;
+        
+        if (!subscribedVault) {
+          return subscription;
+        }
+
+        // Get user's position in the subscribed vault
+        const { data: position } = await supabase
+          .from('vault_positions')
+          .select('shares, initial_deposit, current_value')
+          .eq('vault_id', subscribedVault.id)
+          .eq('user_address', walletAddress)
+          .single();
+
+        // Get latest performance data
+        const { data: latestSnapshot } = await supabase
+          .from('vault_performance')
+          .select('total_value, returns_24h, returns_7d, returns_30d, returns_all_time, apy_current')
+          .eq('vault_id', subscribedVault.id)
+          .order('timestamp', { ascending: false })
+          .limit(1)
+          .single();
+
+        return {
+          subscription_id: subscription.id,
+          vault_id: subscribedVault.vault_id,
+          subscriber_address: subscription.subscriber_wallet_address,
+          shares: position?.shares || '0',
+          initial_deposit: position?.initial_deposit || '0',
+          current_value: position?.current_value || '0',
+          subscribed_at: subscription.subscribed_at,
+          profit_share_percentage: subscription.profit_share_percentage,
+          vault: {
+            ...subscribedVault,
+            performance: {
+              tvl: latestSnapshot?.total_value || 0,
+              returns24h: latestSnapshot?.returns_24h || null,
+              returns7d: latestSnapshot?.returns_7d || null,
+              returns30d: latestSnapshot?.returns_30d || null,
+              returnsAllTime: latestSnapshot?.returns_all_time || null,
+              apyCurrent: latestSnapshot?.apy_current || null,
+            },
+          },
+        };
+      })
+    );
+
+    return res.json({
+      success: true,
+      data: enrichedSubscriptions,
+    });
+  } catch (error) {
+    console.error('Error in GET /api/vaults/subscriptions/:walletAddress:', error);
+    return res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Internal server error',
+    });
+  }
+});
+
 // Get staking positions for a vault
 router.get('/:id/positions/staking', async (req: Request, res: Response) => {
   try {

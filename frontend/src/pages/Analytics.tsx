@@ -338,7 +338,7 @@ const Analytics = () => {
                     onClick={() => setSelectedPeriod(period.value)}
                     className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
                       selectedPeriod === period.value
-                        ? 'bg-primary-500 text-white'
+                        ? 'bg-primary-500 text-dark-950'
                         : 'text-neutral-400 hover:text-neutral-50 hover:bg-neutral-900'
                     }`}
                   >
@@ -605,7 +605,7 @@ const Analytics = () => {
                   <button
                     onClick={() => handleSort('tvl')}
                     className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
-                      sortBy === 'tvl' ? 'bg-primary-500 text-white' : 'bg-neutral-900 text-neutral-400 hover:bg-neutral-800'
+                      sortBy === 'tvl' ? 'bg-primary-500 text-dark-950' : 'bg-neutral-900 text-neutral-400 hover:bg-neutral-800'
                     }`}
                   >
                     TVL {sortBy === 'tvl' && (sortOrder === 'asc' ? '↑' : '↓')}
@@ -613,7 +613,7 @@ const Analytics = () => {
                   <button
                     onClick={() => handleSort('apy')}
                     className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
-                      sortBy === 'apy' ? 'bg-primary-500 text-white' : 'bg-neutral-900 text-neutral-400 hover:bg-neutral-800'
+                      sortBy === 'apy' ? 'bg-primary-500 text-dark-950' : 'bg-neutral-900 text-neutral-400 hover:bg-neutral-800'
                     }`}
                   >
                     APY {sortBy === 'apy' && (sortOrder === 'asc' ? '↑' : '↓')}
@@ -621,7 +621,7 @@ const Analytics = () => {
                   <button
                     onClick={() => handleSort('earnings')}
                     className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
-                      sortBy === 'earnings' ? 'bg-primary-500 text-white' : 'bg-neutral-900 text-neutral-400 hover:bg-neutral-800'
+                      sortBy === 'earnings' ? 'bg-primary-500 text-dark-950' : 'bg-neutral-900 text-neutral-400 hover:bg-neutral-800'
                     }`}
                   >
                     Earnings {sortBy === 'earnings' && (sortOrder === 'asc' ? '↑' : '↓')}

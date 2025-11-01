@@ -1,12 +1,11 @@
 /**
  * Sentiment Analysis Service (T112)
- * Uses OpenAI to classify sentiment from social media posts
- * Combines data from Twitter and Reddit for comprehensive analysis
+ * Uses Tavily for web search and OpenAI to analyze sentiment
+ * Searches X (Twitter) and Reddit via Tavily for comprehensive social sentiment
  */
 
 import { openai } from '../lib/openaiClient';
-import { twitterService } from './twitterService';
-import { redditService } from './redditService';
+import { tavilyService } from './tavilyService';
 
 export type SentimentScore = 'very_negative' | 'negative' | 'neutral' | 'positive' | 'very_positive';
 
@@ -17,11 +16,7 @@ export interface SentimentAnalysis {
   confidence: number; // 0 to 1
   totalPosts: number;
   sources: {
-    twitter: {
-      count: number;
-      sentiment: SentimentScore;
-    };
-    reddit: {
+    web: {
       count: number;
       sentiment: SentimentScore;
     };
@@ -68,7 +63,7 @@ Posts:
 Respond only with valid JSON.`;
 
   /**
-   * Analyze sentiment for a specific asset
+   * Analyze sentiment for a specific asset using Tavily web search
    */
   async analyzeAssetSentiment(
     asset: string,
@@ -79,32 +74,8 @@ Respond only with valid JSON.`;
       throw new Error('Asset code is required for sentiment analysis');
     }
 
-    // Fetch data from both sources in parallel with timeout
-    const [twitterData, redditData] = await Promise.allSettled([
-      twitterService.isConfigured() 
-        ? Promise.race([
-            twitterService.getAssetSentiment(asset, hoursBack),
-            new Promise((_, reject) => setTimeout(() => reject(new Error('Twitter API timeout')), 10000))
-          ])
-        : Promise.resolve(null),
-      redditService.isConfigured()
-        ? Promise.race([
-            redditService.getAssetSentiment(asset, hoursBack),
-            new Promise((_, reject) => setTimeout(() => reject(new Error('Reddit API timeout')), 10000))
-          ])
-        : Promise.resolve(null),
-    ]);
-
-    const tweets: any[] = twitterData.status === 'fulfilled' && twitterData.value && typeof twitterData.value === 'object' && 'tweets' in twitterData.value
-      ? (twitterData.value as any).tweets 
-      : [];
-    const redditPosts: any[] = redditData.status === 'fulfilled' && redditData.value && typeof redditData.value === 'object' && 'posts' in redditData.value
-      ? (redditData.value as any).posts
-      : [];
-
-    if (tweets.length === 0 && redditPosts.length === 0) {
-      console.warn(`No social media data available for ${asset}, using neutral sentiment`);
-      // Return neutral sentiment instead of throwing error
+    if (!tavilyService.isConfigured()) {
+      console.warn('Tavily not configured, returning neutral sentiment');
       return {
         asset,
         overallSentiment: 'neutral',
@@ -112,61 +83,84 @@ Respond only with valid JSON.`;
         confidence: 0.3,
         totalPosts: 0,
         sources: {
-          twitter: { count: 0, sentiment: 'neutral' },
-          reddit: { count: 0, sentiment: 'neutral' },
+          web: { count: 0, sentiment: 'neutral' },
         },
         keyThemes: [],
-        summary: 'No social media data available for analysis',
+        summary: 'Tavily not configured for sentiment analysis',
         timestamp: new Date().toISOString(),
       };
     }
 
-    // Analyze Twitter sentiment
-    const twitterSentiment = tweets.length > 0
-      ? await this.analyzePosts(tweets.map((t: any) => t.text))
-      : { sentiment: 'neutral' as SentimentScore, score: 0, confidence: 0, keyThemes: [], summary: '' };
+    try {
+      // Use Tavily to search for social sentiment on X/Twitter and Reddit
+      const daysBack = Math.ceil(hoursBack / 24);
+      const searchQuery = `${asset} cryptocurrency sentiment discussion site:twitter.com OR site:x.com OR site:reddit.com last ${daysBack} days`;
 
-    // Analyze Reddit sentiment
-    const redditSentiment = redditPosts.length > 0
-      ? await this.analyzePosts(redditPosts.map((p: any) => `${p.title}\n${p.selftext}`))
-      : { sentiment: 'neutral' as SentimentScore, score: 0, confidence: 0, keyThemes: [], summary: '' };
+      const searchResults = await tavilyService.search(searchQuery, {
+        searchDepth: 'basic',
+        maxResults: 10,
+        includeAnswer: true,
+      });
 
-    // Combine sentiments with weighted average
-    const twitterWeight = tweets.length / (tweets.length + redditPosts.length);
-    const redditWeight = redditPosts.length / (tweets.length + redditPosts.length);
+      // Extract content from search results
+      const posts = searchResults.results.map(result => ({
+        text: `${result.title}\n${result.content}`,
+        url: result.url,
+        score: result.score,
+      }));
 
-    const combinedScore = 
-      (twitterSentiment.score * twitterWeight) + 
-      (redditSentiment.score * redditWeight);
+      if (posts.length === 0) {
+        console.warn(`No social media data available for ${asset}, using neutral sentiment`);
+        return {
+          asset,
+          overallSentiment: 'neutral',
+          sentimentScore: 0,
+          confidence: 0.3,
+          totalPosts: 0,
+          sources: {
+            web: { count: 0, sentiment: 'neutral' },
+          },
+          keyThemes: [],
+          summary: 'No social media data available for analysis',
+          timestamp: new Date().toISOString(),
+        };
+      }
 
-    const combinedConfidence = 
-      (twitterSentiment.confidence * twitterWeight) + 
-      (redditSentiment.confidence * redditWeight);
+      // Analyze sentiment using OpenAI
+      const sentimentResult = await this.analyzePosts(posts.map(p => p.text));
 
-    // Combine key themes
-    const allThemes = [...twitterSentiment.keyThemes, ...redditSentiment.keyThemes];
-    const uniqueThemes = Array.from(new Set(allThemes)).slice(0, 5);
-
-    return {
-      asset,
-      overallSentiment: this.scoreToSentiment(combinedScore),
-      sentimentScore: combinedScore,
-      confidence: combinedConfidence,
-      totalPosts: tweets.length + redditPosts.length,
-      sources: {
-        twitter: {
-          count: tweets.length,
-          sentiment: twitterSentiment.sentiment,
+      return {
+        asset,
+        overallSentiment: sentimentResult.sentiment,
+        sentimentScore: sentimentResult.score,
+        confidence: sentimentResult.confidence,
+        totalPosts: posts.length,
+        sources: {
+          web: {
+            count: posts.length,
+            sentiment: sentimentResult.sentiment,
+          },
         },
-        reddit: {
-          count: redditPosts.length,
-          sentiment: redditSentiment.sentiment,
+        keyThemes: sentimentResult.keyThemes,
+        summary: sentimentResult.summary,
+        timestamp: new Date().toISOString(),
+      };
+    } catch (error) {
+      console.error(`Failed to analyze sentiment for ${asset}:`, error);
+      return {
+        asset,
+        overallSentiment: 'neutral',
+        sentimentScore: 0,
+        confidence: 0.3,
+        totalPosts: 0,
+        sources: {
+          web: { count: 0, sentiment: 'neutral' },
         },
-      },
-      keyThemes: uniqueThemes,
-      summary: this.combineSummaries(twitterSentiment.summary, redditSentiment.summary),
-      timestamp: new Date().toISOString(),
-    };
+        keyThemes: [],
+        summary: 'Error analyzing sentiment',
+        timestamp: new Date().toISOString(),
+      };
+    }
   }
 
   /**
@@ -285,16 +279,6 @@ Respond only with valid JSON.`;
   }
 
   /**
-   * Combine summaries from different sources
-   */
-  private combineSummaries(summary1: string, summary2: string): string {
-    if (!summary1 && !summary2) return 'No summary available';
-    if (!summary1) return summary2;
-    if (!summary2) return summary1;
-    return `${summary1} ${summary2}`;
-  }
-
-  /**
    * Randomly sample posts
    */
   private samplePosts(posts: string[], count: number): string[] {
@@ -360,7 +344,7 @@ Respond only with valid JSON.`;
    * Check if sentiment analysis is available
    */
   isAvailable(): boolean {
-    return twitterService.isConfigured() || redditService.isConfigured();
+    return tavilyService.isConfigured();
   }
 }
 

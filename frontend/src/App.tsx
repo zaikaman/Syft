@@ -5,6 +5,7 @@ import Home from "./pages/Home";
 import VaultBuilder from "./pages/VaultBuilder";
 import Dashboard from "./pages/Dashboard";
 import VaultDetail from "./pages/VaultDetail";
+import Vaults from "./pages/Vaults";
 import Marketplace from "./pages/Marketplace";
 import Analytics from "./pages/Analytics";
 import Backtests from "./pages/Backtests";
@@ -44,6 +45,7 @@ function App() {
       <Route path="/app" element={<AppLayout />}>
         <Route index element={<Navigate to="/app/dashboard" replace />} />
         <Route path="dashboard" element={<Dashboard />} />
+        <Route path="vaults" element={<Vaults />} />
         <Route path="builder" element={<VaultBuilder />} />
         <Route path="marketplace" element={<Marketplace />} />
         <Route path="analytics" element={<Analytics />} />
