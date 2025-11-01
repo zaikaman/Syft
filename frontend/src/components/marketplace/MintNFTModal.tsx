@@ -15,7 +15,7 @@ interface MintNFTModalProps {
 export function MintNFTModal({ isOpen, onClose, vaultId, vaultName, onSuccess }: MintNFTModalProps) {
   const [nftName, setNftName] = useState('');
   const [description, setDescription] = useState('');
-  const [imageUrl, setImageUrl] = useState('');
+  const [customPrompt, setCustomPrompt] = useState('');
   const [isMinting, setIsMinting] = useState(false);
   const [error, setError] = useState('');
 
@@ -45,8 +45,9 @@ export function MintNFTModal({ isOpen, onClose, vaultId, vaultName, onSuccess }:
           metadata: {
             name: nftName,
             description: description || `${vaultName} Strategy NFT`,
-            imageUrl: imageUrl || '', // Backend will generate AI image if empty
+            imageUrl: '', // Always let backend generate AI image
             vaultPerformance: 0,
+            customPrompt: customPrompt || undefined, // Include custom prompt if provided
           },
           walletAddress,
         }),
@@ -61,7 +62,7 @@ export function MintNFTModal({ isOpen, onClose, vaultId, vaultName, onSuccess }:
       // Success
       setNftName('');
       setDescription('');
-      setImageUrl('');
+      setCustomPrompt('');
       onSuccess();
       onClose();
     } catch (err: any) {
@@ -127,17 +128,17 @@ export function MintNFTModal({ isOpen, onClose, vaultId, vaultName, onSuccess }:
 
             <div>
               <label className="block text-sm font-medium text-neutral-300 mb-2">
-                Image URL (Optional)
+                Custom Image Prompt (Optional)
               </label>
-              <input
-                type="url"
-                value={imageUrl}
-                onChange={(e) => setImageUrl(e.target.value)}
-                placeholder="https://example.com/image.png"
-                className="w-full px-4 py-2 bg-app border border-default rounded-lg text-neutral-50 placeholder-neutral-500 focus:outline-none focus:border-primary-500"
+              <textarea
+                value={customPrompt}
+                onChange={(e) => setCustomPrompt(e.target.value)}
+                placeholder="e.g., 'Add golden accents and holographic security displays'"
+                rows={2}
+                className="w-full px-4 py-2 bg-app border border-default rounded-lg text-neutral-50 placeholder-neutral-500 focus:outline-none focus:border-primary-500 resize-none"
               />
               <p className="text-xs text-neutral-500 mt-1">
-                Leave empty to use auto-generated AI image
+                Customize the AI-generated vault image. Leave empty for automatic vault-themed artwork.
               </p>
             </div>
 

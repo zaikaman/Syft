@@ -60,8 +60,8 @@ export async function generateVaultNFTImage(
       positivePrompt: prompt,
       negativePrompt: 'blurry, low quality, distorted, ugly, text, watermark',
       model: 'runware:101@1',
-      width: 512,
-      height: 512,
+      width: 1024,
+      height: 576,
       numberResults: 1,
       seed: imageSeed,
     });

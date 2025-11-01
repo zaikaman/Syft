@@ -171,13 +171,9 @@ router.post('/:vaultId/nft', async (req: Request, res: Response) => {
       // Use custom prompt if provided, otherwise generate vault-themed prompt
       let prompt: string;
       if (metadata.customPrompt && metadata.customPrompt.trim() !== '') {
-        // Enhance user's custom prompt with vault context
-        prompt = `${generateVaultPrompt(
-          vault.name || 'Vault',
-          vault.description,
-          0 // No ownership percentage concept
-        )}, ${metadata.customPrompt}`;
-        console.log(`[Mint NFT] Using custom prompt enhancement: "${metadata.customPrompt}"`);
+        // Use the user's custom prompt directly (they have full control)
+        prompt = metadata.customPrompt;
+        console.log(`[Mint NFT] Using custom prompt: "${metadata.customPrompt}"`);
       } else {
         // Use automatic vault-themed prompt
         prompt = generateVaultPrompt(
@@ -185,6 +181,7 @@ router.post('/:vaultId/nft', async (req: Request, res: Response) => {
           vault.description,
           0 // No ownership percentage concept
         );
+        console.log(`[Mint NFT] Using auto-generated vault prompt`);
       }
       
       finalImageUrl = await generateVaultNFTImage(prompt);
