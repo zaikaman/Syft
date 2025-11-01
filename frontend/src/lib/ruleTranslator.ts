@@ -50,31 +50,42 @@ export class RuleTranslator {
 
   /**
    * Find complete rule chains in the graph
+   * Now supports multiple assets connected to the same condition
+   * AND multiple conditions connected to the same action
    */
   private static findRuleChains(nodes: Node[], edges: Edge[]): RuleChain[] {
     const chains: RuleChain[] = [];
-    const actionBlocks = nodes.filter((n) => n.type === 'action');
+    const processedConditions = new Set<string>(); // Track processed conditions to avoid duplicates
 
-    actionBlocks.forEach((actionNode) => {
-      // Find condition connected to this action
-      const conditionEdge = edges.find((e) => e.target === actionNode.id);
-      if (!conditionEdge) return;
+    // Find all condition nodes
+    const conditionBlocks = nodes.filter((n) => n.type === 'condition');
 
-      const conditionNode = nodes.find((n) => n.id === conditionEdge.source);
-      if (!conditionNode || conditionNode.type !== 'condition') return;
+    conditionBlocks.forEach((conditionNode) => {
+      // Skip if we already processed this condition
+      if (processedConditions.has(conditionNode.id)) return;
+      processedConditions.add(conditionNode.id);
 
-      // Find asset connected to this condition
-      const assetEdge = edges.find((e) => e.target === conditionNode.id);
-      if (!assetEdge) return;
+      // Find action connected to this condition
+      const actionEdge = edges.find((e) => e.source === conditionNode.id);
+      if (!actionEdge) return;
 
-      const assetNode = nodes.find((n) => n.id === assetEdge.source);
-      if (!assetNode || assetNode.type !== 'asset') return;
+      const actionNode = nodes.find((n) => n.id === actionEdge.target);
+      if (!actionNode || actionNode.type !== 'action') return;
 
-      chains.push({
-        asset: assetNode,
-        condition: conditionNode,
-        action: actionNode,
-      });
+      // Find ALL assets connected to this condition
+      const assetEdges = edges.filter((e) => e.target === conditionNode.id);
+      const assetNodes = assetEdges
+        .map((edge) => nodes.find((n) => n.id === edge.source))
+        .filter((n) => n && n.type === 'asset') as Node[];
+
+      // If we have at least one asset, create a chain
+      if (assetNodes.length > 0) {
+        chains.push({
+          assets: assetNodes,
+          condition: conditionNode,
+          action: actionNode,
+        });
+      }
     });
 
     return chains;
@@ -82,11 +93,19 @@ export class RuleTranslator {
 
   /**
    * Translate a single rule chain
+   * Now handles multiple assets connected to the same condition
    */
   private static translateRuleChain(chain: RuleChain, ruleNumber: number): string {
-    const { asset, condition, action } = chain;
+    const { assets, condition, action } = chain;
 
-    const assetText = this.translateAssetNode(asset);
+    // Translate all assets
+    const assetText = assets.length === 1
+      ? this.translateAssetNode(assets[0])
+      : `**${assets.map(a => {
+          const { assetType, assetCode } = a.data;
+          return assetType === 'CUSTOM' && assetCode ? assetCode : assetType;
+        }).join(', ')}**`;
+
     const conditionText = this.translateConditionNode(condition);
     const actionText = this.translateActionNode(action);
 
@@ -203,7 +222,7 @@ export class RuleTranslator {
 }
 
 interface RuleChain {
-  asset: Node;
+  assets: Node[]; // Changed from single asset to array to support multiple assets per condition
   condition: Node;
   action: Node;
 }
