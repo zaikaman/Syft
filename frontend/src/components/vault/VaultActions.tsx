@@ -6,11 +6,13 @@ import { useModal, Skeleton } from '../ui';
 interface VaultActionsProps {
   vaultId: string;
   contractAddress: string;
+  vaultConfig?: any; // Add vault config to show base token info
   onActionComplete?: (action: string, result: any) => void;
 }
 
 export const VaultActions: React.FC<VaultActionsProps> = ({
   vaultId,
+  vaultConfig,
   onActionComplete,
 }) => {
   const { address, network, networkPassphrase } = useWallet();
@@ -364,6 +366,21 @@ export const VaultActions: React.FC<VaultActionsProps> = ({
         </div>
       )}
 
+      {/* Base Token Info */}
+      {vaultConfig?.assets && vaultConfig.assets.length > 0 && (
+        <div className="mb-6 p-4 bg-primary-500/5 border border-primary-500/20 rounded-lg">
+          <p className="text-sm text-neutral-300">
+            <strong className="text-primary-400">Base Token:</strong>{' '}
+            {typeof vaultConfig.assets[0] === 'string' 
+              ? vaultConfig.assets[0] 
+              : vaultConfig.assets[0].code || vaultConfig.assets[0].assetCode || 'Unknown'}
+          </p>
+          <p className="text-xs text-neutral-400 mt-1">
+            You can deposit any token with a liquidity pool. It will be automatically swapped to the base token.
+          </p>
+        </div>
+      )}
+
       <div className="space-y-6">
         {/* Deposit Section */}
         <div>
@@ -397,7 +414,7 @@ export const VaultActions: React.FC<VaultActionsProps> = ({
         {/* Note about auto-rebalance */}
         <div className="p-3 bg-primary-500/10 border border-primary-500/30 rounded-lg">
           <p className="text-sm text-primary-400">
-            💡 <strong>Auto-Rebalance:</strong> After depositing, you'll be prompted to sign a second transaction to rebalance assets to the target allocation (70% USDC / 30% XLM). This requires two signatures due to Stellar platform limitations.
+            💡 <strong>Auto-Rebalance:</strong> After depositing, you'll be prompted to sign a second transaction to rebalance assets to the target allocation. This requires two signatures due to Stellar platform limitations.
           </p>
         </div>
 

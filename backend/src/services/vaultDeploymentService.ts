@@ -430,7 +430,38 @@ export async function buildDeploymentTransaction(
     // Check for simulation error first
     if (StellarSdk.rpc.Api.isSimulationError(simulationResponse)) {
       console.error(`[Build Deploy TX] Simulation error details:`, simulationResponse);
-      throw new Error(`Simulation failed: ${simulationResponse.error}`);
+      
+      const errorMsg = JSON.stringify(simulationResponse);
+      
+      // Error #1: Already initialized (factory)
+      if (errorMsg.includes('Error(Contract, #1)') || errorMsg.includes('AlreadyInitialized')) {
+        throw new Error(
+          `Vault already exists: A vault with this configuration already exists. Cannot deploy duplicate vault.`
+        );
+      }
+      
+      // Error #2: Not initialized (factory)
+      if (errorMsg.includes('Error(Contract, #2)') || errorMsg.includes('NotInitialized')) {
+        throw new Error(
+          `Factory not initialized: The vault factory has not been properly initialized. Please contact support.`
+        );
+      }
+      
+      // Error #3: Unauthorized
+      if (errorMsg.includes('Error(Contract, #3)') || errorMsg.includes('Unauthorized')) {
+        throw new Error(
+          `Unauthorized: You don't have permission to deploy vaults. Please contact the platform administrator.`
+        );
+      }
+      
+      // Error #7: Invalid configuration
+      if (errorMsg.includes('Error(Contract, #7)') || errorMsg.includes('InvalidConfiguration')) {
+        throw new Error(
+          `Invalid vault configuration: Please check your vault settings (assets, allocations, etc.) and try again.`
+        );
+      }
+      
+      throw new Error(`Deployment simulation failed: ${simulationResponse.error || 'Unknown error'}`);
     }
 
     // Check if simulation was successful
@@ -677,7 +708,38 @@ export async function deployVault(
     // Check for simulation error first
     if (StellarSdk.rpc.Api.isSimulationError(simulationResponse)) {
       console.error(`[Vault Deployment] Simulation error details:`, simulationResponse);
-      throw new Error(`Simulation failed: ${simulationResponse.error}`);
+      
+      const errorMsg = JSON.stringify(simulationResponse);
+      
+      // Error #1: Already initialized (factory)
+      if (errorMsg.includes('Error(Contract, #1)') || errorMsg.includes('AlreadyInitialized')) {
+        throw new Error(
+          `Vault already exists: A vault with this configuration already exists. Cannot deploy duplicate vault.`
+        );
+      }
+      
+      // Error #2: Not initialized (factory)
+      if (errorMsg.includes('Error(Contract, #2)') || errorMsg.includes('NotInitialized')) {
+        throw new Error(
+          `Factory not initialized: The vault factory has not been properly initialized. Please contact support.`
+        );
+      }
+      
+      // Error #3: Unauthorized
+      if (errorMsg.includes('Error(Contract, #3)') || errorMsg.includes('Unauthorized')) {
+        throw new Error(
+          `Unauthorized: You don't have permission to deploy vaults. Please contact the platform administrator.`
+        );
+      }
+      
+      // Error #7: Invalid configuration
+      if (errorMsg.includes('Error(Contract, #7)') || errorMsg.includes('InvalidConfiguration')) {
+        throw new Error(
+          `Invalid vault configuration: Please check your vault settings (assets, allocations, etc.) and try again.`
+        );
+      }
+      
+      throw new Error(`Vault deployment simulation failed: ${simulationResponse.error || 'Unknown error'}`);
     }
 
     // Check if simulation was successful
@@ -1200,7 +1262,29 @@ export async function invokeVaultMethod(
     
     if (StellarSdk.rpc.Api.isSimulationError(simulationResponse)) {
       console.error(`❌ Contract simulation failed for ${method}:`, simulationResponse.error);
-      throw new Error(`Simulation failed: ${simulationResponse.error}`);
+      
+      const errorMsg = JSON.stringify(simulationResponse);
+      
+      // Common contract errors
+      if (errorMsg.includes('Error(Contract, #2)') || errorMsg.includes('NotInitialized')) {
+        throw new Error(
+          `Contract not initialized: The contract has not been properly initialized yet.`
+        );
+      }
+      
+      if (errorMsg.includes('Error(Contract, #3)') || errorMsg.includes('Unauthorized')) {
+        throw new Error(
+          `Unauthorized: You don't have permission to execute this operation.`
+        );
+      }
+      
+      if (errorMsg.includes('Error(Contract, #7)') || errorMsg.includes('InvalidConfiguration')) {
+        throw new Error(
+          `Invalid configuration: Please check the method parameters and try again.`
+        );
+      }
+      
+      throw new Error(`Contract simulation failed: ${simulationResponse.error || 'Unknown error'}`);
     }
     
     // Define read-only methods that don't need to be submitted

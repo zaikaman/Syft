@@ -124,14 +124,140 @@ export async function buildDepositTransaction(
     const simulationResponse = await servers.sorobanServer.simulateTransaction(transaction);
     
     if (StellarSdk.rpc.Api.isSimulationError(simulationResponse)) {
+      console.log(`\n\n🔴 [DEPOSIT ERROR HANDLER v2.0 - ACTIVE] 🔴\n`);
       console.error(`[Build Deposit TX] Simulation error details:`, simulationResponse);
+      console.error(`[Build Deposit TX] Raw error for debugging:`, JSON.stringify(simulationResponse, null, 2));
+      
+      // Get vault's base token for better error messages
+      let baseTokenInfo = 'unknown token';
+      try {
+        const vaultConfig = vault.config;
+        if (vaultConfig?.assets && vaultConfig.assets.length > 0) {
+          const firstAsset = vaultConfig.assets[0];
+          const assetCode = typeof firstAsset === 'string' ? firstAsset : firstAsset.code;
+          baseTokenInfo = assetCode || firstAsset.address || 'unknown token';
+        }
+      } catch (e) {
+        // Ignore error getting base token info
+      }
       
       // Provide helpful error message
       const errorMsg = JSON.stringify(simulationResponse);
+      console.log(`[Build Deposit TX] Checking error string for patterns...`);
+      
+      // Check for specific error patterns in the diagnostic events
+      // Error #10 appears to be insufficient balance based on the error context
+      if (errorMsg.includes('Error(Contract, #10)') || errorMsg.includes('resulting balance')) {
+        console.log(`[Build Deposit TX] ✅ Detected insufficient balance error (#10)`);
+        throw new Error(
+          `Insufficient balance: You don't have enough tokens to complete this deposit. Please check your wallet balance and try a smaller amount.`
+        );
+      }
+      
+      // Error #1: Already initialized
+      if (errorMsg.includes('Error(Contract, #1)') || errorMsg.includes('AlreadyInitialized')) {
+        throw new Error(
+          `Vault already initialized: This vault has already been set up and cannot be initialized again.`
+        );
+      }
+      
+      // Error #2: Not initialized
+      if (errorMsg.includes('Error(Contract, #2)') || errorMsg.includes('NotInitialized')) {
+        throw new Error(
+          `Vault not initialized: This vault has not been properly initialized yet. Please contact the vault owner.`
+        );
+      }
+      
+      // Error #3: Unauthorized
+      if (errorMsg.includes('Error(Contract, #3)') || errorMsg.includes('Unauthorized')) {
+        throw new Error(
+          `Unauthorized: You don't have permission to perform this action. Only the vault owner can execute this operation.`
+        );
+      }
+      
+      // Error #4: Insufficient balance (vault-level)
+      if (errorMsg.includes('Error(Contract, #4)') || errorMsg.includes('InsufficientBalance')) {
+        throw new Error(
+          `Insufficient balance: You don't have enough tokens to complete this deposit. Please check your wallet balance and try a smaller amount.`
+        );
+      }
+      
+      // Error #6: Invalid amount
+      if (errorMsg.includes('Error(Contract, #6)') || errorMsg.includes('InvalidAmount')) {
+        throw new Error(
+          `Invalid amount: The deposit amount must be greater than zero.`
+        );
+      }
+      
+      // Error #7: Invalid configuration
+      if (errorMsg.includes('Error(Contract, #7)') || errorMsg.includes('InvalidConfiguration')) {
+        throw new Error(
+          `Invalid vault configuration: This vault has configuration errors. Please contact the vault owner.`
+        );
+      }
+      
+      // Error #9: Transfer failed
+      if (errorMsg.includes('Error(Contract, #9)') || errorMsg.includes('TransferFailed')) {
+        throw new Error(
+          `Token transfer failed: Unable to transfer tokens. Please ensure you have approved the vault contract and have sufficient balance.`
+        );
+      }
+      
+      // Error #13: Slippage too high
+      if (errorMsg.includes('Error(Contract, #13)') || errorMsg.includes('SlippageTooHigh')) {
+        throw new Error(
+          `Slippage too high: The price moved too much during the swap. Please try again with a smaller amount or wait for better market conditions.`
+        );
+      }
+      
+      // Error #14: Swap failed
+      if (errorMsg.includes('Error(Contract, #14)') || errorMsg.includes('SwapFailed')) {
+        throw new Error(
+          `Swap failed: Unable to swap tokens. This could be due to insufficient liquidity or price impact limits.`
+        );
+      }
+      
+      // Error #15: Pool not found
+      if (errorMsg.includes('Error(Contract, #15)') || errorMsg.includes('PoolNotFound')) {
+        throw new Error(
+          `No liquidity pool found: There is no liquidity pool between your deposit token and this vault's base token (${baseTokenInfo}). ` +
+          `To deposit, either:\n` +
+          `1. Deposit using ${baseTokenInfo} directly (the vault's base token)\n` +
+          `2. Create a liquidity pool on Soroswap for this token pair first\n` +
+          `3. Swap your tokens to ${baseTokenInfo} before depositing`
+        );
+      }
+      
+      // Error #16: Insufficient liquidity
+      if (errorMsg.includes('Error(Contract, #16)') || errorMsg.includes('InsufficientLiquidity')) {
+        throw new Error(
+          `Insufficient liquidity: The liquidity pool doesn't have enough tokens to complete this swap. Try a smaller amount.`
+        );
+      }
+      
+      // Error #17: Router not set
+      if (errorMsg.includes('Error(Contract, #17)') || errorMsg.includes('RouterNotSet')) {
+        throw new Error(
+          `Router not configured: This vault doesn't have a DEX router configured. Please deposit using ${baseTokenInfo} directly, or contact the vault owner to configure a router.`
+        );
+      }
+      
+      // Trustline missing (Stellar-level error)
       if (errorMsg.includes('trustline entry is missing') || errorMsg.includes('does not exist')) {
         throw new Error(
           `Token trustline missing: Please ensure you have added a trustline for the deposit token in your wallet, ` +
-          `or the token contract may not exist on this network. Try depositing with XLM instead.`
+          `or the token contract may not exist on this network. Try depositing with ${baseTokenInfo} instead.`
+        );
+      }
+      
+      // Legacy Error #205: No liquidity pool (from DEX contract)
+      if (errorMsg.includes('Error(Contract, #205)') || errorMsg.includes('get_pair')) {
+        throw new Error(
+          `No liquidity pool found: There is no liquidity pool between your deposit token and this vault's base token (${baseTokenInfo}). ` +
+          `To deposit, either:\n` +
+          `1. Deposit using ${baseTokenInfo} directly (the vault's base token)\n` +
+          `2. Create a liquidity pool on Soroswap for this token pair first\n` +
+          `3. Swap your tokens to ${baseTokenInfo} before depositing`
         );
       }
       
@@ -213,6 +339,81 @@ export async function buildRebalanceTransaction(
     
     if (StellarSdk.rpc.Api.isSimulationError(simulationResponse)) {
       console.error(`[Build Rebalance TX] Simulation error:`, simulationResponse);
+      
+      const errorMsg = JSON.stringify(simulationResponse);
+      
+      // Error #2: Not initialized
+      if (errorMsg.includes('Error(Contract, #2)') || errorMsg.includes('NotInitialized')) {
+        throw new Error(
+          `Vault not initialized: This vault has not been properly initialized yet. Please contact the vault owner.`
+        );
+      }
+      
+      // Error #3: Unauthorized
+      if (errorMsg.includes('Error(Contract, #3)') || errorMsg.includes('Unauthorized')) {
+        throw new Error(
+          `Unauthorized: Only the vault owner can trigger a rebalance operation.`
+        );
+      }
+      
+      // Error #7: Invalid configuration
+      if (errorMsg.includes('Error(Contract, #7)') || errorMsg.includes('InvalidConfiguration')) {
+        throw new Error(
+          `Invalid vault configuration: This vault has configuration errors. Please contact the vault owner.`
+        );
+      }
+      
+      // Error #8: Rebalance failed
+      if (errorMsg.includes('Error(Contract, #8)') || errorMsg.includes('RebalanceFailed')) {
+        throw new Error(
+          `Rebalance failed: Unable to rebalance vault assets. This could be due to insufficient liquidity or price impact limits.`
+        );
+      }
+      
+      // Error #13: Slippage too high
+      if (errorMsg.includes('Error(Contract, #13)') || errorMsg.includes('SlippageTooHigh')) {
+        throw new Error(
+          `Slippage too high: The price moved too much during rebalancing. Please try again or adjust your strategy.`
+        );
+      }
+      
+      // Error #14: Swap failed
+      if (errorMsg.includes('Error(Contract, #14)') || errorMsg.includes('SwapFailed')) {
+        throw new Error(
+          `Swap failed: Unable to swap tokens during rebalancing. This could be due to insufficient liquidity.`
+        );
+      }
+      
+      // Error #15: Pool not found
+      if (errorMsg.includes('Error(Contract, #15)') || errorMsg.includes('PoolNotFound')) {
+        throw new Error(
+          `No liquidity pool found: One or more trading pairs required for rebalancing don't have a liquidity pool. ` +
+          `Please create liquidity pools on Soroswap for all asset pairs in your vault strategy.`
+        );
+      }
+      
+      // Error #16: Insufficient liquidity
+      if (errorMsg.includes('Error(Contract, #16)') || errorMsg.includes('InsufficientLiquidity')) {
+        throw new Error(
+          `Insufficient liquidity: The liquidity pools don't have enough tokens to complete the rebalance. Try smaller position sizes.`
+        );
+      }
+      
+      // Error #17: Router not set
+      if (errorMsg.includes('Error(Contract, #17)') || errorMsg.includes('RouterNotSet')) {
+        throw new Error(
+          `Router not configured: This vault doesn't have a DEX router configured. Please configure a router address first.`
+        );
+      }
+      
+      // Legacy Error #205: No liquidity pool (from DEX contract)
+      if (errorMsg.includes('Error(Contract, #205)') || errorMsg.includes('get_pair')) {
+        throw new Error(
+          `No liquidity pool found: One or more trading pairs required for rebalancing don't have a liquidity pool. ` +
+          `Please create liquidity pools on Soroswap for all asset pairs in your vault strategy.`
+        );
+      }
+      
       throw new Error(`Rebalance simulation failed: ${simulationResponse.error || 'Unknown error'}`);
     }
 
@@ -290,7 +491,46 @@ export async function buildWithdrawalTransaction(
     const simulationResponse = await servers.sorobanServer.simulateTransaction(transaction);
     
     if (StellarSdk.rpc.Api.isSimulationError(simulationResponse)) {
-      throw new Error(`Simulation failed: ${simulationResponse.error}`);
+      console.error(`[Build Withdrawal TX] Simulation error details:`, simulationResponse);
+      
+      const errorMsg = JSON.stringify(simulationResponse);
+      
+      // Error #2: Not initialized
+      if (errorMsg.includes('Error(Contract, #2)') || errorMsg.includes('NotInitialized')) {
+        throw new Error(
+          `Vault not initialized: This vault has not been properly initialized yet. Please contact the vault owner.`
+        );
+      }
+      
+      // Error #3: Unauthorized
+      if (errorMsg.includes('Error(Contract, #3)') || errorMsg.includes('Unauthorized')) {
+        throw new Error(
+          `Unauthorized: You don't have permission to withdraw from this vault.`
+        );
+      }
+      
+      // Error #5: Insufficient shares
+      if (errorMsg.includes('Error(Contract, #5)') || errorMsg.includes('InsufficientShares')) {
+        throw new Error(
+          `Insufficient shares: You don't have enough vault shares to withdraw this amount. Please check your position and try a smaller amount.`
+        );
+      }
+      
+      // Error #6: Invalid amount
+      if (errorMsg.includes('Error(Contract, #6)') || errorMsg.includes('InvalidAmount')) {
+        throw new Error(
+          `Invalid amount: The withdrawal amount must be greater than zero.`
+        );
+      }
+      
+      // Error #9: Transfer failed
+      if (errorMsg.includes('Error(Contract, #9)') || errorMsg.includes('TransferFailed')) {
+        throw new Error(
+          `Token transfer failed: Unable to transfer tokens back to your wallet. Please try again.`
+        );
+      }
+      
+      throw new Error(`Withdrawal simulation failed: ${simulationResponse.error || 'Unknown error'}`);
     }
 
     // Assemble transaction with simulation results

@@ -279,7 +279,13 @@ router.get('/:vaultId', async (req: Request, res: Response) => {
     
     // Return sanitized config for non-owners (hide visual builder strategy)
     const sanitizedConfig = shouldIncludeStrategy ? vault.config : {
-      assets: vault.config?.assets?.map((a: any) => ({ code: a.code || a.assetCode })) || [],
+      assets: vault.config?.assets?.map((a: any) => {
+        // Handle both string assets ("XLM") and object assets ({ code: "XLM" })
+        if (typeof a === 'string') {
+          return a;
+        }
+        return a.code || a.assetCode || a;
+      }) || [],
       isPublic: vault.config?.isPublic,
       // Hide rules, nodes, edges, etc.
     };

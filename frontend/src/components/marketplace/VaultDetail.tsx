@@ -164,8 +164,9 @@ export function VaultDetail({ vaultId, listingId }: VaultDetailProps) {
     try {
       const backendUrl = import.meta.env.PUBLIC_BACKEND_URL || 'http://localhost:3001';
       
-      // Load vault data
-      const vaultResponse = await fetch(`${backendUrl}/api/vaults/${vaultId}`);
+      // Load vault data - include requesterAddress to get full config if owner
+      const queryParams = address ? `?requesterAddress=${address}` : '';
+      const vaultResponse = await fetch(`${backendUrl}/api/vaults/${vaultId}${queryParams}`);
       const vaultData = await vaultResponse.json();
 
       if (!vaultData.success) {
@@ -252,9 +253,92 @@ export function VaultDetail({ vaultId, listingId }: VaultDetailProps) {
 
   if (isLoading) {
     return (
-      <div className="flex justify-center py-12">
-        <Skeleton className="h-8 w-32 mx-auto" />
-        <p className="text-neutral-400 mt-4 text-sm">Loading vault details...</p>
+      <div className="space-y-4">
+        {/* Header Skeleton */}
+        <Card className="p-6 bg-card border border-default">
+          <div className="flex justify-between items-start mb-3">
+            <div className="flex-1">
+              <div className="flex items-center gap-3 mb-2">
+                <Skeleton className="h-8 w-48" />
+                <Skeleton className="h-6 w-20 rounded-full" />
+              </div>
+              <Skeleton className="h-4 w-96 mb-2" />
+              <Skeleton className="h-4 w-64" />
+            </div>
+            <div className="flex gap-2">
+              <Skeleton className="w-10 h-10 rounded-lg" />
+              <Skeleton className="w-10 h-10 rounded-lg" />
+            </div>
+          </div>
+        </Card>
+
+        {/* Key Metrics Skeleton */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          {[...Array(4)].map((_, i) => (
+            <Card key={i} className="p-5 bg-secondary border border-default">
+              <div className="flex items-start justify-between mb-3">
+                <Skeleton className="w-10 h-10 rounded-lg" />
+                <Skeleton className="h-4 w-16" />
+              </div>
+              <div className="space-y-2">
+                <Skeleton className="h-7 w-28" />
+                <Skeleton className="h-4 w-32" />
+              </div>
+            </Card>
+          ))}
+        </div>
+
+        {/* Performance Chart Skeleton */}
+        <Card className="p-6 bg-secondary border border-default">
+          <div className="mb-6">
+            <Skeleton className="h-6 w-48 mb-2" />
+            <Skeleton className="h-4 w-64" />
+          </div>
+          <Skeleton className="h-64 w-full rounded-lg" />
+        </Card>
+
+        {/* Vault Actions Skeleton */}
+        <Card className="p-6 bg-card border border-default">
+          <Skeleton className="h-6 w-32 mb-6" />
+          <div className="space-y-6">
+            {/* Deposit Section */}
+            <div>
+              <Skeleton className="h-5 w-32 mb-3" />
+              <div className="flex gap-3">
+                <Skeleton className="flex-1 h-12 rounded-lg" />
+                <Skeleton className="w-24 h-12 rounded-lg" />
+              </div>
+              <Skeleton className="h-4 w-48 mt-2" />
+            </div>
+            
+            <div className="border-t border-default"></div>
+            
+            {/* Withdraw Section */}
+            <div>
+              <Skeleton className="h-5 w-32 mb-3" />
+              <div className="flex gap-3">
+                <Skeleton className="flex-1 h-12 rounded-lg" />
+                <Skeleton className="w-24 h-12 rounded-lg" />
+              </div>
+              <Skeleton className="h-4 w-48 mt-2" />
+            </div>
+          </div>
+        </Card>
+
+        {/* Strategy & Performance Tabs Skeleton */}
+        <Card className="p-6 bg-secondary border border-default">
+          <div className="flex gap-4 mb-6 border-b border-default">
+            <Skeleton className="h-10 w-24" />
+            <Skeleton className="h-10 w-24" />
+            <Skeleton className="h-10 w-24" />
+          </div>
+          <div className="space-y-4">
+            <Skeleton className="h-6 w-48 mb-4" />
+            <Skeleton className="h-4 w-full" />
+            <Skeleton className="h-4 w-full" />
+            <Skeleton className="h-4 w-3/4" />
+          </div>
+        </Card>
       </div>
     );
   }
@@ -673,6 +757,7 @@ export function VaultDetail({ vaultId, listingId }: VaultDetailProps) {
         <VaultActions 
           vaultId={vaultId}
           contractAddress={vault.contractAddress}
+          vaultConfig={vault.config}
           onActionComplete={(action) => {
             console.log(`${action} completed, reloading vault...`);
             loadVaultDetails(false); // Update without showing loading state

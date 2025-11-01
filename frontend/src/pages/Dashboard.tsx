@@ -5,6 +5,7 @@ import { TrendingUp, DollarSign, Percent, Box, Activity, AlertCircle } from 'luc
 import { Card, Button, Skeleton } from '../components/ui';
 import { useWallet } from '../providers/WalletProvider';
 import { Link } from 'react-router-dom';
+import { resolveAssetNames } from '../services/tokenService';
 
 interface Vault {
   vault_id: string;
@@ -46,6 +47,7 @@ const Dashboard = () => {
   const [allocationData, setAllocationData] = useState<any[]>([]); // Asset allocation data
   const [vaultAnalytics, setVaultAnalytics] = useState<Record<string, any>>({});
   const [userPositions, setUserPositions] = useState<Record<string, any>>({}); // User positions in each vault
+  const [resolvedTokenNames, setResolvedTokenNames] = useState<Record<string, string>>({}); // Cache for resolved token names
   const { address, network, networkPassphrase } = useWallet();
 
   useEffect(() => {
@@ -599,8 +601,37 @@ const Dashboard = () => {
             ) : (
               <div className="space-y-3">
                 {vaults.map((vault, index) => {
-                  // Assets can be either strings (e.g., "XLM") or objects with code property
-                  const assets = vault.config.assets?.map(a => typeof a === 'string' ? a : a.code).join('/') || 'Unknown';
+                  // Get resolved token names from cache or use fallback
+                  const vaultKey = vault.vault_id;
+                  const cachedNames = resolvedTokenNames[vaultKey];
+                  const assets = cachedNames || 'Loading...';
+                  
+                  // Resolve token names asynchronously if not cached
+                  if (!cachedNames && vault.config.assets) {
+                    resolveAssetNames(vault.config.assets, network || 'testnet')
+                      .then(names => {
+                        setResolvedTokenNames(prev => ({
+                          ...prev,
+                          [vaultKey]: names.join(' / ')
+                        }));
+                      })
+                      .catch(err => {
+                        console.error('Error resolving token names:', err);
+                        // Fallback to showing addresses
+                        const fallback = vault.config.assets
+                          ?.map((a: any) => {
+                            if (typeof a === 'string') {
+                              return a.startsWith('C') && a.length > 20 ? `${a.slice(0, 8)}...` : a;
+                            }
+                            return a.code || a.assetCode || 'Unknown';
+                          })
+                          .join(' / ') || 'Unknown';
+                        setResolvedTokenNames(prev => ({
+                          ...prev,
+                          [vaultKey]: fallback
+                        }));
+                      });
+                  }
                   
                   // Use performance data from API if available, otherwise calculate
                   const vaultTVL = vault.performance?.tvl 
