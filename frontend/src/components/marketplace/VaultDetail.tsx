@@ -3,15 +3,14 @@
 
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { TrendingUp, DollarSign, Percent, Activity, Clock, Copy, ExternalLink, Package, ShoppingBag, Image } from 'lucide-react';
+import { TrendingUp, DollarSign, Percent, Activity, Clock, Copy, ExternalLink, Package, ShoppingBag } from 'lucide-react';
 import { Card } from '../ui/Card';
 import { Button } from '../ui/Button';
 import { Skeleton } from '../ui/Skeleton';
 import { VaultActions } from '../vault/VaultActions';
 import { useWallet } from '../../providers/WalletProvider';
 import { useModal } from '../ui';
-import { MintNFTModal } from './MintNFTModal';
-import { ListingModal } from './ListingModal';
+import { MintAndListModal } from './MintAndListModal';
 import { resolveAssetNames } from '../../services/tokenService';
 
 interface VaultDetailProps {
@@ -73,8 +72,7 @@ export function VaultDetail({ vaultId, listingId }: VaultDetailProps) {
   const [resolvedAssets, setResolvedAssets] = useState<string>(''); // Cache for resolved token names
   const { address } = useWallet();
   const modal = useModal();
-  const [showMintModal, setShowMintModal] = useState(false);
-  const [showListingModal, setShowListingModal] = useState(false);
+  const [showMintAndListModal, setShowMintAndListModal] = useState(false);
 
   useEffect(() => {
     loadVaultDetails(true); // Initial load with loading state
@@ -226,27 +224,16 @@ export function VaultDetail({ vaultId, listingId }: VaultDetailProps) {
   const tvlValue = calculateTVL();
 
   // NFT minting handler
-  const handleMintNFT = () => {
+  const handleMintAndList = () => {
     if (!vault) return;
-    setShowMintModal(true);
+    setShowMintAndListModal(true);
   };
 
-  // List on marketplace handler
-  const handleListOnMarketplace = () => {
-    if (!vault) return;
-    setShowListingModal(true);
-  };
-
-  // Handle successful NFT mint
-  const handleMintSuccess = () => {
-    modal.message('Success', 'NFT minted successfully!', 'success');
+  // Handle successful operation
+  const handleMintAndListSuccess = () => {
+    modal.message('Success', 'Vault listed on marketplace successfully!', 'success');
     loadVaultDetails(false); // Refresh vault data
     fetchUserPosition(); // Refresh position
-  };
-
-  // Handle successful listing
-  const handleListingSuccess = () => {
-    modal.message('Success', 'Vault listed on marketplace successfully!', 'success');
   };
 
   // Copy to clipboard helper
@@ -759,28 +746,17 @@ export function VaultDetail({ vaultId, listingId }: VaultDetailProps) {
           <Card className="bg-secondary border-default">
             <div className="p-6">
               <h3 className="text-lg font-semibold text-neutral-50 mb-4">Vault Owner Actions</h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <Button 
-                  variant="outline" 
-                  size="lg"
-                  onClick={handleMintNFT}
-                  className="flex items-center justify-center gap-2"
-                >
-                  <Image className="w-5 h-5" />
-                  Mint NFT
-                </Button>
-                <Button 
-                  variant="primary" 
-                  size="lg"
-                  onClick={handleListOnMarketplace}
-                  className="flex items-center justify-center gap-2"
-                >
-                  <ShoppingBag className="w-5 h-5" />
-                  List on Marketplace
-                </Button>
-              </div>
+              <Button 
+                variant="primary" 
+                size="lg"
+                onClick={handleMintAndList}
+                className="w-full flex items-center justify-center gap-2"
+              >
+                <ShoppingBag className="w-5 h-5" />
+                Mint NFT & List on Marketplace
+              </Button>
               <p className="text-xs text-neutral-500 mt-3">
-                As the vault owner, you can mint NFTs representing shares and list your vault on the marketplace.
+                Mint an NFT representing vault shares and list it on the marketplace for profit sharing.
               </p>
             </div>
           </Card>
@@ -801,27 +777,16 @@ export function VaultDetail({ vaultId, listingId }: VaultDetailProps) {
         </motion.div>
       )}
 
-      {/* Mint NFT Modal */}
+      {/* Mint & List Modal */}
       {vault && (
-        <MintNFTModal
-          isOpen={showMintModal}
-          onClose={() => setShowMintModal(false)}
-          vaultId={vaultId}
-          vaultName={vault.name || 'Vault'}
-          onSuccess={handleMintSuccess}
-        />
-      )}
-
-      {/* Listing Modal */}
-      {vault && (
-        <ListingModal
-          isOpen={showListingModal}
-          onClose={() => setShowListingModal(false)}
+        <MintAndListModal
+          isOpen={showMintAndListModal}
+          onClose={() => setShowMintAndListModal(false)}
           vaultId={vaultId}
           vaultName={vault.name || 'Vault'}
           vaultDescription={vault.description}
           contractAddress={vault.contractAddress}
-          onSuccess={handleListingSuccess}
+          onSuccess={handleMintAndListSuccess}
         />
       )}
     </div>
