@@ -10,19 +10,19 @@ let encoder: ReturnType<typeof encoding_for_model> | null = null;
 /**
  * Initialize the tiktoken encoder for a specific model
  */
-function getEncoder(model: string = 'gpt-4'): ReturnType<typeof encoding_for_model> {
+function getEncoder(model: string = 'gpt-5-nano-2025-08-07'): ReturnType<typeof encoding_for_model> {
   if (!encoder) {
     try {
       // Map our model names to tiktoken model names
       let tiktokenModel: TiktokenModel;
       
-      if (model.includes('gpt-4')) {
-        tiktokenModel = 'gpt-4' as TiktokenModel;
-      } else if (model.includes('gpt-3.5')) {
-        tiktokenModel = 'gpt-3.5-turbo' as TiktokenModel;
+      if (model.includes('gpt-5-nano-2025-08-07')) {
+        tiktokenModel = 'gpt-5-nano-2025-08-07' as TiktokenModel;
+      } else if (model.includes('gpt-5-nano-2025-08-07')) {
+        tiktokenModel = 'gpt-5-nano-2025-08-07' as TiktokenModel;
       } else {
         // Default to gpt-4 encoding for newer models
-        tiktokenModel = 'gpt-4' as TiktokenModel;
+        tiktokenModel = 'gpt-5-nano-2025-08-07' as TiktokenModel;
       }
       
       encoder = encoding_for_model(tiktokenModel);
