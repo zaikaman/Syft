@@ -2323,10 +2323,53 @@ router.get('/:vaultId/nfts', async (req: Request, res: Response) => {
       data: transformedNfts,
     });
   } catch (error) {
-    console.error('Error in GET /api/vaults/:vaultId/nfts:', error);
+    console.error('Error fetching vault NFTs:', error);
     return res.status(500).json({
       success: false,
-      error: error instanceof Error ? error.message : 'Internal server error',
+      error: 'Internal server error',
+    });
+  }
+});
+
+/**
+ * GET /api/vaults/:vaultId/subscription-status
+ * Check if a vault is a subscribed vault (cloned from marketplace)
+ */
+router.get('/:vaultId/subscription-status', async (req: Request, res: Response) => {
+  try {
+    const { vaultId } = req.params;
+
+    // Get vault to verify it exists
+    const { data: vault, error: vaultError } = await supabase
+      .from('vaults')
+      .select('id')
+      .eq('vault_id', vaultId)
+      .single();
+
+    if (vaultError || !vault) {
+      return res.status(404).json({
+        success: false,
+        error: 'Vault not found',
+      });
+    }
+
+    // Check if this vault is a subscribed vault
+    const { data: subscription } = await supabase
+      .from('vault_subscriptions')
+      .select('id, original_vault_id, profit_share_percentage')
+      .eq('subscribed_vault_id', vault.id)
+      .single();
+
+    return res.json({
+      success: true,
+      isSubscribed: !!subscription,
+      subscription: subscription || null,
+    });
+  } catch (error) {
+    console.error('Error checking subscription status:', error);
+    return res.status(500).json({
+      success: false,
+      error: 'Internal server error',
     });
   }
 });

@@ -74,6 +74,9 @@ export function VaultDetail({ vaultId, listingId }: VaultDetailProps) {
   const { address } = useWallet();
   const modal = useModal();
   const [showMintAndListModal, setShowMintAndListModal] = useState(false);
+  
+  // Check if vault is a subscribed vault based on name
+  const isSubscribedVault = vault?.name?.toLowerCase().includes('subscribed') || false;
 
   useEffect(() => {
     loadVaultDetails(true); // Initial load with loading state
@@ -801,7 +804,7 @@ export function VaultDetail({ vaultId, listingId }: VaultDetailProps) {
       )}
 
       {/* Owner Actions - Mint NFT & List on Marketplace */}
-      {address && vault.owner === address && vault.contractAddress && vault.status === 'active' && (
+      {address && vault.owner === address && vault.contractAddress && vault.status === 'active' && !isSubscribedVault && (
         <motion.div
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}

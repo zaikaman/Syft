@@ -48,6 +48,14 @@ router.post('/mint', async (req: Request, res: Response) => {
       });
     }
 
+    // Check if this is a subscribed vault based on name - subscribed vaults cannot mint NFTs
+    if (vault.name && vault.name.toLowerCase().includes('subscribed')) {
+      return res.status(403).json({
+        success: false,
+        error: 'Cannot mint NFT for subscribed vaults. Only original vault creators can mint and list NFTs.',
+      });
+    }
+
     // Generate NFT ID and token ID
     const timestamp = Date.now();
     const nftId = `nft_${vaultId}_${timestamp}`;
@@ -157,6 +165,14 @@ router.post('/:vaultId/nft', async (req: Request, res: Response) => {
       return res.status(404).json({
         success: false,
         error: 'Vault not found',
+      });
+    }
+
+    // Check if this is a subscribed vault based on name - subscribed vaults cannot mint NFTs
+    if (vault.name && vault.name.toLowerCase().includes('subscribed')) {
+      return res.status(403).json({
+        success: false,
+        error: 'Cannot mint NFT for subscribed vaults. Only original vault creators can mint and list NFTs.',
       });
     }
 
@@ -279,6 +295,14 @@ router.post('/:vaultId/nft/build', async (req: Request, res: Response) => {
       return res.status(404).json({
         success: false,
         error: 'Vault not found',
+      });
+    }
+
+    // Check if this is a subscribed vault based on name - subscribed vaults cannot mint NFTs
+    if (vault.name && vault.name.toLowerCase().includes('subscribed')) {
+      return res.status(403).json({
+        success: false,
+        error: 'Cannot mint NFT for subscribed vaults. Only original vault creators can mint and list NFTs.',
       });
     }
 
